@@ -56,13 +56,13 @@ function faqFind(msg) {
   });
   return bestScore > 0 ? best : null;
 }
-function humanCardHTML() {
+function humanCardHTML(note) {
   var wx = CHAT_CONFIG.wechatId
     ? "添加微信：<b>" + esc(CHAT_CONFIG.wechatId) + "</b>"
     : "客服微信号即将公布";
   return '<div class="human-card"><b>👩‍💼 人工客服</b><p>' + wx + '</p>' +
     '<img src="' + esc(CHAT_CONFIG.wechatQr) + '" alt="客服微信二维码" onerror="this.style.display=\'none\'">' +
-    '<p class="hint">添加时请备注：TransferOS咨询</p></div>';
+    '<p class="hint">添加时请备注：' + esc(note || "TransferOS咨询") + '</p></div>';
 }
 if (typeof module !== "undefined") { module.exports = { faqScore: faqScore, faqFind: faqFind, humanCardHTML: humanCardHTML }; }
 
@@ -118,7 +118,7 @@ function chatSend() {
   if (!t) return;
   chatAsk(t);
 }
-function chatHumanCard() {
-  chatBotSay(humanCardHTML());
+function chatHumanCard(note) {
+  chatBotSay(humanCardHTML(note));
 }
 document.addEventListener("DOMContentLoaded", chatInit);
