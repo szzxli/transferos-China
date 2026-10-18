@@ -189,3 +189,9 @@ table.nums tr.total td { font-size: 16px; color: var(--brand1); border-bottom: n
 /* ---- coach.html ---- */
 textarea { width: 100%; box-sizing: border-box; border: 1px solid #ddd6f3; border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: inherit; }
 input[type="number"], select { font-size: 15px; }
+
+/* ---- whitelist ---- */
+.wl { border: 2px solid #e9e2f7; }
+.wl.sel { border-color: #7c3aed; background: #faf8ff; }
+.wl-head { display: flex; gap: 10px; align-items: center; cursor: pointer; font-size: 16px; margin-bottom: 6px; }
+.wl-head input { width: 20px; height: 20px; accent-color: #7c3aed; flex: none; }

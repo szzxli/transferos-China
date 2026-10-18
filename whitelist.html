@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>白名单学校 · TransferOS-China</title>
+<link rel="stylesheet" href="css/app.css?v=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c3aed">
+</head>
+<body>
+<div class="topbar"><div class="topbar-in">
+  <div class="brand">✅ 白名单学校</div>
+  <div class="sub">官网已核实 · 可纯线上接收国际生</div>
+</div></div>
+
+<div class="page">
+  <div class="alert">
+    <b>白名单标准</b>：学校官网明确写了国际生可在美国境外全程线上就读、无需 F-1 签证。名单基于 2026-10-18 公开政策核实，申请前请以各校官网复核（政策会变）。
+  </div>
+
+  <div id="wlList"></div>
+
+  <div class="card">
+    <div class="section-title">📝 下一步</div>
+    <p class="hint">勾选目标学校后，去填写双语申请信息表，生成英文版申请材料。</p>
+    <a class="btn" href="apply.html">填写申请信息 →</a>
+  </div>
+
+  <div class="disclaimer">
+    学费为 2026-27 学年非居民标准，每年调整。白名单仅代表"官网政策允许纯线上国际生"，不代表录取保证，不构成留学中介服务。
+  </div>
+</div>
+
+<nav class="tabbar">
+  <a href="index.html" data-page="index"><span class="ico">🏠</span>首页</a>
+  <a href="evaluate.html" data-page="evaluate"><span class="ico">📝</span>评估</a>
+  <a href="plan.html" data-page="plan"><span class="ico">🗺️</span>选课</a>
+  <a href="track.html" data-page="track"><span class="ico">🗓️</span>规划</a>
+  <a href="transfer.html" data-page="transfer"><span class="ico">🎓</span>转学</a>
+  <a href="guide.html" data-page="guide"><span class="ico">📋</span>指南</a>
+  <a href="whitelist.html" data-page="whitelist" class="active"><span class="ico">✅</span>白名单</a>
+</nav>
+<script src="js/app.js?v=1"></script>
+<script>
+"use strict";
+togNavActive("whitelist");
+
+var SCHOOLS = [
+  { id: "deanza", zh: "De Anza College", en: "De Anza College", city: "Cupertino, CA",
+    tuition: "$284 / 学分", tuitionNote: "2026-27 官网已核实",
+    policy: "Foothill-De Anza 学区：非居民可全程线上就读，无需签证（人在中国）。",
+    applyUrl: "https://www.deanza.edu/apply/" },
+  { id: "foothill", zh: "Foothill College", en: "Foothill College", city: "Los Altos Hills, CA",
+    tuition: "$284 / 学分", tuitionNote: "2026-27 官网已核实",
+    policy: "同学区政策：非居民可全程线上就读，无需签证（人在中国）。",
+    applyUrl: "https://foothill.edu/apply/" },
+  { id: "smc", zh: "Santa Monica College", en: "Santa Monica College", city: "Santa Monica, CA",
+    tuition: "$486 / 学分", tuitionNote: "2026-27 官网已核实",
+    policy: "官网 F-1 页面单列「在美国境外线上就读」类别：纯线上、无需 I-20。",
+    applyUrl: "https://www.smc.edu/admission-aid/apply/international-students/" },
+  { id: "dvc", zh: "Diablo Valley College", en: "Diablo Valley College", city: "Pleasant Hill, CA",
+    tuition: "$447 / 学分", tuitionNote: "学校 ITAP 页面公布",
+    policy: "ITAP 1+1+2 项目：第一年在家线上读，申请时选 Online Only、不申 I-20。",
+    applyUrl: "https://www.dvc.edu/student-services/international-student-office/international-transfer-academic-program-112-pathway" },
+  { id: "wlac", zh: "West Los Angeles College", en: "West Los Angeles College", city: "Culver City, CA",
+    tuition: "未公布", tuitionNote: "以官网为准",
+    policy: "Online Degree for International Students：明确写 No Student Visa Required。",
+    applyUrl: "https://www.wlac.edu/student-services/spr/international-students" },
+  { id: "csm", zh: "College of San Mateo", en: "College of San Mateo", city: "San Mateo, CA",
+    tuition: "$441 / 学分", tuitionNote: "学区 GOL 页面公布",
+    policy: "学区 GOL（Global Online Learning）：专为美国境外学生设，可全程线上读完拿可转学分。",
+    applyUrl: "https://smccd.edu/international/gol/" },
+  { id: "skyline", zh: "Skyline College", en: "Skyline College", city: "San Bruno, CA",
+    tuition: "$441 / 学分", tuitionNote: "学区 GOL 页面公布",
+    policy: "同学区 GOL 项目：美国境外学生可全程线上就读。",
+    applyUrl: "https://smccd.edu/international/gol/" },
+  { id: "canada", zh: "Cañada College", en: "Cañada College", city: "Redwood City, CA",
+    tuition: "$441 / 学分", tuitionNote: "学区 GOL 页面公布",
+    policy: "同学区 GOL 项目：美国境外学生可全程线上就读。",
+    applyUrl: "https://smccd.edu/international/gol/" },
+];
+
+function getSel() { return togGet("wl_sel", []); }
+
+function render() {
+  var sel = getSel();
+  var box = document.getElementById("wlList");
+  box.innerHTML = "";
+  SCHOOLS.forEach(function (s) {
+    var on = sel.indexOf(s.id) >= 0;
+    var div = document.createElement("div");
+    div.className = "card wl" + (on ? " sel" : "");
+    div.innerHTML =
+      '<label class="wl-head"><input type="checkbox" data-id="' + s.id + '"' + (on ? " checked" : "") + '>'
+      + '<span><b>' + esc(s.zh) + '</b><span class="hint"> · ' + esc(s.city) + '</span></span></label>'
+      + '<div class="svc-row"><span class="hint">非居民学费</span><span class="price">' + esc(s.tuition) + '</span></div>'
+      + '<p class="hint">' + esc(s.policy) + '</p>'
+      + '<div class="btn-row"><a class="btn ghost sm" href="' + s.applyUrl + '" target="_blank" rel="noopener">学校申请页 ↗</a></div>';
+    box.appendChild(div);
+  });
+  box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      var cur = getSel(), id = cb.getAttribute("data-id");
+      if (cb.checked && cur.indexOf(id) < 0) cur.push(id);
+      if (!cb.checked) cur = cur.filter(function (x) { return x !== id; });
+      togSet("wl_sel", cur);
+      cb.closest(".wl").classList.toggle("sel", cb.checked);
+    });
+  });
+}
+render();
+</script>
+</body>
+</html>
