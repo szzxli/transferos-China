@@ -12,6 +12,13 @@ function togGet(key, fallback) {
 function togSet(key, val) {
   try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(val)); } catch (e) {}
 }
+/* 代理推荐归因：?ref=代理码 → tog_ref（首次触达归因） */
+(function () {
+  try {
+    var qm = /[?&]ref=([A-Za-z0-9_-]{1,24})/.exec(location.search || "");
+    if (qm) togSet("ref", qm[1]);
+  } catch (e) {}
+})();
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -59,7 +66,8 @@ function funnelAsk(source) {
   var p = document.getElementById("chatPanel");
   if (p && p.hidden && typeof chatToggle === "function") chatToggle();
   var ctx = funnelCtx();
-  var note = "TransferOS咨询·" + source + (ctx ? "·" + ctx : "");
+  var __ref = togGet("ref", "");
+  var note = "TransferOS\u54a8\u8be2\u00b7" + source + (ctx ? "\u00b7" + ctx : "") + (__ref ? "\u00b7\u4ee3\u7406:" + __ref : "");
   if (typeof chatBotSay === "function") chatBotSay("👋 你好！我是从<b>" + esc(source) + "</b>过来的" + (ctx ? "（" + esc(ctx) + "）" : "") + "，想咨询一下。");
   if (typeof chatHumanCard === "function") chatHumanCard(note);
 }
