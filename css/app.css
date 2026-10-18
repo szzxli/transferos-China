@@ -243,3 +243,9 @@ input[type="number"], select { font-size: 15px; }
 .step-body{padding:2px 12px 14px}
 .step-body[hidden]{display:none}
 .step-body .card{margin:8px 0}
+
+/* 语言切换器 */
+.topbar{position:relative}
+.langsel{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;gap:4px}
+.langsel button{border:1px solid #ddd;background:#fff;border-radius:8px;padding:4px 8px;font-size:12px;cursor:pointer;color:#6b7280}
+.langsel button.on{background:#7c3aed;color:#fff;border-color:#7c3aed}
