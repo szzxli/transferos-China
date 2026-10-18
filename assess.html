@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>评估选校 · TransferOS-China</title>
+<link rel="stylesheet" href="css/app.css?v=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c3aed">
+</head>
+<body>
+<div class="topbar"><div class="topbar-in">
+  <div class="brand">📝 评估选校</div>
+  <div class="sub">4维评估 · 12所白名单CC · 纯本地判定</div>
+</div></div>
+<div class="page">
+<section id="sec-eval">
+
+  <div class="step-label" id="stepLabel">第 1 步 / 共 4 步</div>
+  <div class="steps"><div class="dot on" id="d1"></div><div class="dot" id="d2"></div><div class="dot" id="d3"></div><div class="dot" id="d4"></div></div>
+
+  <!-- Step 1: 方式 -->
+  <div class="card" id="step1">
+    <div class="section-title">🎚️ 你打算怎么读 CC？</div>
+    <div class="hint">两种方式费用和签证要求完全不同，先选再评估。</div>
+    <label class="radio-card"><input type="radio" name="mode" value="online" checked> 💻 纯线上 — 人在中国，全程网课，无需签证</label>
+    <label class="radio-card"><input type="radio" name="mode" value="inperson"> ✈️ 赴美线下 — 持 F-1 签证赴美读</label>
+    <div class="btn-row"><button class="btn ghost" disabled>← 上一步</button><button class="btn" onclick="evNext(1)">下一步 →</button></div>
+  </div>
+
+  <!-- Step 2: 年龄 -->
+  <div class="card" id="step2" hidden>
+    <div class="section-title">🎂 你的年龄？</div>
+    <div class="hint">加州社区大学开放申请要求年满 16 周岁。</div>
+    <div class="field"><label for="age">年龄（周岁）</label>
+      <input type="number" id="age" min="10" max="60" inputmode="numeric" placeholder="例如 20">
+    </div>
+    <div class="btn-row"><button class="btn ghost" onclick="evGo(1)">← 上一步</button><button class="btn" onclick="evNext(2)">下一步 →</button></div>
+  </div>
+
+  <!-- Step 3: 成绩单 -->
+  <div class="card" id="step3" hidden>
+    <div class="section-title">📄 高中成绩单</div>
+    <div class="hint">申请必需材料：高中成绩单英文盖章版。</div>
+    <label class="radio-card"><input type="checkbox" id="hasTs"> 我有高中成绩单（或能开到英文盖章版）</label>
+    <div class="btn-row"><button class="btn ghost" onclick="evGo(2)">← 上一步</button><button class="btn" onclick="evNext(3)">下一步 →</button></div>
+  </div>
+
+  <!-- Step 4: 英语 -->
+  <div class="card" id="step4" hidden>
+    <div class="section-title">🗣️ 英语成绩</div>
+    <div class="hint">常见要求线：Duolingo 105 / 托福 61（具体以学校官网为准）。</div>
+    <div class="field"><label for="duo">Duolingo 英语测试</label>
+      <select id="duo">
+        <option value="none">还没考 / 不填</option>
+        <option value="gte105">105 分及以上 ✅</option>
+        <option value="90_104">90 – 104 分</option>
+        <option value="lt90">90 分以下</option>
+      </select></div>
+    <div class="field"><label for="toefl">托福 iBT</label>
+      <select id="toefl">
+        <option value="none">还没考 / 不填</option>
+        <option value="gte61">61 分及以上 ✅</option>
+        <option value="lt61">61 分以下</option>
+      </select></div>
+    <div class="footnote">🔗 官方报名通道：<a href="https://englishtest.duolingo.com" target="_blank" rel="noopener">Duolingo 英语测试</a> · <a href="https://www.ets.org/toefl" target="_blank" rel="noopener">托福 iBT</a>（便民链接，与本站无任何关系、无推荐费）</div>
+    <div class="btn-row"><button class="btn ghost" onclick="evGo(3)">← 上一步</button><button class="btn" onclick="evFinish()">看评估结果 →</button></div>
+  </div>
+
+  <div id="resultSlot"></div>
+  <div class="card">
+    <div class="section-title">📜 国内已修课程？</div>
+    <p class="hint">在国内大学上过课？解析一下哪些能折抵 CC 学分，省学费。</p>
+    <a class="btn ghost" href="planning.html#sec-transcript">成绩单解析 →</a>
+  </div>
+</section>
+<section id="sec-whitelist">
+
+  <div class="alert">
+    <b>白名单标准</b>：学校官网明确写了国际生可在美国境外全程线上就读、无需 F-1 签证。名单基于 2026-10-18 公开政策核实，申请前请以各校官网复核（政策会变）。
+  </div>
+
+  <div id="wlList"></div>
+
+  <div class="card">
+    <div class="section-title">📝 下一步</div>
+    <p class="hint">勾选目标学校后，去填写双语申请信息表，生成英文版申请材料。</p>
+    <a class="btn" href="transfer.html#sec-apply">填写申请信息 →</a>
+  </div>
+
+  <div class="disclaimer">
+    学费为 2026-27 学年非居民标准，每年调整。白名单仅代表"官网政策允许纯线上国际生"，不代表录取保证，不构成留学中介服务。
+  </div>
+</section>
+</div>
+<div id="chatRoot"></div>
+<nav class="tabbar">
+  <a href="index.html" data-page="index"><span class="ico">🏠</span>首页</a>
+  <a href="assess.html" data-page="assess" class="active"><span class="ico">📝</span>评估选校</a>
+  <a href="planning.html" data-page="planning"><span class="ico">🗺️</span>选课规划</a>
+  <a href="transfer.html" data-page="transfer"><span class="ico">🎓</span>转学指南</a>
+</nav>
+<script src="js/app.js?v=1"></script>
+<script src="js/chat.js?v=1"></script>
+<script>
+
+"use strict";
+togNavActive("assess");
+
+/* ---- 纯逻辑：可在 node 里单元测试 ---- */
+var AGE_BAR = 16, ESL_PER_UNIT = 284, ESL_UNITS = 10; /* 2门×5学分，估算 */
+function evaluateEligibility(a) {
+  var dims = [], esl = null;
+  /* 年龄 */
+  var age = parseInt(a.age, 10);
+  if (isNaN(age)) {
+    dims.push({ key: "age", st: "missing", label: "年龄", msg: "未填写", fix: "请填写年龄。" });
+  } else if (age < AGE_BAR) {
+    dims.push({ key: "age", st: "bad", label: "年龄", msg: age + " 岁，未满 16 岁",
+      fix: "加州社区大学开放申请要求年满 16 周岁，请达到年龄后再申请。" });
+  } else {
+    dims.push({ key: "age", st: "ok", label: "年龄", msg: age + " 岁，达到 16 岁门槛", fix: "" });
+  }
+  /* 成绩单 */
+  if (a.hasTranscript) {
+    dims.push({ key: "ts", st: "ok", label: "高中成绩单", msg: "有（英文盖章版）", fix: "" });
+  } else {
+    dims.push({ key: "ts", st: "warn", label: "高中成绩单", msg: "尚未确认",
+      fix: "去高中教务处开英文盖章版成绩单，这是申请必需材料。" });
+  }
+  /* 英语 */
+  var engOk = (a.duo === "gte105") || (a.toefl === "gte61");
+  var engTried = (a.duo !== "none") || (a.toefl !== "none");
+  if (engOk) {
+    dims.push({ key: "eng", st: "ok", label: "英语", msg: "达到常见要求线", fix: "" });
+  } else if (engTried) {
+    var cost = ESL_PER_UNIT * ESL_UNITS;
+    esl = { cost: cost, quarters: 2 };
+    dims.push({ key: "eng", st: "warn", label: "英语", msg: "低于常见要求线（Duolingo 105 / 托福 61）",
+      fix: "两条路：① 刷分到线；② 先修 CC 的 ESL 语言桥梁课——约 2 门×5 学分×$284 = $" + cost.toLocaleString("en-US")
+        + "，约 2 个 quarter（估算，实际以入学 placement test 为准）。" });
+  } else {
+    dims.push({ key: "eng", st: "warn", label: "英语", msg: "还没考",
+      fix: "先去考 Duolingo（出分快、便宜）或托福，目标 Duolingo 105 / 托福 61。" });
+  }
+  var verdict;
+  if (dims.some(function (d) { return d.st === "bad" || d.st === "missing"; })) verdict = "bad";
+  else if (dims.some(function (d) { return d.st === "warn"; })) verdict = "warn";
+  else verdict = "ok";
+  var modeNote = "";
+  if (a.mode === "inperson") {
+    modeNote = '<div class="alert" style="margin-top:10px">🛂 你选了<b>赴美线下</b>：F-1 签证需要资金证明覆盖约 <b>$27,189/年</b>（De Anza 官网估算，无例外），另需购买强制医疗保险。</div>';
+  } else {
+    modeNote = '<div class="hint" style="margin-top:10px">💻 你选了<b>纯线上</b>：人在中国即可开始，无需签证；转学到 UC 后再申请 F-1（<a href="transfer.html#sec-visa">必读签证风险</a>）。</div>';
+  }
+  return { dims: dims, verdict: verdict, esl: esl, mode: a.mode, modeNote: modeNote };
+}
+if (typeof module !== "undefined") { module.exports = { evaluateEligibility: evaluateEligibility }; }
+
+/* ---- 页面交互 ---- */
+function evGo(n) {
+  [1, 2, 3, 4].forEach(function (i) {
+    document.getElementById("step" + i).hidden = (i !== n);
+    document.getElementById("d" + i).classList.toggle("on", i <= n);
+  });
+  document.getElementById("stepLabel").textContent = "第 " + n + " 步 / 共 4 步";
+  document.getElementById("resultSlot").innerHTML = "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function evRead() {
+  var modeEl = document.querySelector('input[name="mode"]:checked');
+  return {
+    mode: modeEl ? modeEl.value : "online",
+    age: document.getElementById("age").value.trim(),
+    hasTranscript: document.getElementById("hasTs").checked,
+    duo: document.getElementById("duo").value,
+    toefl: document.getElementById("toefl").value,
+  };
+}
+function evNext(n) {
+  togSet("eval", { raw: evRead() });
+  evGo(n + 1);
+}
+function evFinish() {
+  var ans = evRead();
+  var r = evaluateEligibility(ans);
+  togSet("eval", { mode: ans.mode, verdict: r.verdict, esl: !!r.esl, raw: ans, ts: Date.now() });
+  var icon = { ok: "✅", warn: "⚠️", bad: "❌", missing: "❓" };
+  var rows = r.dims.map(function (d) {
+    return '<div class="dim-row"><span class="dim-ico">' + icon[d.st] + '</span><div><b>' + esc(d.label) + '</b> — ' + esc(d.msg)
+      + (d.fix ? '<div class="fix">→ ' + esc(d.fix) + '</div>' : '') + '</div></div>';
+  }).join("");
+  var vHtml;
+  if (r.verdict === "ok") vHtml = '<div class="verdict ok">✅ 路径可行：四个维度都达标，去选课吧。</div>';
+  else if (r.verdict === "warn") vHtml = '<div class="verdict warn">⚠️ 补齐短板：按上面的提示处理，路径即可走通。</div>';
+  else vHtml = '<div class="verdict bad">❌ 暂不符合：有红色硬伤，按提示处理后再来。</div>';
+  document.getElementById("resultSlot").innerHTML =
+    '<div class="card"><div class="section-title">📊 评估结果</div>' + rows + vHtml + r.modeNote
+    + '<a class="btn" href="planning.html#sec-plan">下一步：去选课 →</a>'
+    + '<div class="footnote">纯本地判定，仅供参考，不构成录取承诺。语言要求线为常见值，具体以学校官网为准；ESL 费用为估算。</div></div>';
+  document.getElementById("resultSlot").scrollIntoView({ behavior: "smooth" });
+}
+(function () {
+  var s = togGet("eval", null);
+  if (!s || !s.raw) return;
+  if (s.raw.mode) { var m = document.querySelector('input[name="mode"][value="' + s.raw.mode + '"]'); if (m) m.checked = true; }
+  if (s.raw.age) document.getElementById("age").value = s.raw.age;
+  if (s.raw.hasTranscript) document.getElementById("hasTs").checked = true;
+  if (s.raw.duo) document.getElementById("duo").value = s.raw.duo;
+  if (s.raw.toefl) document.getElementById("toefl").value = s.raw.toefl;
+})();
+document.querySelectorAll(".radio-card").forEach(function (c) {
+  c.addEventListener("click", function () {
+    var inp = c.querySelector("input");
+    if (inp.type === "radio") {
+      document.querySelectorAll('input[name="' + inp.name + '"]').forEach(function (x) {
+        x.closest(".radio-card").classList.remove("sel");
+      });
+      c.classList.add("sel");
+    } else { c.classList.toggle("sel", inp.checked); }
+  });
+});
+
+</script>
+<script>
+
+"use strict";
+togNavActive("assess");
+
+var SCHOOLS = [
+  { id: "deanza", zh: "De Anza College", en: "De Anza College", city: "Cupertino, CA",
+    tuition: "$284 / 学分", tuitionNote: "2026-27 官网已核实",
+    policy: "Foothill-De Anza 学区：非居民可全程线上就读，无需签证（人在中国）。",
+    applyUrl: "https://www.deanza.edu/apply/" },
+  { id: "foothill", zh: "Foothill College", en: "Foothill College", city: "Los Altos Hills, CA",
+    tuition: "$284 / 学分", tuitionNote: "2026-27 官网已核实",
+    policy: "同学区政策：非居民可全程线上就读，无需签证（人在中国）。",
+    applyUrl: "https://foothill.edu/apply/" },
+  { id: "smc", zh: "Santa Monica College", en: "Santa Monica College", city: "Santa Monica, CA",
+    tuition: "$486 / 学分", tuitionNote: "2026-27 官网已核实",
+    policy: "官网 F-1 页面单列「在美国境外线上就读」类别：纯线上、无需 I-20。",
+    applyUrl: "https://www.smc.edu/admission-aid/apply/international-students/" },
+  { id: "dvc", zh: "Diablo Valley College", en: "Diablo Valley College", city: "Pleasant Hill, CA",
+    tuition: "$447 / 学分", tuitionNote: "学校 ITAP 页面公布",
+    policy: "ITAP 1+1+2 项目：第一年在家线上读，申请时选 Online Only、不申 I-20。",
+    applyUrl: "https://www.dvc.edu/student-services/international-student-office/international-transfer-academic-program-112-pathway" },
+  { id: "wlac", zh: "West Los Angeles College", en: "West Los Angeles College", city: "Culver City, CA",
+    tuition: "未公布", tuitionNote: "以官网为准",
+    policy: "Online Degree for International Students：明确写 No Student Visa Required。",
+    applyUrl: "https://www.wlac.edu/student-services/spr/international-students" },
+  { id: "csm", zh: "College of San Mateo", en: "College of San Mateo", city: "San Mateo, CA",
+    tuition: "$441 / 学分", tuitionNote: "学区 GOL 页面公布",
+    policy: "学区 GOL（Global Online Learning）：专为美国境外学生设，可全程线上读完拿可转学分。",
+    applyUrl: "https://smccd.edu/international/gol/" },
+  { id: "skyline", zh: "Skyline College", en: "Skyline College", city: "San Bruno, CA",
+    tuition: "$441 / 学分", tuitionNote: "学区 GOL 页面公布",
+    policy: "同学区 GOL 项目：美国境外学生可全程线上就读。",
+    applyUrl: "https://smccd.edu/international/gol/" },
+  { id: "canada", zh: "Cañada College", en: "Cañada College", city: "Redwood City, CA",
+    tuition: "$441 / 学分", tuitionNote: "学区 GOL 页面公布",
+    policy: "同学区 GOL 项目：美国境外学生可全程线上就读。",
+    applyUrl: "https://smccd.edu/international/gol/" },
+  { id: "cerritos", zh: "Cerritos College", en: "Cerritos College", city: "Norwalk, CA",
+    tuition: "未公布", tuitionNote: "以官网为准",
+    policy: "官网明确：全程线上、人留在美国境外，无需 F-1；线上入学不发 I-20。",
+    applyUrl: "https://www.cerritos.edu/academics/international/International_Online_and__Dual_Enrollment.htm" },
+  { id: "lacc", zh: "Los Angeles City College", en: "Los Angeles City College", city: "Los Angeles, CA",
+    tuition: "未公布", tuitionNote: "以官网为准",
+    policy: "Global Online Business Degree：在家拿证书或副学士学位。",
+    applyUrl: "https://www.lacc.edu/admissions/apply/international" },
+  { id: "pierce", zh: "Los Angeles Pierce College", en: "Los Angeles Pierce College", city: "Woodland Hills, CA",
+    tuition: "未公布", tuitionNote: "以官网为准",
+    policy: "Pierce Global：在家全程线上拿学位，无需赴美。",
+    applyUrl: "https://www.lapc.edu/student-services/spr/iss/global" },
+  { id: "siskiyous", zh: "College of the Siskiyous", en: "College of the Siskiyous", city: "Weed, CA",
+    tuition: "$353 / 学分", tuitionNote: "学校 2026 Fall 课表公布（6.5 学分以上）",
+    policy: "SOPI 项目：不离境拿副学士学位 + UC 转学分，全程线上。",
+    applyUrl: "http://www.siskiyous.edu/admissions/universallearning.htm" },
+];
+
+function getSel() { return togGet("wl_sel", []); }
+
+function render() {
+  var sel = getSel();
+  var box = document.getElementById("wlList");
+  box.innerHTML = "";
+  SCHOOLS.forEach(function (s) {
+    var on = sel.indexOf(s.id) >= 0;
+    var div = document.createElement("div");
+    div.className = "card wl" + (on ? " sel" : "");
+    div.innerHTML =
+      '<label class="wl-head"><input type="checkbox" data-id="' + s.id + '"' + (on ? " checked" : "") + '>'
+      + '<span><b>' + esc(s.zh) + '</b><span class="hint"> · ' + esc(s.city) + '</span></span></label>'
+      + '<div class="svc-row"><span class="hint">非居民学费</span><span class="price">' + esc(s.tuition) + '</span></div>'
+      + '<p class="hint">' + esc(s.policy) + '</p>'
+      + '<div class="btn-row"><a class="btn ghost sm" href="' + s.applyUrl + '" target="_blank" rel="noopener">学校申请页 ↗</a></div>';
+    box.appendChild(div);
+  });
+  box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      var cur = getSel(), id = cb.getAttribute("data-id");
+      if (cb.checked && cur.indexOf(id) < 0) cur.push(id);
+      if (!cb.checked) cur = cur.filter(function (x) { return x !== id; });
+      togSet("wl_sel", cur);
+      cb.closest(".wl").classList.toggle("sel", cb.checked);
+    });
+  });
+}
+render();
+
+</script>
+</body>
+</html>

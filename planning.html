@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>选课规划 · TransferOS-China</title>
+<link rel="stylesheet" href="css/app.css?v=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c3aed">
+</head>
+<body>
+<div class="topbar"><div class="topbar-in">
+  <div class="brand">🗺️ 选课规划</div>
+  <div class="sub">选课 · 时间线 · 费用 · 成绩单 · 辅导</div>
+</div></div>
+<div class="page">
+<div id="evalBanner"></div>
+<div class="card secnav"><div class="hint" style="margin:0">本页导航：<a href="#sec-plan">选课</a> · <a href="#sec-track">时间线</a> · <a href="#sec-cost">费用</a> · <a href="#sec-transcript">成绩单</a> · <a href="#sec-coach">辅导</a></div></div>
+<section id="sec-plan">
+
+  <div class="hint" style="margin-bottom:10px">💰 还没算过费用？<a href="planning.html#sec-cost">先算费用 →</a></div>
+  <div class="card">
+    <div class="section-title">🏫 选择你的 CC</div>
+    <label class="radio-card"><input type="radio" name="school" value="deanza" checked> De Anza College</label>
+    <label class="radio-card"><input type="radio" name="school" value="foothill"> Foothill College</label>
+    <div class="hint" id="loadHint">正在加载课程数据…</div>
+  </div>
+
+  <div class="card" id="pickCard" hidden>
+    <div class="section-title">🎯 目标 UC + 专业</div>
+    <div class="field"><label for="ucSel">目标 UC</label><select id="ucSel"></select></div>
+    <div class="field"><label for="majorFilter">搜索专业</label>
+      <input type="text" id="majorFilter" placeholder="输入关键词过滤，如 computer">
+    </div>
+    <div class="field"><label for="majorSel">专业（<span id="majorCount"></span>）</label><select id="majorSel"></select></div>
+    <div class="hint" id="yearHint"></div>
+  </div>
+
+  <div class="card" id="listCard" hidden>
+    <div class="section-title">📚 转学课程清单 <span class="hint" id="covHint"></span></div>
+    <div class="progress"><div class="progress-in" id="covBar" style="width:0%"></div></div>
+    <div class="hint">勾选你已修 / 计划修的课。"任选其一"组勾一门即算满足该项要求。</div>
+    <div id="reqList"></div>
+    <div class="btn-row">
+      <button class="btn" id="saveBtn">💾 保存我的选课计划</button>
+      <button class="btn ghost" id="clearBtn">清空勾选</button>
+    </div>
+  </div>
+
+  <div class="card" id="savedCard" hidden>
+    <div class="section-title">💾 已保存的计划</div>
+    <div id="savedList"></div>
+  </div>
+
+  <div class="disclaimer">
+    课程要求来自 ASSIST 转学协议（2026-10-17 提取），仅供规划参考。<br>
+    协议每年更新，选课前请以 ASSIST 官网和学校 counselor 确认为准。<strong>不承诺录取。</strong>
+  </div>
+</section>
+<section id="sec-track">
+
+  <div class="alert">
+    <b>📌 先说明：</b>De Anza / Foothill 实行 <b>Quarter 学季制</b>（Fall / Winter / Spring / Summer），不是 Semester 学期制。下面的"季"指学季。
+  </div>
+
+  <div class="card">
+    <div class="section-title">📥 数据来源</div>
+    <label class="radio-card"><input type="radio" name="src" value="plan" checked> 用我在「选课」页保存的最新计划</label>
+    <label class="radio-card"><input type="radio" name="src" value="new"> 重新选学校 / UC / 专业</label>
+    <div class="hint" id="tkSrcHint"></div>
+  </div>
+
+  <div class="card" id="tkPickCard" hidden>
+    <div class="section-title">🎯 重新选择</div>
+    <div class="field"><label>学校</label>
+      <label class="radio-card"><input type="radio" name="school" value="deanza" checked> De Anza College</label>
+      <label class="radio-card"><input type="radio" name="school" value="foothill"> Foothill College</label>
+    </div>
+    <div class="field"><label for="ucSel">目标 UC</label><select id="tkUcSel"></select></div>
+    <div class="field"><label for="majorSel">专业</label><select id="tkMajorSel"></select></div>
+    <div class="hint" id="tkLoadHint"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">⏱️ 转学节奏</div>
+    <label class="radio-card"><input type="radio" name="pace" value="2yr" checked> <b>2 年转学</b>（稳妥）— 7 个学季，每季约 9–10 学分</label>
+    <label class="radio-card"><input type="radio" name="pace" value="1yr"> <b>1 年转学</b>（高强度）— Fall / Winter / Spring + Summer 共 4 季，每季约 15 学分</label>
+    <div class="btn-row"><button class="btn" id="tkGenBtn">⚙️ 生成课程规划</button></div>
+  </div>
+
+  <div id="tkSchedSlot"></div>
+
+  <div class="disclaimer">
+    排课为自动估算：<b>课程先后修关系（prerequisite）未纳入</b>，部分课程有先修要求，实际选课顺序请以学校官网和 counselor 确认为准。<br>
+    课程要求来自 ASSIST 协议，仅供规划参考。<strong>不承诺录取。</strong>
+  </div>
+</section>
+<section id="sec-cost">
+
+  <div class="card">
+    <div class="section-title">🎚️ 就读方式</div>
+    <div class="hint">两种方式费用结构完全不同，先选再算。</div>
+    <label class="radio-card"><input type="radio" name="mode" value="online" checked> 💻 纯线上 — 人在中国，全程网课，无需签证</label>
+    <label class="radio-card"><input type="radio" name="mode" value="inperson"> ✈️ 赴美线下 — 持 F-1 签证赴美，含生活费</label>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🏫 选择社区大学（非居民学费）</div>
+    <div class="field"><label for="cc">学校</label>
+      <select id="cc">
+        <option value="284" data-note="2026-27 官网已核实：$253 学费 + $31 注册费">De Anza College — $284 / 学分 ✅已核实</option>
+        <option value="284" data-note="2026-27 官网已核实：$253 学费 + $31 注册费（同属 Foothill-De Anza 学区）">Foothill College — $284 / 学分 ✅已核实</option>
+        <option value="custom" data-note="">自定义单价…</option>
+      </select>
+    </div>
+    <div class="field" id="customWrap" hidden><label for="customRate">自定义单价（美元/学分）</label>
+      <input type="number" id="customRate" min="50" max="800" value="284">
+    </div>
+    <div class="hint" id="ccNote"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">📚 CC 阶段学分</div>
+    <div class="field">
+      <label for="units">总学分：<b id="unitsVal">60</b></label>
+      <input type="range" id="units" min="48" max="60" value="60" step="1">
+      <div class="hint">转学一般需要 60 学分（约 2 年）；已修课程可转学分则可减少。</div>
+    </div>
+  </div>
+
+  <div class="card" id="livingCard" hidden>
+    <div class="section-title">🏠 赴美生活费（De Anza 官网 F-1 估算）</div>
+    <table class="nums">
+      <tr><td>强制医疗保险</td><td>$1,665 / 年</td></tr>
+      <tr><td>书本费</td><td>$1,500 / 年</td></tr>
+      <tr><td>住宿（校内双人间 10 个月）</td><td>$10,300 / 年</td></tr>
+      <tr><td>餐费与零花</td><td>$3,500 / 年</td></tr>
+      <tr><td>生活费小计（2 年）</td><td id="livingSub">$33,930</td></tr>
+    </table>
+    <div class="hint">De Anza 官网 F-1 学生费用估算；签证资金证明要求覆盖此总额，无例外。</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🎓 UC 阶段（2 年，非居民）</div>
+    <table class="nums">
+      <tr><td>UC 非居民学费（估算）</td><td>$48,000 / 年</td></tr>
+      <tr><td>UC 阶段小计（2 年）</td><td id="ucSub">$96,000</td></tr>
+    </table>
+    <div class="hint">UC 非居民学费各校略有差异，此处取整估算。</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🧾 四年总账</div>
+    <table class="nums">
+      <tr><td>CC 学费小计</td><td id="ccSub">$17,040</td></tr>
+      <tr id="livingRow" hidden><td>CC 阶段生活费小计</td><td id="livingRowVal">$33,930</td></tr>
+      <tr><td>UC 学费小计</td><td>$96,000</td></tr>
+      <tr class="total"><td><b>合计</b></td><td id="total">$113,040</td></tr>
+    </table>
+    <div class="verdict ok" style="margin-top:12px">
+      🆚 传统四年美国留学约 $240,000<br>
+      <span class="big-num" id="savePct">48%</span> 费用节省（诚实测算）
+    </div>
+    <div class="footnote">
+      学费每年调整，此为 2026-27 口径估算。纯线上模式仅含学费；赴美模式另含 De Anza 官网 F-1 生活费估算（不含往返机票等杂费）。<br>
+      两所学校单价均为官网已核实数字；我们从不编数字。
+    </div>
+    <a class="btn mt" href="transfer.html#sec-guide">下一步：入学指南 →</a>
+  </div>
+</section>
+<section id="sec-transcript">
+
+  <div class="alert">
+    <b>⚠️ 先说清楚</b><br>
+    1. 这是<b>初筛</b>，不是判定——正式流程：成绩单先做认证（IERF/WES）→ 入学后找 counselor 逐门 petition，最终以学校为准。<br>
+    2. AI 只给<b>定性三档</b>（高度相关/部分相关/不相关），不编"相似度 88%"这种假数字。<br>
+    3. 粘贴课程信息前请<b>删掉学号、姓名等个人信息</b>，只留课程名和大纲。
+  </div>
+
+  <div class="card">
+    <div class="section-title">⚡ 离线初筛（免费、秒出）</div>
+    <p class="hint">把国内已修课程名粘贴进来，每行一门。内置 35 门常见课映射表。</p>
+    <div class="field"><label for="courses">已修课程（每行一门）</label>
+      <textarea id="courses" rows="6" placeholder="高等数学I&#10;线性代数&#10;C语言程序设计&#10;大学物理I&#10;思想道德修养与法律基础"></textarea></div>
+    <div class="btn-row"><button class="btn" id="offlineBtn">开始初筛</button></div>
+    <div id="offlineOut"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🤖 AI 精析（BYOK）</div>
+    <p class="hint">粘贴课程大纲/课程描述，AI 做语义初筛。Key 只存本机浏览器，不上传。</p>
+    <div class="field"><label for="apiKey">DeepSeek API Key（本地保存）</label>
+      <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off"></div>
+    <div class="field"><label for="syllabus">课程大纲/描述</label>
+      <textarea id="syllabus" rows="5" placeholder="粘贴《高等数学I》的大纲：函数、极限、导数、积分、级数……"></textarea></div>
+    <div class="btn-row"><button class="btn" id="aiBtn">AI 分析</button></div>
+    <div id="aiOut"></div>
+    <div class="footnote">没有 Key？去 <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a> 注册获取（按量付费，很便宜）。</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🔗 成绩单认证机构</div>
+    <p class="hint"><a href="https://www.wes.org" target="_blank" rel="noopener">WES</a> · <a href="https://www.ierf.org" target="_blank" rel="noopener">IERF</a>（便民链接，与本站无任何关系、无推荐费）</p>
+  </div>
+
+  <div class="disclaimer">
+    初筛结果仅供参考。国内学分能否转 CC，取决于成绩单认证 + 学校 counselor 的逐门审核，AI 和本工具都不做最终判定。
+  </div>
+</section>
+<section id="sec-coach">
+
+  <div id="emptySlot"></div>
+
+  <div class="card" id="sumCard" hidden>
+    <div class="section-title">📊 总览 <span class="hint" id="planName"></span></div>
+    <div class="progress"><div class="progress-in" id="allBar" style="width:0%"></div></div>
+    <table class="nums">
+      <tr><td>已完成学季</td><td id="doneQ">0 / 0</td></tr>
+      <tr><td>平均 GPA（已完成学季）</td><td id="avgGpa">—</td></tr>
+      <tr><td>总体进度</td><td id="allPct">0%</td></tr>
+    </table>
+    <div class="hint">GPA 按学季手动填写（0–4.0）；"已完成"的学季才计入平均 GPA。</div>
+  </div>
+
+  <div id="qSlot"></div>
+
+  <div class="card">
+    <a class="btn ghost" href="planning.html#sec-track">← 返回课程规划</a>
+  </div>
+
+  <div class="disclaimer">
+    所有记录只保存在本机浏览器（localStorage），不上传任何服务器。<br>
+    GPA 为手动记录，仅供自我跟踪，不构成任何官方成绩证明。
+  </div>
+</section>
+</div>
+<div id="chatRoot"></div>
+<nav class="tabbar">
+  <a href="index.html" data-page="index"><span class="ico">🏠</span>首页</a>
+  <a href="assess.html" data-page="assess"><span class="ico">📝</span>评估选校</a>
+  <a href="planning.html" data-page="planning" class="active"><span class="ico">🗺️</span>选课规划</a>
+  <a href="transfer.html" data-page="transfer"><span class="ico">🎓</span>转学指南</a>
+</nav>
+<script src="js/app.js?v=1"></script>
+<script src="js/chat.js?v=1"></script>
+<script>
+
+"use strict";
+renderEvalBanner();
+togNavActive("planning");
+
+var DATA = null, CUR = { school: "deanza", uc: "", major: "", reqs: [] };
+var checked = {}; /* reqIdx -> code */
+
+var UC_SLUGS = {"UC Berkeley":"uc_berkeley","UC Davis":"uc_davis","UC Irvine":"uc_irvine","UC San Diego":"uc_san_diego","UC Santa Cruz":"uc_santa_cruz","UCLA":"ucla"};
+
+function loadSchool(s) {
+  CUR.school = s; DATA = null; checked = {};
+  document.getElementById("loadHint").textContent = "正在加载课程数据…";
+  document.getElementById("pickCard").hidden = true;
+  document.getElementById("listCard").hidden = true;
+  fetch("data/index.json").then(function (r) { return r.json(); }).then(function (idx) {
+    DATA = { school: s, schoolName: (s === "deanza" ? "De Anza College" : "Foothill College"), parts: idx[s], majors: [] };
+    document.getElementById("loadHint").textContent = DATA.schoolName + " · 数据索引已加载";
+    buildUcSel();
+    document.getElementById("pickCard").hidden = false;
+  }).catch(function () {
+    document.getElementById("loadHint").textContent = "⚠️ 数据加载失败，请检查网络后刷新。";
+  });
+}
+
+function loadUc() {
+  var n = DATA.parts[CUR.uc], slug = UC_SLUGS[CUR.uc];
+  document.getElementById("loadHint").textContent = "正在加载 " + CUR.uc + " 专业数据…";
+  var ps = [];
+  for (var i = 1; i <= n; i++) {
+    ps.push(fetch("data/" + CUR.school + "-" + slug + "-p" + i + ".json").then(function (r) { return r.json(); }));
+  }
+  Promise.all(ps).then(function (parts) {
+    var majors = [];
+    parts.forEach(function (p) { majors = majors.concat(p.majors); });
+    DATA.majors = majors;
+    document.getElementById("loadHint").textContent = DATA.schoolName + " → " + CUR.uc + " · " + majors.length + " 个专业";
+    buildMajorSel();
+  }).catch(function () {
+    document.getElementById("loadHint").textContent = "⚠️ 专业数据加载失败，请重试。";
+  });
+}
+
+function buildUcSel() {
+  var sel = document.getElementById("ucSel");
+  sel.innerHTML = "";
+  Object.keys(DATA.parts).forEach(function (u) {
+    var o = document.createElement("option"); o.value = u; o.textContent = u; sel.appendChild(o);
+  });
+  CUR.uc = sel.value; loadUc();
+}
+
+function buildMajorSel() {
+  var kw = document.getElementById("majorFilter").value.trim().toLowerCase();
+  var sel = document.getElementById("majorSel");
+  sel.innerHTML = "";
+  var list = DATA.majors || [];
+  var shown = 0;
+  list.forEach(function (p) {
+    if (kw && p.major.toLowerCase().indexOf(kw) < 0) return;
+    var o = document.createElement("option"); o.value = p.major; o.textContent = p.major; sel.appendChild(o);
+    shown++;
+  });
+  document.getElementById("majorCount").textContent = shown + " / " + list.length;
+  if (shown) { CUR.major = sel.value; showReqs(); }
+  else { document.getElementById("listCard").hidden = true; }
+}
+
+function showReqs() {
+  var list = DATA.majors || [];
+  var prog = null;
+  for (var i = 0; i < list.length; i++) if (list[i].major === CUR.major) prog = list[i];
+  if (!prog) return;
+  CUR.reqs = prog.reqs; checked = {};
+  document.getElementById("yearHint").textContent = "协议学年：" + prog.year + " · 共 " + prog.reqs.length + " 项要求";
+  var box = document.getElementById("reqList");
+  box.innerHTML = "";
+  prog.reqs.forEach(function (rq, ri) {
+    var div = document.createElement("div");
+    div.className = "req";
+    var head = '<div class="req-head"><b>' + esc(rq.uc_course || "通识/选修要求") + '</b>'
+      + (rq.uc_title ? ' <span class="hint">' + esc(rq.uc_title) + '</span>' : '')
+      + (rq.options.length > 1 && rq.logic === "Or" ? ' <span class="tag">任选其一</span>' : '') + '</div>';
+    var opts = rq.options.map(function (o) {
+      var id = "rq" + ri + "_" + o.code.replace(/\W/g, "");
+      return '<label class="opt"><input type="checkbox" data-ri="' + ri + '" value="' + esc(o.code) + '" id="' + id + '">'
+        + '<span><b>' + esc(o.code) + '</b> ' + esc(o.title)
+        + (o.units ? ' <span class="hint">' + o.units + ' 学分</span>' : '') + '</span></label>';
+    }).join("");
+    div.innerHTML = head + opts;
+    box.appendChild(div);
+  });
+  box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      var ri = cb.getAttribute("data-ri");
+      if (cb.checked) checked[ri] = cb.value; else delete checked[ri];
+      updateCov();
+    });
+  });
+  document.getElementById("listCard").hidden = false;
+  updateCov();
+  renderSaved();
+}
+
+function updateCov() {
+  var total = CUR.reqs.length, done = Object.keys(checked).length;
+  var pct = total ? Math.round(done / total * 100) : 0;
+  document.getElementById("covBar").style.width = pct + "%";
+  document.getElementById("covHint").textContent = done + " / " + total + "（" + pct + "%）";
+}
+
+document.getElementById("saveBtn").addEventListener("click", function () {
+  if (!CUR.reqs.length) return;
+  var plans = togGet("plans", []);
+  var done = Object.keys(checked).length;
+  plans.unshift({
+    school: CUR.school, uc: CUR.uc, major: CUR.major,
+    done: done, total: CUR.reqs.length,
+    courses: Object.keys(checked).map(function (ri) { return checked[ri]; }),
+    ts: Date.now()
+  });
+  togSet("plans", plans.slice(0, 20));
+  renderSaved();
+  alert("已保存： " + CUR.major + "（" + done + "/" + CUR.reqs.length + "）");
+});
+document.getElementById("clearBtn").addEventListener("click", function () {
+  checked = {};
+  document.querySelectorAll('#reqList input[type="checkbox"]').forEach(function (cb) { cb.checked = false; });
+  updateCov();
+});
+
+function renderSaved() {
+  var plans = togGet("plans", []);
+  var card = document.getElementById("savedCard"), list = document.getElementById("savedList");
+  if (!plans.length) { card.hidden = true; return; }
+  card.hidden = false;
+  list.innerHTML = plans.map(function (p, i) {
+    var d = new Date(p.ts);
+    return '<div class="saved-row"><b>' + esc(p.major) + '</b><div class="hint">'
+      + esc(p.school) + " → " + esc(p.uc) + " · " + p.done + "/" + p.total
+      + " · " + d.toLocaleDateString("zh-CN") + '</div>'
+      + '<button class="btn ghost sm" data-del="' + i + '">删除</button></div>';
+  }).join("");
+  list.querySelectorAll("[data-del]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var ps = togGet("plans", []);
+      ps.splice(parseInt(b.getAttribute("data-del"), 10), 1);
+      togSet("plans", ps); renderSaved();
+    });
+  });
+}
+
+/* 事件 */
+document.querySelectorAll('input[name="school"]').forEach(function (el) {
+  el.addEventListener("change", function () { loadSchool(el.value); });
+});
+document.getElementById("ucSel").addEventListener("change", function (e) {
+  CUR.uc = e.target.value; loadUc();
+});
+document.getElementById("majorSel").addEventListener("change", function (e) {
+  CUR.major = e.target.value; showReqs();
+});
+document.getElementById("majorFilter").addEventListener("input", buildMajorSel);
+document.querySelectorAll(".radio-card").forEach(function (c) {
+  c.addEventListener("click", function () {
+    var nm = c.querySelector("input").name;
+    document.querySelectorAll('input[name="' + nm + '"]').forEach(function (x) {
+      x.closest(".radio-card").classList.remove("sel");
+    });
+    c.classList.add("sel");
+  });
+});
+
+loadSchool("deanza");
+
+</script>
+<script>
+
+"use strict";
+renderEvalBanner();
+togNavActive("planning");
+
+/* ================= 纯逻辑：可在 node 里单元测试 ================= */
+var SUMMER_CAP = 8;
+function flattenReqs(reqs) {
+  return reqs.map(function (rq) {
+    var o = rq.options[0] || {};
+    var alt = rq.options.length > 1
+      ? rq.options.slice(1).map(function (x) { return x.code; }).join(" / ") : "";
+    return { code: o.code || "", title: o.title || "", units: o.units || 3, alt: alt };
+  });
+}
+function buildSchedule(reqs, pace) {
+  var courses = flattenReqs(reqs);
+  var total = courses.reduce(function (a, c) { return a + c.units; }, 0);
+  var quarters = pace === "1yr"
+    ? ["Fall", "Winter", "Spring", "Summer"]
+    : ["Fall", "Winter", "Spring", "Summer", "Fall", "Winter", "Spring"];
+  var n = quarters.length;
+  var target = n ? Math.ceil(total / n) : 0;
+  var plan = quarters.map(function (q) { return { name: q, courses: [], units: 0 }; });
+  var qi = 0;
+  courses.forEach(function (c) {
+    if (qi >= n) qi = n - 1;
+    var cap = plan[qi].name === "Summer" ? SUMMER_CAP : Infinity;
+    if (plan[qi].courses.length && plan[qi].units + c.units > cap) qi = Math.min(qi + 1, n - 1);
+    plan[qi].courses.push(c);
+    plan[qi].units += c.units;
+    if (plan[qi].units >= target && qi < n - 1) qi++;
+  });
+  return { plan: plan, total: total, target: target, pace: pace };
+}
+if (typeof module !== "undefined") { module.exports = { buildSchedule: buildSchedule, flattenReqs: flattenReqs }; }
+/* ================= 页面交互 ================= */
+
+var TK_DATA = null, CUR = { school: "deanza", uc: "", major: "", reqs: [] };
+
+function selVal(name) {
+  var el = document.querySelector('input[name="' + name + '"]:checked');
+  return el ? el.value : "";
+}
+var TK_UC_SLUGS = {"UC Berkeley":"uc_berkeley","UC Davis":"uc_davis","UC Irvine":"uc_irvine","UC San Diego":"uc_san_diego","UC Santa Cruz":"uc_santa_cruz","UCLA":"ucla"};
+
+function useSavedPlan() {
+  var plans = togGet("plans", []);
+  var hint = document.getElementById("tkSrcHint");
+  if (!plans.length) {
+    hint.innerHTML = '⚠️ 还没有保存的选课计划。<a href="planning.html#sec-plan">去选课页做一份 →</a>';
+    return null;
+  }
+  var p = plans[0];
+  hint.textContent = "将使用：" + p.major + "（" + p.uc + "，" + new Date(p.ts).toLocaleDateString("zh-CN") + "保存）";
+  return p;
+}
+function loadData(school, cb) {
+  document.getElementById("tkLoadHint").textContent = "正在加载课程数据…";
+  fetch("data/index.json").then(function (r) { return r.json(); }).then(function (idx) {
+    TK_DATA = { school: school, schoolName: (school === "deanza" ? "De Anza College" : "Foothill College"), parts: idx[school], majors: [] };
+    CUR.school = school;
+    document.getElementById("tkLoadHint").textContent = TK_DATA.schoolName + " 数据索引已加载";
+    var sel = document.getElementById("tkUcSel");
+    sel.innerHTML = "";
+    Object.keys(TK_DATA.parts).forEach(function (u) {
+      var o = document.createElement("option"); o.value = u; o.textContent = u; sel.appendChild(o);
+    });
+    CUR.uc = sel.value; loadMajors(cb);
+  }).catch(function () {
+    document.getElementById("tkLoadHint").textContent = "⚠️ 数据加载失败，请刷新重试。";
+  });
+}
+function loadMajors(cb) {
+  var n = TK_DATA.parts[CUR.uc], slug = TK_UC_SLUGS[CUR.uc];
+  var ps = [];
+  for (var i = 1; i <= n; i++) {
+    ps.push(fetch("data/" + TK_DATA.school + "-" + slug + "-p" + i + ".json").then(function (r) { return r.json(); }));
+  }
+  Promise.all(ps).then(function (parts) {
+    var majors = [];
+    parts.forEach(function (p) { majors = majors.concat(p.majors); });
+    TK_DATA.majors = majors;
+    buildMajors(); if (cb) cb();
+  }).catch(function () {
+    document.getElementById("tkLoadHint").textContent = "⚠️ 专业数据加载失败，请重试。";
+  });
+}
+function buildMajors() {
+  var sel = document.getElementById("tkMajorSel");
+  sel.innerHTML = "";
+  (TK_DATA.majors || []).forEach(function (p) {
+    var o = document.createElement("option"); o.value = p.major; o.textContent = p.major; sel.appendChild(o);
+  });
+  if (sel.options.length) { CUR.major = sel.value; }
+}
+function findReqs(school, uc, major, cb) {
+  var done = function () {
+    var list = TK_DATA.majors || [], prog = null;
+    for (var i = 0; i < list.length; i++) if (list[i].major === major) prog = list[i];
+    cb(prog ? { reqs: prog.reqs, year: prog.year } : null);
+  };
+  var needReload = !TK_DATA || CUR.school !== school || TK_DATA.majors.length === 0 || CUR.uc !== uc;
+  if (!needReload) { done(); return; }
+  var afterIdx = function () { CUR.uc = uc; loadMajors(done); };
+  if (!TK_DATA || CUR.school !== school) loadData(school, afterIdx);
+  else afterIdx();
+}
+
+document.querySelectorAll('input[name="src"]').forEach(function (el) {
+  el.addEventListener("change", function () {
+    document.getElementById("tkPickCard").hidden = (el.value !== "new");
+    if (el.value === "new" && !TK_DATA) loadData("deanza");
+    else if (el.value === "plan") useSavedPlan();
+  });
+});
+document.querySelectorAll('input[name="school"]').forEach(function (el) {
+  el.addEventListener("change", function () { loadData(el.value); });
+});
+document.getElementById("tkUcSel").addEventListener("change", function (e) { CUR.uc = e.target.value; loadMajors(); });
+document.getElementById("tkMajorSel").addEventListener("change", function (e) { CUR.major = e.target.value; });
+document.querySelectorAll(".radio-card").forEach(function (c) {
+  c.addEventListener("click", function () {
+    var nm = c.querySelector("input").name;
+    document.querySelectorAll('input[name="' + nm + '"]').forEach(function (x) {
+      x.closest(".radio-card").classList.remove("sel");
+    });
+    c.classList.add("sel");
+  });
+});
+
+document.getElementById("tkGenBtn").addEventListener("click", function () {
+  var pace = selVal("pace"), src = selVal("src");
+  var go = function (reqs, meta) {
+    if (!reqs || !reqs.length) {
+      document.getElementById("tkSchedSlot").innerHTML =
+        '<div class="card"><div class="alert">⚠️ 没找到该专业的课程数据，请换选或先去选课页保存计划。</div></div>';
+      return;
+    }
+    tkRender(reqs, pace, meta);
+  };
+  if (src === "plan") {
+    var p = useSavedPlan();
+    if (!p) return;
+    findReqs(p.school, p.uc, p.major, function (r) {
+      go(r && r.reqs, { school: p.school, uc: p.uc, major: p.major, year: r && r.year });
+    });
+  } else {
+    var school = selVal("school");
+    findReqs(school, CUR.uc, CUR.major, function (r) {
+      go(r && r.reqs, { school: school, uc: CUR.uc, major: CUR.major, year: r && r.year });
+    });
+  }
+});
+
+function tkRender(reqs, pace, meta) {
+  var s = buildSchedule(reqs, pace);
+  var qName = { Fall: "秋季", Winter: "冬季", Spring: "春季", Summer: "夏季" };
+  var html = '<div class="card"><div class="section-title">🗓️ ' + esc(meta.major) + '</div>'
+    + '<div class="hint">' + esc(meta.school) + " → " + esc(meta.uc)
+    + (meta.year ? " · 协议 " + esc(meta.year) : "")
+    + " · " + (pace === "1yr" ? "1 年转学（4 季）" : "2 年转学（7 季）")
+    + " · 共 " + s.total + " 学分，每季目标约 " + s.target + " 学分</div></div>";
+  s.plan.forEach(function (q, i) {
+    var isSum = q.name === "Summer";
+    var rows = q.courses.map(function (c) {
+      return '<div class="opt"><span><b>' + esc(c.code) + "</b> " + esc(c.title)
+        + ' <span class="hint">' + c.units + " 学分</span>"
+        + (c.alt ? ' <span class="tag">或 ' + esc(c.alt) + "</span>" : "") + "</span></div>";
+    }).join("") || '<div class="hint">本季无安排</div>';
+    html += '<div class="card"><div class="section-title">' + (isSum ? "☀️ " : "")
+      + "第 " + (i + 1) + " 季 · " + qName[q.name] + "季"
+      + ' <span class="hint">' + q.units + " 学分</span></div>" + rows + "</div>";
+  });
+  html += '<div class="card"><div class="btn-row">'
+    + '<button class="btn" id="tkSaveTrack">💾 保存规划</button>'
+    + '<button class="btn ghost" id="tkRegen">🔄 重新生成</button>'
+    + '<a class="btn ghost" href="planning.html#sec-coach">学期跟踪 →</a>'
+    + '</div><div class="footnote">保存后可在「学期跟踪」里逐季记录 GPA 和进度。</div></div>';
+  document.getElementById("tkSchedSlot").innerHTML = html;
+  document.getElementById("tkSchedSlot").scrollIntoView({ behavior: "smooth" });
+  document.getElementById("tkSaveTrack").addEventListener("click", function () {
+    togSet("track", { meta: meta, pace: pace, plan: s.plan, total: s.total, ts: Date.now() });
+    alert("规划已保存，去「学期跟踪」开始记录吧。");
+  });
+  document.getElementById("tkRegen").addEventListener("click", function () {
+    document.getElementById("tkSchedSlot").innerHTML = "";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
+useSavedPlan();
+
+</script>
+<script>
+
+"use strict";
+togNavActive("planning");
+
+/* ---- 纯逻辑：可在 node 里单元测试 ---- */
+var UC_YEAR = 48000, UC_YEARS = 2, TRADITIONAL = 240000;
+var LIVING_YEAR = 16965; /* 1665+1500+10300+3500, De Anza F-1 官网估算 */
+function calcCost(perUnit, units, mode) {
+  var ccSub = perUnit * units;
+  var living = (mode === "inperson") ? LIVING_YEAR * 2 : 0;
+  var ucSub = UC_YEAR * UC_YEARS;
+  var total = ccSub + living + ucSub;
+  var savePct = Math.round((1 - total / TRADITIONAL) * 100);
+  return { ccSub: ccSub, living: living, ucSub: ucSub, total: total, savePct: savePct };
+}
+if (typeof module !== "undefined") { module.exports = { calcCost: calcCost }; }
+
+/* ---- 页面交互 ---- */
+var ccSel = document.getElementById("cc"),
+    customWrap = document.getElementById("customWrap"),
+    customRate = document.getElementById("customRate"),
+    units = document.getElementById("units"),
+    unitsVal = document.getElementById("unitsVal"),
+    ccNote = document.getElementById("ccNote");
+
+function currentRate() {
+  if (ccSel.value === "custom") return Math.max(0, parseFloat(customRate.value) || 0);
+  return parseFloat(ccSel.value);
+}
+function currentMode() {
+  var el = document.querySelector('input[name="mode"]:checked');
+  return el ? el.value : "online";
+}
+function recalc() {
+  var rate = currentRate(), u = parseInt(units.value, 10), mode = currentMode();
+  unitsVal.textContent = u;
+  customWrap.hidden = (ccSel.value !== "custom");
+  document.getElementById("livingCard").hidden = (mode !== "inperson");
+  document.getElementById("livingRow").hidden = (mode !== "inperson");
+  var opt = ccSel.options[ccSel.selectedIndex];
+  ccNote.textContent = opt.dataset.note || "";
+  var r = calcCost(rate, u, mode);
+  document.getElementById("ccSub").textContent = fmtUSD(r.ccSub);
+  document.getElementById("livingSub").textContent = fmtUSD(r.living);
+  document.getElementById("livingRowVal").textContent = fmtUSD(r.living);
+  document.getElementById("total").textContent = fmtUSD(r.total);
+  document.getElementById("savePct").textContent = r.savePct + "%";
+  togSet("cost", { rate: rate, units: u, mode: mode });
+}
+[ccSel, customRate, units].forEach(function (el) {
+  el.addEventListener("input", recalc);
+  el.addEventListener("change", recalc);
+});
+document.querySelectorAll('input[name="mode"]').forEach(function (el) {
+  el.addEventListener("change", recalc);
+});
+document.querySelectorAll(".radio-card").forEach(function (c) {
+  c.addEventListener("click", function () {
+    document.querySelectorAll('input[name="mode"]').forEach(function (x) {
+      x.closest(".radio-card").classList.remove("sel");
+    });
+    c.classList.add("sel");
+  });
+});
+(function () {
+  var s = togGet("cost", null);
+  if (s) {
+    if (s.units) units.value = s.units;
+    if (s.mode) {
+      var m = document.querySelector('input[name="mode"][value="' + s.mode + '"]');
+      if (m) { m.checked = true; }
+    }
+  }
+  recalc();
+})();
+
+</script>
+<script>
+
+"use strict";
+togNavActive("planning");
+
+/* ---- 内置映射表：纯逻辑，可单元测试 ---- */
+var COURSE_MAP = [
+  { keys: ["高等数学", "高数", "微积分"], cc: "MATH-1A / 1B", tier: "high", note: "对应微积分序列，petition 成功率高" },
+  { keys: ["数学分析"], cc: "MATH-1A / 1B", tier: "high", note: "内容常深于 CC 微积分，带大纲去谈" },
+  { keys: ["线性代数"], cc: "MATH-2B", tier: "high", note: "直接对应线性代数" },
+  { keys: ["概率论", "数理统计"], cc: "MATH-10", tier: "high", note: "对应统计学，UC 转学也认" },
+  { keys: ["离散数学"], cc: "CIS-35A / MATH-22", tier: "high", note: "CS 专业重要先修课" },
+  { keys: ["复变函数", "数学物理方法"], cc: "MATH-2A", tier: "mid", note: "部分内容重叠，看大纲" },
+  { keys: ["大学物理", "普通物理"], cc: "PHYS-4A / 4B / 4C", tier: "high", note: "理工科核心序列，注意实验课单独算" },
+  { keys: ["物理实验"], cc: "PHYS-4 系列实验", tier: "mid", note: "实验课单独 petition" },
+  { keys: ["无机化学", "普通化学", "大学化学"], cc: "CHEM-1A", tier: "high", note: "注意实验部分" },
+  { keys: ["有机化学"], cc: "CHEM-12A", tier: "high", note: "UC 转学看重" },
+  { keys: ["分析化学", "物理化学"], cc: "CHEM 系高阶", tier: "mid", note: "看具体大纲" },
+  { keys: ["C语言", "C 程序设计"], cc: "CIS-22A", tier: "high", note: "CS 入门课，常可免" },
+  { keys: ["C++", "面向对象"], cc: "CIS-22B", tier: "high", note: "" },
+  { keys: ["Java程序设计"], cc: "CIS-36A", tier: "high", note: "" },
+  { keys: ["Python", "程序设计基础"], cc: "CIS-41A", tier: "high", note: "" },
+  { keys: ["数据结构"], cc: "CIS-22C", tier: "high", note: "CS 核心先修课，免修价值大" },
+  { keys: ["算法设计", "算法分析"], cc: "CIS-22C 后续", tier: "mid", note: "" },
+  { keys: ["计算机组成原理", "组成原理"], cc: "CIS-21JA", tier: "high", note: "" },
+  { keys: ["操作系统"], cc: "CIS-26B", tier: "high", note: "" },
+  { keys: ["计算机网络", "网络原理"], cc: "CIS-28", tier: "high", note: "" },
+  { keys: ["数据库", "SQL"], cc: "CIS-64A", tier: "high", note: "" },
+  { keys: ["软件工程"], cc: "CIS-63", tier: "mid", note: "各校课纲差异大" },
+  { keys: ["数字逻辑", "数字电路", "数电"], cc: "CIS-21JB", tier: "high", note: "" },
+  { keys: ["微机原理", "单片机"], cc: "CIS-21JC", tier: "mid", note: "" },
+  { keys: ["编译原理"], cc: "高阶 CS", tier: "mid", note: "CC 很少开，看目标 UC" },
+  { keys: ["人工智能导论", "机器学习"], cc: "高阶 CS", tier: "mid", note: "CC 基本不开，转 UC 后用" },
+  { keys: ["大学英语", "综合英语"], cc: "EWRT-1A（部分）", tier: "mid", note: "英语课折抵看 placement test，不保证" },
+  { keys: ["体育", "大学体育"], cc: "PE（1 unit）", tier: "mid", note: "一般只算 1 学分体育课" },
+  { keys: ["思想道德", "毛泽东思想", "马克思主义", "中国近现代史", "形势与政策", "习近平"], cc: "—", tier: "none", note: "思政类课程无法转学分" },
+  { keys: ["军事理论", "军训"], cc: "—", tier: "none", note: "无法转学分" },
+  { keys: ["心理健康", "职业生涯规划"], cc: "—", tier: "none", note: "无法转学分" },
+  { keys: ["微观经济学", "宏观经济学", "西方经济学"], cc: "ECON-1 / 2", tier: "high", note: "商科/经济专业核心" },
+  { keys: ["会计学原理", "基础会计"], cc: "ACCT-1A", tier: "high", note: "" },
+  { keys: ["管理学原理"], cc: "BUS-10", tier: "mid", note: "" },
+  { keys: ["心理学导论", "普通心理学"], cc: "PSYC-1", tier: "high", note: "" },
+];
+var TIER_TXT = { high: "🟢 高度相关", mid: "🟡 部分相关", none: "⚪ 不相关" };
+
+function matchCourse(line) {
+  var t = line.replace(/[\s　ⅠⅡⅢⅣ\(\)（）AB上下12ⅰ]/g, "");
+  for (var i = 0; i < COURSE_MAP.length; i++) {
+    var e = COURSE_MAP[i];
+    for (var j = 0; j < e.keys.length; j++) {
+      if (line.indexOf(e.keys[j]) >= 0 || t.indexOf(e.keys[j].replace(/[\s]/g, "")) >= 0) return e;
+    }
+  }
+  return null;
+}
+if (typeof module !== "undefined") { module.exports = { matchCourse: matchCourse, COURSE_MAP: COURSE_MAP }; }
+
+/* ---- 页面交互 ---- */
+document.getElementById("offlineBtn").addEventListener("click", function () {
+  var lines = document.getElementById("courses").value.split("\n")
+    .map(function (s) { return s.trim(); }).filter(Boolean);
+  if (!lines.length) { alert("请先粘贴课程名"); return; }
+  var out = document.getElementById("offlineOut");
+  out.innerHTML = "";
+  var box = document.createElement("div");
+  box.innerHTML = lines.map(function (ln) {
+    var m = matchCourse(ln);
+    if (!m) return '<div class="dim-row"><span class="dim-ico">❓</span><div><b>' + esc(ln) + '</b> — 未在映射表里，用下面 AI 精析试试<div class="fix">→ 或带着大纲直接问 counselor</div></div></div>';
+    var sug = m.tier === "none" ? "→ 这类课转不了，不用准备材料"
+      : "→ 建议动作：做成绩单认证（IERF/WES）后，带大纲找 counselor petition「" + m.cc + "」";
+    return '<div class="dim-row"><span class="dim-ico">' + (m.tier === "high" ? "🟢" : m.tier === "mid" ? "🟡" : "⚪") + '</span><div><b>' + esc(ln) + '</b> — ' + TIER_TXT[m.tier]
+      + (m.cc !== "—" ? ' · 可能对应 <b>' + esc(m.cc) + '</b>' : '')
+      + (m.note ? '<div class="hint">' + esc(m.note) + '</div>' : '')
+      + '<div class="fix">' + esc(sug) + '</div></div></div>';
+  }).join("");
+  out.appendChild(box);
+  var hi = lines.map(matchCourse).filter(function (m) { return m && m.tier === "high"; }).length;
+  var info = document.createElement("div");
+  info.className = "alert";
+  info.style.marginTop = "10px";
+  info.innerHTML = "初筛小结：<b>" + hi + "</b> 门高度相关值得 petition。每门 CC 课约 $284×5 = $1,420，能免一门省一门（估算）。";
+  out.appendChild(info);
+});
+
+(function () {
+  var k = togGet("ds_key", "");
+  if (k) document.getElementById("apiKey").value = k;
+})();
+
+document.getElementById("aiBtn").addEventListener("click", function () {
+  var key = document.getElementById("apiKey").value.trim();
+  var syl = document.getElementById("syllabus").value.trim();
+  var out = document.getElementById("aiOut");
+  if (!key) { alert("请先填写 DeepSeek API Key"); return; }
+  if (!syl) { alert("请粘贴课程大纲"); return; }
+  togSet("ds_key", key);
+  out.innerHTML = '<p class="hint">🤖 AI 分析中…</p>';
+  var sys = "你是加州社区大学转学分的初筛助手。用户粘贴国内大学课程大纲，请用中文逐门输出：课程名｜相关度（只能是 高度相关/部分相关/不相关 三档之一，绝不输出百分比数字）｜可能对应的 CC 课程代码（如 MATH-1A）｜一句话理由｜建议动作。最后必须加一段：以上为 AI 初筛仅供参考，正式流程是成绩单认证（IERF/WES）+ 入学后找 counselor 逐门 petition，最终以学校为准。";
+  fetch("https://api.deepseek.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+    body: JSON.stringify({
+      model: "deepseek-chat",
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: syl }
+      ],
+      temperature: 0.3
+    })
+  }).then(function (r) {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }).then(function (j) {
+    var txt = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "无返回";
+    out.innerHTML = '<div class="card" style="margin:0"><div class="section-title">🤖 AI 初筛结果</div><div style="white-space:pre-wrap;font-size:14px">' + esc(txt) + '</div></div>';
+  }).catch(function (e) {
+    out.innerHTML = '<div class="alert">请求失败：' + esc(e.message) + '。检查 Key 是否正确、网络能否访问 api.deepseek.com。</div>';
+  });
+});
+
+</script>
+<script>
+
+"use strict";
+togNavActive("planning");
+
+var track = togGet("track", null);
+var coach = togGet("coach", { gpa: {}, status: {}, notes: {} });
+var qName = { Fall: "秋季", Winter: "冬季", Spring: "春季", Summer: "夏季" };
+
+function save() { togSet("coach", coach); renderSum(); }
+
+function renderSum() {
+  if (!track) return;
+  var n = track.plan.length, done = 0, gpas = [];
+  track.plan.forEach(function (q, i) {
+    if (coach.status[i] === "done") {
+      done++;
+      var g = parseFloat(coach.gpa[i]);
+      if (!isNaN(g) && g >= 0 && g <= 4) gpas.push(g);
+    }
+  });
+  var pct = n ? Math.round(done / n * 100) : 0;
+  document.getElementById("allBar").style.width = pct + "%";
+  document.getElementById("doneQ").textContent = done + " / " + n;
+  document.getElementById("allPct").textContent = pct + "%";
+  document.getElementById("avgGpa").textContent = gpas.length
+    ? (gpas.reduce(function (a, b) { return a + b; }, 0) / gpas.length).toFixed(2) : "—";
+  document.getElementById("planName").textContent =
+    track.meta ? track.meta.major + " · " + (track.pace === "1yr" ? "1 年" : "2 年") : "";
+}
+
+function render() {
+  if (!track || !track.plan || !track.plan.length) {
+    document.getElementById("emptySlot").innerHTML =
+      '<div class="card"><div class="alert">⚠️ 还没有保存的课程规划。<br><br><a class="btn" href="planning.html#sec-track">去生成规划 →</a></div></div>';
+    return;
+  }
+  document.getElementById("sumCard").hidden = false;
+  var slot = document.getElementById("qSlot");
+  slot.innerHTML = "";
+  var stName = { todo: "未开始", doing: "进行中", done: "已完成" };
+  track.plan.forEach(function (q, i) {
+    var isSum = q.name === "Summer";
+    var courses = q.courses.map(function (c) {
+      return '<div class="opt"><span><b>' + esc(c.code) + "</b> " + esc(c.title)
+        + ' <span class="hint">' + c.units + " 学分</span></span></div>";
+    }).join("") || '<div class="hint">本季无安排</div>';
+    var st = coach.status[i] || "todo";
+    var card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML =
+      '<div class="section-title">' + (isSum ? "☀️ " : "") + "第 " + (i + 1) + " 季 · " + qName[q.name] + "季"
+      + ' <span class="hint">' + q.units + " 学分</span></div>"
+      + courses
+      + '<div class="field"><label>本季 GPA（0–4.0）</label>'
+      + '<input type="number" min="0" max="4" step="0.01" inputmode="decimal" data-gpa="' + i + '" value="' + esc(coach.gpa[i] == null ? "" : coach.gpa[i]) + '" placeholder="如 3.67"></div>'
+      + '<div class="field"><label>状态</label><select data-st="' + i + '">'
+      + ["todo", "doing", "done"].map(function (k) {
+          return '<option value="' + k + '"' + (st === k ? " selected" : "") + ">" + stName[k] + "</option>";
+        }).join("") + "</select></div>"
+      + '<div class="field"><label>笔记（难点 / 待办 / 老师评价…）</label>'
+      + '<textarea rows="2" data-note="' + i + '" placeholder="记一点这一季的情况">' + esc(coach.notes[i] || "") + "</textarea></div>";
+    slot.appendChild(card);
+  });
+  slot.querySelectorAll("[data-gpa]").forEach(function (el) {
+    el.addEventListener("change", function () {
+      var v = parseFloat(el.value);
+      if (el.value !== "" && (isNaN(v) || v < 0 || v > 4)) {
+        alert("GPA 请填 0–4.0 之间的数字"); el.value = coach.gpa[el.getAttribute("data-gpa")] || ""; return;
+      }
+      coach.gpa[el.getAttribute("data-gpa")] = el.value; save();
+    });
+  });
+  slot.querySelectorAll("[data-st]").forEach(function (el) {
+    el.addEventListener("change", function () {
+      coach.status[el.getAttribute("data-st")] = el.value; save();
+    });
+  });
+  slot.querySelectorAll("[data-note]").forEach(function (el) {
+    el.addEventListener("change", function () {
+      coach.notes[el.getAttribute("data-note")] = el.value; save();
+    });
+  });
+  renderSum();
+}
+
+render();
+
+</script>
+</body>
+</html>
