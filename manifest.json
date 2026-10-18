@@ -1,1 +1,10 @@
-{"background_color":"#f5f3ff","description":"加州社区大学转 UC 在线评估工具：资格评估、费用测算、入学指南","display":"standalone","lang":"zh-CN","name":"TransferOS-Global · 加州CC转UC路径规划","short_name":"TO-Global","start_url":"./index.html","theme_color":"#7c3aed"}
+{
+ "background_color": "#f5f3ff",
+ "description": "加州社区大学转 UC 在线评估工具：资格评估、费用测算、入学指南",
+ "display": "standalone",
+ "lang": "zh-CN",
+ "name": "TransferOS-China · 加州CC转UC路径规划",
+ "short_name": "TO-China",
+ "start_url": "./index.html",
+ "theme_color": "#7c3aed"
+}

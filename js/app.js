@@ -1,4 +1,4 @@
-/* TransferOS-Global v0.1 共享工具 — 纯前端，无后端调用 */
+/* TransferOS-China v0.1 共享工具 — 纯前端，无后端调用 */
 "use strict";
 
 var LS_PREFIX = "tog_";
