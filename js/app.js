@@ -44,3 +44,28 @@ function renderEvalBanner(slotId) {
   }
   slot.innerHTML = h;
 }
+
+/* ---- 咨询漏斗 A：总开关（资质结论前保持 false，卡片不渲染） ---- */
+var FUNNEL_OPEN = false;
+function funnelCtx() {
+  var e = togGet("eval", null), parts = [];
+  if (e && e.verdict) {
+    parts.push(e.mode === "inperson" ? "赴美" : "纯线上");
+    parts.push(e.verdict === "ok" ? "评估通过" : e.verdict === "warn" ? "评估有短板" : "评估未通过");
+  }
+  return parts.join("·");
+}
+function funnelAsk(source) {
+  var p = document.getElementById("chatPanel");
+  if (p && p.hidden && typeof chatToggle === "function") chatToggle();
+  var ctx = funnelCtx();
+  var note = "TransferOS咨询·" + source + (ctx ? "·" + ctx : "");
+  if (typeof chatBotSay === "function") chatBotSay("👋 你好！我是从<b>" + esc(source) + "</b>过来的" + (ctx ? "（" + esc(ctx) + "）" : "") + "，想咨询一下。");
+  if (typeof chatHumanCard === "function") chatHumanCard(note);
+}
+function funnelShow(id) {
+  if (typeof FUNNEL_OPEN !== "undefined" && FUNNEL_OPEN) {
+    var el = document.getElementById(id);
+    if (el) el.hidden = false;
+  }
+}

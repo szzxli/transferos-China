@@ -226,3 +226,7 @@ input[type="number"], select { font-size: 15px; }
 .chat-input button { border: none; background: #7c3aed; color: #fff; padding: 0 18px; font-size: 14px; cursor: pointer; }
 .human-card { background: #f5f0ff; border: 1px dashed #7c3aed; border-radius: 10px; padding: 10px; text-align: center; }
 .human-card img { max-width: 150px; margin: 8px auto; display: block; border-radius: 8px; }
+
+/* 咨询漏斗卡：默认 hidden，由 FUNNEL_OPEN 控制 */
+.funnel-card{border:2px solid #7c3aed;background:#faf5ff}
+.funnel-card[hidden]{display:none}

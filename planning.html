@@ -91,6 +91,11 @@
   </div>
 
   <div id="tkSchedSlot"></div>
+  <div class="card funnel-card" id="funnelTrack" hidden>
+    <div class="section-title">💬 怕排错？让老师帮你复核</div>
+    <p class="hint">课表生成了，怕先修链排错、学分算漏？加微信，老师帮你复核一遍。</p>
+    <button class="btn" onclick="funnelAsk('选课规划页')">加微信咨询 →</button>
+  </div>
 
   <div class="disclaimer">
     排课为自动估算：<b>课程先后修关系（prerequisite）未纳入</b>，部分课程有先修要求，实际选课顺序请以学校官网和 counselor 确认为准。<br>
@@ -603,6 +608,7 @@ function tkRender(reqs, pace, meta) {
     + '<a class="btn ghost" href="planning.html#sec-coach">学期跟踪 →</a>'
     + '</div><div class="footnote">保存后可在「学期跟踪」里逐季记录 GPA 和进度。</div></div>';
   document.getElementById("tkSchedSlot").innerHTML = html;
+  funnelShow("funnelTrack");
   document.getElementById("tkSchedSlot").scrollIntoView({ behavior: "smooth" });
   document.getElementById("tkSaveTrack").addEventListener("click", function () {
     togSet("track", { meta: meta, pace: pace, plan: s.plan, total: s.total, ts: Date.now() });

@@ -70,6 +70,11 @@
   </div>
 
   <div id="resultSlot"></div>
+  <div class="card funnel-card" id="funnelAssess" hidden>
+    <div class="section-title">💬 拿不准？让老师帮你看看</div>
+    <p class="hint">评估做完了，但不确定选哪所 CC、英语要不要先考？加微信，老师帮你把把关。</p>
+    <button class="btn" onclick="funnelAsk('评估页')">加微信咨询 →</button>
+  </div>
   <div class="card">
     <div class="section-title">📜 国内已修课程？</div>
     <p class="hint">在国内大学上过课？解析一下哪些能折抵 CC 学分，省学费。</p>
@@ -201,6 +206,7 @@ function evFinish() {
     + '<a class="btn" href="planning.html#sec-plan">下一步：去选课 →</a>'
     + '<div class="footnote">纯本地判定，仅供参考，不构成录取承诺。语言要求线为常见值，具体以学校官网为准；ESL 费用为估算。</div></div>';
   document.getElementById("resultSlot").scrollIntoView({ behavior: "smooth" });
+  funnelShow("funnelAssess");
 }
 (function () {
   var s = togGet("eval", null);

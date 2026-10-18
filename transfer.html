@@ -155,6 +155,11 @@
     <div class="section-title">🎯 目标学校（白名单）</div>
     <div class="hint">在<a href="assess.html#sec-whitelist">白名单页</a>勾选，或在这里直接选。</div>
     <div id="tgtBox"></div>
+  <div class="card funnel-card" id="funnelApply" hidden>
+    <div class="section-title">💬 申请季 1 对 1 指导</div>
+    <p class="hint">申请季材料多、截止日期紧？加微信，老师帮你盯时间线、审文书。</p>
+    <button class="btn" onclick="funnelAsk('转学页')">加微信咨询 →</button>
+  </div>
   </div>
 
   <div class="btn-row">
@@ -261,6 +266,7 @@ var WL = [
 var STATUS = ["未开始","材料准备中","已提交","已录取","被拒/Waitlist"];
 
 function init() {
+  funnelShow("funnelApply");
   var ps = document.getElementById("f_prov");
   PROV.forEach(function (p) {
     var o = document.createElement("option"); o.value = p[1]; o.textContent = p[0] + " " + p[1]; ps.appendChild(o);
