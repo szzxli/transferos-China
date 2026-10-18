@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>选课规划 · TransferOS-Global</title>
+<link rel="stylesheet" href="css/app.css?v=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c3aed">
+</head>
+<body>
+<div class="topbar"><div class="topbar-in">
+  <div class="brand">🗺️ 选课规划</div>
+  <div class="sub">De Anza / Foothill → 6 所 UC · 转学课程清单</div>
+</div></div>
+
+<div class="page">
+  <div class="hint" style="margin-bottom:10px">💰 还没算过费用？<a href="cost.html">先算费用 →</a></div>
+  <div class="card">
+    <div class="section-title">🏫 选择你的 CC</div>
+    <label class="radio-card"><input type="radio" name="school" value="deanza" checked> De Anza College</label>
+    <label class="radio-card"><input type="radio" name="school" value="foothill"> Foothill College</label>
+    <div class="hint" id="loadHint">正在加载课程数据…</div>
+  </div>
+
+  <div class="card" id="pickCard" hidden>
+    <div class="section-title">🎯 目标 UC + 专业</div>
+    <div class="field"><label for="ucSel">目标 UC</label><select id="ucSel"></select></div>
+    <div class="field"><label for="majorFilter">搜索专业</label>
+      <input type="text" id="majorFilter" placeholder="输入关键词过滤，如 computer">
+    </div>
+    <div class="field"><label for="majorSel">专业（<span id="majorCount"></span>）</label><select id="majorSel"></select></div>
+    <div class="hint" id="yearHint"></div>
+  </div>
+
+  <div class="card" id="listCard" hidden>
+    <div class="section-title">📚 转学课程清单 <span class="hint" id="covHint"></span></div>
+    <div class="progress"><div class="progress-in" id="covBar" style="width:0%"></div></div>
+    <div class="hint">勾选你已修 / 计划修的课。"任选其一"组勾一门即算满足该项要求。</div>
+    <div id="reqList"></div>
+    <div class="btn-row">
+      <button class="btn" id="saveBtn">💾 保存我的选课计划</button>
+      <button class="btn ghost" id="clearBtn">清空勾选</button>
+    </div>
+  </div>
+
+  <div class="card" id="savedCard" hidden>
+    <div class="section-title">💾 已保存的计划</div>
+    <div id="savedList"></div>
+  </div>
+
+  <div class="disclaimer">
+    课程要求来自 ASSIST 转学协议（2026-10-17 提取），仅供规划参考。<br>
+    协议每年更新，选课前请以 ASSIST 官网和学校 counselor 确认为准。<strong>不承诺录取。</strong>
+  </div>
+</div>
+
+<nav class="tabbar">
+  <a href="index.html" data-page="index"><span class="ico">🏠</span>首页</a>
+  <a href="evaluate.html" data-page="evaluate"><span class="ico">📝</span>评估</a>
+  <a href="plan.html" data-page="plan"><span class="ico">🗺️</span>选课</a>
+  <a href="track.html" data-page="track"><span class="ico">📅</span>规划</a>
+  <a href="transfer.html" data-page="transfer"><span class="ico">🎓</span>转学</a>
+  <a href="guide.html" data-page="guide"><span class="ico">📋</span>指南</a>
+</nav>
+<script src="js/app.js?v=1"></script>
+<script>
+"use strict";
+togNavActive("plan");
+
+var DATA = null, CUR = { school: "deanza", uc: "", major: "", reqs: [] };
+var checked = {}; /* reqIdx -> code */
+
+var UC_SLUGS = {"UC Berkeley":"uc_berkeley","UC Davis":"uc_davis","UC Irvine":"uc_irvine","UC San Diego":"uc_san_diego","UC Santa Cruz":"uc_santa_cruz","UCLA":"ucla"};
+
+function loadSchool(s) {
+  CUR.school = s; DATA = null; checked = {};
+  document.getElementById("loadHint").textContent = "正在加载课程数据…";
+  document.getElementById("pickCard").hidden = true;
+  document.getElementById("listCard").hidden = true;
+  fetch("data/index.json").then(function (r) { return r.json(); }).then(function (idx) {
+    DATA = { school: s, schoolName: (s === "deanza" ? "De Anza College" : "Foothill College"), parts: idx[s], majors: [] };
+    document.getElementById("loadHint").textContent = DATA.schoolName + " · 数据索引已加载";
+    buildUcSel();
+    document.getElementById("pickCard").hidden = false;
+  }).catch(function () {
+    document.getElementById("loadHint").textContent = "⚠️ 数据加载失败，请检查网络后刷新。";
+  });
+}
+
+function loadUc() {
+  var n = DATA.parts[CUR.uc], slug = UC_SLUGS[CUR.uc];
+  document.getElementById("loadHint").textContent = "正在加载 " + CUR.uc + " 专业数据…";
+  var ps = [];
+  for (var i = 1; i <= n; i++) {
+    ps.push(fetch("data/" + CUR.school + "-" + slug + "-p" + i + ".json").then(function (r) { return r.json(); }));
+  }
+  Promise.all(ps).then(function (parts) {
+    var majors = [];
+    parts.forEach(function (p) { majors = majors.concat(p.majors); });
+    DATA.majors = majors;
+    document.getElementById("loadHint").textContent = DATA.schoolName + " → " + CUR.uc + " · " + majors.length + " 个专业";
+    buildMajorSel();
+  }).catch(function () {
+    document.getElementById("loadHint").textContent = "⚠️ 专业数据加载失败，请重试。";
+  });
+}
+
+function buildUcSel() {
+  var sel = document.getElementById("ucSel");
+  sel.innerHTML = "";
+  Object.keys(DATA.parts).forEach(function (u) {
+    var o = document.createElement("option"); o.value = u; o.textContent = u; sel.appendChild(o);
+  });
+  CUR.uc = sel.value; loadUc();
+}
+
+function buildMajorSel() {
+  var kw = document.getElementById("majorFilter").value.trim().toLowerCase();
+  var sel = document.getElementById("majorSel");
+  sel.innerHTML = "";
+  var list = DATA.majors || [];
+  var shown = 0;
+  list.forEach(function (p) {
+    if (kw && p.major.toLowerCase().indexOf(kw) < 0) return;
+    var o = document.createElement("option"); o.value = p.major; o.textContent = p.major; sel.appendChild(o);
+    shown++;
+  });
+  document.getElementById("majorCount").textContent = shown + " / " + list.length;
+  if (shown) { CUR.major = sel.value; showReqs(); }
+  else { document.getElementById("listCard").hidden = true; }
+}
+
+function showReqs() {
+  var list = DATA.majors || [];
+  var prog = null;
+  for (var i = 0; i < list.length; i++) if (list[i].major === CUR.major) prog = list[i];
+  if (!prog) return;
+  CUR.reqs = prog.reqs; checked = {};
+  document.getElementById("yearHint").textContent = "协议学年：" + prog.year + " · 共 " + prog.reqs.length + " 项要求";
+  var box = document.getElementById("reqList");
+  box.innerHTML = "";
+  prog.reqs.forEach(function (rq, ri) {
+    var div = document.createElement("div");
+    div.className = "req";
+    var head = '<div class="req-head"><b>' + esc(rq.uc_course || "通识/选修要求") + '</b>'
+      + (rq.uc_title ? ' <span class="hint">' + esc(rq.uc_title) + '</span>' : '')
+      + (rq.options.length > 1 && rq.logic === "Or" ? ' <span class="tag">任选其一</span>' : '') + '</div>';
+    var opts = rq.options.map(function (o) {
+      var id = "rq" + ri + "_" + o.code.replace(/\W/g, "");
+      return '<label class="opt"><input type="checkbox" data-ri="' + ri + '" value="' + esc(o.code) + '" id="' + id + '">'
+        + '<span><b>' + esc(o.code) + '</b> ' + esc(o.title)
+        + (o.units ? ' <span class="hint">' + o.units + ' 学分</span>' : '') + '</span></label>';
+    }).join("");
+    div.innerHTML = head + opts;
+    box.appendChild(div);
+  });
+  box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      var ri = cb.getAttribute("data-ri");
+      if (cb.checked) checked[ri] = cb.value; else delete checked[ri];
+      updateCov();
+    });
+  });
+  document.getElementById("listCard").hidden = false;
+  updateCov();
+  renderSaved();
+}
+
+function updateCov() {
+  var total = CUR.reqs.length, done = Object.keys(checked).length;
+  var pct = total ? Math.round(done / total * 100) : 0;
+  document.getElementById("covBar").style.width = pct + "%";
+  document.getElementById("covHint").textContent = done + " / " + total + "（" + pct + "%）";
+}
+
+document.getElementById("saveBtn").addEventListener("click", function () {
+  if (!CUR.reqs.length) return;
+  var plans = togGet("plans", []);
+  var done = Object.keys(checked).length;
+  plans.unshift({
+    school: CUR.school, uc: CUR.uc, major: CUR.major,
+    done: done, total: CUR.reqs.length,
+    courses: Object.keys(checked).map(function (ri) { return checked[ri]; }),
+    ts: Date.now()
+  });
+  togSet("plans", plans.slice(0, 20));
+  renderSaved();
+  alert("已保存： " + CUR.major + "（" + done + "/" + CUR.reqs.length + "）");
+});
+document.getElementById("clearBtn").addEventListener("click", function () {
+  checked = {};
+  document.querySelectorAll('#reqList input[type="checkbox"]').forEach(function (cb) { cb.checked = false; });
+  updateCov();
+});
+
+function renderSaved() {
+  var plans = togGet("plans", []);
+  var card = document.getElementById("savedCard"), list = document.getElementById("savedList");
+  if (!plans.length) { card.hidden = true; return; }
+  card.hidden = false;
+  list.innerHTML = plans.map(function (p, i) {
+    var d = new Date(p.ts);
+    return '<div class="saved-row"><b>' + esc(p.major) + '</b><div class="hint">'
+      + esc(p.school) + " → " + esc(p.uc) + " · " + p.done + "/" + p.total
+      + " · " + d.toLocaleDateString("zh-CN") + '</div>'
+      + '<button class="btn ghost sm" data-del="' + i + '">删除</button></div>';
+  }).join("");
+  list.querySelectorAll("[data-del]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var ps = togGet("plans", []);
+      ps.splice(parseInt(b.getAttribute("data-del"), 10), 1);
+      togSet("plans", ps); renderSaved();
+    });
+  });
+}
+
+/* 事件 */
+document.querySelectorAll('input[name="school"]').forEach(function (el) {
+  el.addEventListener("change", function () { loadSchool(el.value); });
+});
+document.getElementById("ucSel").addEventListener("change", function (e) {
+  CUR.uc = e.target.value; loadUc();
+});
+document.getElementById("majorSel").addEventListener("change", function (e) {
+  CUR.major = e.target.value; showReqs();
+});
+document.getElementById("majorFilter").addEventListener("input", buildMajorSel);
+document.querySelectorAll(".radio-card").forEach(function (c) {
+  c.addEventListener("click", function () {
+    var nm = c.querySelector("input").name;
+    document.querySelectorAll('input[name="' + nm + '"]').forEach(function (x) {
+      x.closest(".radio-card").classList.remove("sel");
+    });
+    c.classList.add("sel");
+  });
+});
+
+loadSchool("deanza");
+</script>
+</body>
+</html>

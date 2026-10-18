@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>转学服务 · TransferOS-Global</title>
+<link rel="stylesheet" href="css/app.css?v=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c3aed">
+</head>
+<body>
+<div class="topbar"><div class="topbar-in">
+  <div class="brand">🎓 转学服务</div>
+  <div class="sub">TAG → 网申 → 放榜 → 签证 · 6 步时间线</div>
+</div></div>
+
+<div class="page">
+  <div class="card">
+    <div class="section-title">✅ 我的转学进度 <span class="hint" id="tProg"></span></div>
+    <div class="progress"><div class="progress-in" id="tBar" style="width:0%"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🛤️ 6 步时间线（以入学当年为 T 年）</div>
+    <div class="timeline" id="tl"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">✍️ 文书提醒（PIQ）</div>
+    <p>· UC 个人陈述 <b>PIQ：8 选 4</b>，每篇 <b>350 词上限</b></p>
+    <p>· 建议 T 年 8–10 月起草，11 月网申前定稿</p>
+    <p class="hint">写你真实的转学动机和课程经历，不要编造——招生官每年看几十万份。</p>
+  </div>
+
+  <div class="risk">
+    <h3>🛂 F-1 签证（第 6 步前必读）</h3>
+    <p>纯线上读完 CC 后申请 F-1，面签官会重点审查两年网课的学习真实性。完整说明见 <a href="guide.html#visa">入学指南 · 签证风险</a>。</p>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🔗 课程映射工具</div>
+    <p class="hint">申请前最后核对一次：你的 CC 课程能转成目标 UC 的哪些学分。</p>
+    <a class="btn ghost" href="https://szzxli.github.io/transfer-os/mobile/www/">打开 TransferOS 课程映射 →</a>
+  </div>
+
+  <div class="disclaimer">
+    时间线为 UC 常规申请季整理，政策每年微调，请以 UC 官网为准。<br>
+    本工具仅提供信息整理，<strong>不承诺任何录取结果。</strong>
+  </div>
+</div>
+
+<nav class="tabbar">
+  <a href="index.html" data-page="index"><span class="ico">🏠</span>首页</a>
+  <a href="evaluate.html" data-page="evaluate"><span class="ico">📝</span>评估</a>
+  <a href="plan.html" data-page="plan"><span class="ico">🗺️</span>选课</a>
+  <a href="track.html" data-page="track"><span class="ico">📅</span>规划</a>
+  <a href="transfer.html" data-page="transfer" class="active"><span class="ico">🎓</span>转学</a>
+  <a href="guide.html" data-page="guide"><span class="ico">📋</span>指南</a>
+</nav>
+<script src="js/app.js?v=1"></script>
+<script>
+"use strict";
+togNavActive("transfer");
+
+var STEPS = [
+  { t: "TAG 申请", when: "T-1 年 9/1 – 9/30",
+    d: "转学保证协议。注意：UCB / UCLA / UCSD <b>不参与 TAG</b>；适用 UCSC / UCD / UCI 等（各校专业另有要求）。" },
+  { t: "UC 网申", when: "T-1 年 11/1 – 11/30",
+    d: "UC 申请系统提交，选校+选专业+PIQ 文书一次交齐。" },
+  { t: "成绩单提交", when: "T 年 1 月",
+    d: "按各校要求提交秋季成绩单更新（TAU）。" },
+  { t: "放榜", when: "T 年 3 – 4 月",
+    d: "各校陆续放榜，注意查邮箱和申请 portal。" },
+  { t: "SIR 确认 + I-20", when: "T 年 5 月",
+    d: "接受录取（SIR）并交留位费；学校签发 I-20。" },
+  { t: "F-1 签证", when: "T 年 6 – 7 月",
+    d: "凭 I-20 面签。纯线上读完 CC 的同学先读签证风险说明。" },
+];
+
+var done = togGet("transfer", {});
+
+function render() {
+  var box = document.getElementById("tl");
+  box.innerHTML = "";
+  STEPS.forEach(function (s, i) {
+    var div = document.createElement("div");
+    div.className = "tl-step";
+    div.innerHTML = '<div class="tl-num">' + (i + 1) + "</div>"
+      + '<div class="tl-body"><label class="opt"><input type="checkbox" data-i="' + i + '"' + (done[i] ? " checked" : "") + ">"
+      + "<span><b>" + esc(s.t) + '</b> <span class="tag">' + esc(s.when) + "</span>"
+      + '<div class="hint">' + s.d + "</div></span></label></div>";
+    box.appendChild(div);
+  });
+  box.querySelectorAll("input[type=checkbox]").forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      done[cb.getAttribute("data-i")] = cb.checked;
+      togSet("transfer", done); prog();
+    });
+  });
+  prog();
+}
+function prog() {
+  var n = STEPS.length, c = 0;
+  for (var k in done) if (done[k]) c++;
+  var pct = Math.round(c / n * 100);
+  document.getElementById("tBar").style.width = pct + "%";
+  document.getElementById("tProg").textContent = c + " / " + n + "（" + pct + "%）";
+}
+render();
+</script>
+</body>
+</html>

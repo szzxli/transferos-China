@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>在线评估 · TransferOS-Global</title>
+<link rel="stylesheet" href="css/app.css?v=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c3aed">
+</head>
+<body>
+<div class="topbar"><div class="topbar-in">
+  <div class="brand">📝 在线评估</div>
+  <div class="sub">3 个维度 · 约 2 分钟 · 结果仅供参考</div>
+</div></div>
+
+<div class="page">
+  <div class="step-label" id="stepLabel">第 1 步 / 共 3 步</div>
+  <div class="steps"><div class="dot on" id="d1"></div><div class="dot" id="d2"></div><div class="dot" id="d3"></div></div>
+
+  <!-- Step 1 -->
+  <div class="card" id="step1">
+    <div class="section-title">🎚️ 你打算怎么读 CC？</div>
+    <div class="hint">两种方式费用和签证要求完全不同，先选再评估。</div>
+    <label class="radio-card"><input type="radio" name="mode" value="online" checked> 💻 纯线上 — 人在中国，全程网课，无需签证</label>
+    <label class="radio-card"><input type="radio" name="mode" value="inperson"> ✈️ 赴美线下 — 持 F-1 签证赴美读</label>
+    <div class="section-title" style="margin-top:14px">🎂 你的年龄？</div>
+    <div class="hint">加州社区大学开放申请的法定门槛是 16 岁。</div>
+    <div class="field"><label for="age">年龄（周岁）</label>
+      <input type="number" id="age" min="10" max="60" inputmode="numeric" placeholder="例如 20">
+    </div>
+    <div class="btn-row"><button class="btn ghost" disabled>← 上一步</button><button class="btn" onclick="evNext(1)">下一步 →</button></div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="card" id="step2" hidden>
+    <div class="section-title">🎓 你的学历背景？</div>
+    <div class="hint">社区大学申请不需要高考成绩，高中成绩单是基础材料。</div>
+    <label class="radio-card"><input type="radio" name="edu" value="hs"> 高中毕业，有成绩单</label>
+    <label class="radio-card"><input type="radio" name="edu" value="uni"> 国内大学在读（大专/本科）</label>
+    <label class="radio-card"><input type="radio" name="edu" value="other"> 其他情况</label>
+    <div class="btn-row"><button class="btn ghost" onclick="evGo(1)">← 上一步</button><button class="btn" onclick="evNext(2)">下一步 →</button></div>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="card" id="step3" hidden>
+    <div class="section-title">🗣️ 英语成绩（二选一即可）</div>
+    <div class="hint">以下为常见要求线，具体以目标学校官网为准。</div>
+    <div class="field"><label for="duo">Duolingo 英语测试（满分 160）</label>
+      <input type="number" id="duo" min="10" max="160" inputmode="numeric" placeholder="例如 110（常见线 105）">
+    </div>
+    <div class="field"><label for="toefl">或 托福 iBT（满分 120）</label>
+      <input type="number" id="toefl" min="0" max="120" inputmode="numeric" placeholder="例如 70（常见线 61）">
+    </div>
+    <div class="btn-row"><button class="btn ghost" onclick="evGo(2)">← 上一步</button><button class="btn" onclick="evFinish()">看评估结果 →</button></div>
+  </div>
+
+  <!-- Result -->
+  <div id="resultSlot"></div>
+</div>
+
+<nav class="tabbar">
+  <a href="index.html" data-page="index"><span class="ico">🏠</span>首页</a>
+  <a href="evaluate.html" data-page="evaluate"><span class="ico">📝</span>评估</a>
+  <a href="plan.html" data-page="plan"><span class="ico">🗺️</span>选课</a>
+  <a href="track.html" data-page="track"><span class="ico">📅</span>规划</a>
+  <a href="transfer.html" data-page="transfer"><span class="ico">🎓</span>转学</a>
+  <a href="guide.html" data-page="guide"><span class="ico">📋</span>指南</a>
+</nav>
+<script src="js/app.js?v=1"></script>
+<script>
+"use strict";
+togNavActive("evaluate");
+
+/* ---- 纯逻辑：可在 node 里单元测试 ---- */
+var DUO_BAR = 105, TOEFL_BAR = 61, AGE_BAR = 16;
+function evaluateEligibility(a) {
+  var dims = [];
+  // 年龄
+  if (a.age == null || a.age === "" || isNaN(+a.age)) {
+    dims.push({ key: "age", st: "missing", label: "年龄", msg: "未填写", fix: "请填写年龄。" });
+  } else if (+a.age >= AGE_BAR) {
+    dims.push({ key: "age", st: "ok", label: "年龄", msg: a.age + " 岁，达到 16 岁门槛", fix: "" });
+  } else {
+    dims.push({ key: "age", st: "bad", label: "年龄", msg: a.age + " 岁，未满 16 岁", fix: "年满 16 岁后再申请，这是硬性门槛。" });
+  }
+  // 学历
+  if (a.edu === "hs") {
+    dims.push({ key: "edu", st: "ok", label: "学历", msg: "高中毕业有成绩单", fix: "" });
+  } else if (a.edu === "uni") {
+    dims.push({ key: "edu", st: "ok", label: "学历", msg: "国内大学在读（仍需提供高中成绩单）", fix: "" });
+  } else if (a.edu === "other") {
+    dims.push({ key: "edu", st: "warn", label: "学历", msg: "情况特殊，需单独确认", fix: "请确认是否能提供高中成绩单（英文盖章版）；如无，需先咨询目标 CC 的招生办。" });
+  } else {
+    dims.push({ key: "edu", st: "missing", label: "学历", msg: "未选择", fix: "请选择学历背景。" });
+  }
+  // 英语（二选一）
+  var duo = parseFloat(a.duo), tf = parseFloat(a.toefl);
+  var duoOk = !isNaN(duo) && duo >= DUO_BAR, tfOk = !isNaN(tf) && tf >= TOEFL_BAR;
+  var anyFilled = !isNaN(duo) || !isNaN(tf);
+  if (duoOk || tfOk) {
+    dims.push({ key: "eng", st: "ok", label: "英语", msg: "达到常见要求线（Duolingo ≥105 或托福 ≥61）", fix: "" });
+  } else if (anyFilled) {
+    dims.push({ key: "eng", st: "warn", label: "英语", msg: "当前成绩低于常见要求线", fix: "刷分到 Duolingo 105 或托福 61；具体以目标学校官网为准。" });
+  } else {
+    dims.push({ key: "eng", st: "missing", label: "英语", msg: "未填写", fix: "请填写 Duolingo 或托福成绩（二选一）。" });
+  }
+  var verdict;
+  if (dims.some(function (d) { return d.st === "bad" || d.st === "missing"; })) verdict = "bad";
+  else if (dims.some(function (d) { return d.st === "warn"; })) verdict = "warn";
+  else verdict = "ok";
+  var modeNote = "";
+  if (a.mode === "inperson") {
+    modeNote = '<div class="alert" style="margin-top:10px">🛂 你选了<b>赴美线下</b>：F-1 签证需要资金证明覆盖约 <b>$27,189/年</b>（De Anza 官网估算，无例外），另需购买强制医疗保险。请确认家庭资金准备到位。</div>';
+  } else {
+    modeNote = '<div class="hint" style="margin-top:10px">💻 你选了<b>纯线上</b>：人在中国即可开始，无需签证；转学到 UC 后再申请 F-1（<a href="guide.html#visa">必读签证风险</a>）。</div>';
+  }
+  return { dims: dims, verdict: verdict, modeNote: modeNote };
+}
+if (typeof module !== "undefined") { module.exports = { evaluateEligibility: evaluateEligibility }; }
+
+/* ---- 页面交互 ---- */
+function evGo(n) {
+  [1, 2, 3].forEach(function (i) {
+    document.getElementById("step" + i).hidden = (i !== n);
+    document.getElementById("d" + i).classList.toggle("on", i <= n);
+  });
+  document.getElementById("stepLabel").textContent = "第 " + n + " 步 / 共 3 步";
+  document.getElementById("resultSlot").innerHTML = "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function evRead() {
+  var eduEl = document.querySelector('input[name="edu"]:checked');
+  var modeEl = document.querySelector('input[name="mode"]:checked');
+  return {
+    mode: modeEl ? modeEl.value : "online",
+    age: document.getElementById("age").value.trim(),
+    edu: eduEl ? eduEl.value : "",
+    duo: document.getElementById("duo").value.trim(),
+    toefl: document.getElementById("toefl").value.trim(),
+  };
+}
+function evNext(n) {
+  togSet("eval", evRead());
+  evGo(n + 1);
+}
+function evFinish() {
+  var ans = evRead();
+  togSet("eval", ans);
+  var r = evaluateEligibility(ans);
+  var icon = { ok: "✅", warn: "⚠️", bad: "❌", missing: "❓" };
+  var rows = r.dims.map(function (d) {
+    return '<div class="dim-row"><span class="dim-ico">' + icon[d.st] + '</span><div><b>' + esc(d.label) + '</b> — ' + esc(d.msg)
+      + (d.fix ? '<div class="fix">→ ' + esc(d.fix) + '</div>' : '') + '</div></div>';
+  }).join("");
+  var vHtml;
+  if (r.verdict === "ok") {
+    vHtml = '<div class="verdict ok">✅ 路径可行：三个维度都达标，可以进入费用测算。</div>';
+  } else if (r.verdict === "warn") {
+    vHtml = '<div class="verdict warn">⚠️ 补齐短板：按上面的提示把黄色项补上，路径即可走通。</div>';
+  } else {
+    vHtml = '<div class="verdict bad">❌ 暂不符合：有红色硬伤或信息没填完，按提示处理后再来。</div>';
+  }
+  document.getElementById("resultSlot").innerHTML =
+    '<div class="card"><div class="section-title">📊 评估结果</div>' + rows + vHtml + r.modeNote
+    + '<a class="btn" href="cost.html">下一步：算清费用 →</a>'
+    + '<div class="footnote">评估仅供参考，不构成录取承诺。录取由各校招生办决定；语言要求线为常见值，具体以学校官网为准。</div></div>';
+  document.getElementById("resultSlot").scrollIntoView({ behavior: "smooth" });
+}
+/* 恢复上次填写 */
+(function () {
+  var s = togGet("eval", null);
+  if (!s) return;
+  if (s.mode) {
+    var m = document.querySelector('input[name="mode"][value="' + s.mode + '"]');
+    if (m) { m.checked = true; }
+  }
+  if (s.age) document.getElementById("age").value = s.age;
+  if (s.edu) {
+    var el = document.querySelector('input[name="edu"][value="' + s.edu + '"]');
+    if (el) { el.checked = true; el.closest(".radio-card").classList.add("sel"); }
+  }
+  if (s.duo) document.getElementById("duo").value = s.duo;
+  if (s.toefl) document.getElementById("toefl").value = s.toefl;
+})();
+document.querySelectorAll(".radio-card").forEach(function (c) {
+  c.addEventListener("click", function () {
+    document.querySelectorAll(".radio-card").forEach(function (x) { x.classList.remove("sel"); });
+    c.classList.add("sel");
+  });
+});
+</script>
+</body>
+</html>

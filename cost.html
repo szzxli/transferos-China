@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>费用测算 · TransferOS-Global</title>
+<link rel="stylesheet" href="css/app.css?v=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c3aed">
+</head>
+<body>
+<div class="topbar"><div class="topbar-in">
+  <div class="brand">💰 费用测算</div>
+  <div class="sub">按学校逐项核实 · 诚实总账</div>
+</div></div>
+
+<div class="page">
+  <div class="card">
+    <div class="section-title">🎚️ 就读方式</div>
+    <div class="hint">两种方式费用结构完全不同，先选再算。</div>
+    <label class="radio-card"><input type="radio" name="mode" value="online" checked> 💻 纯线上 — 人在中国，全程网课，无需签证</label>
+    <label class="radio-card"><input type="radio" name="mode" value="inperson"> ✈️ 赴美线下 — 持 F-1 签证赴美，含生活费</label>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🏫 选择社区大学（非居民学费）</div>
+    <div class="field"><label for="cc">学校</label>
+      <select id="cc">
+        <option value="284" data-note="2026-27 官网已核实：$253 学费 + $31 注册费">De Anza College — $284 / 学分 ✅已核实</option>
+        <option value="284" data-note="2026-27 官网已核实：$253 学费 + $31 注册费（同属 Foothill-De Anza 学区）">Foothill College — $284 / 学分 ✅已核实</option>
+        <option value="custom" data-note="">自定义单价…</option>
+      </select>
+    </div>
+    <div class="field" id="customWrap" hidden><label for="customRate">自定义单价（美元/学分）</label>
+      <input type="number" id="customRate" min="50" max="800" value="284">
+    </div>
+    <div class="hint" id="ccNote"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">📚 CC 阶段学分</div>
+    <div class="field">
+      <label for="units">总学分：<b id="unitsVal">60</b></label>
+      <input type="range" id="units" min="48" max="60" value="60" step="1">
+      <div class="hint">转学一般需要 60 学分（约 2 年）；已修课程可转学分则可减少。</div>
+    </div>
+  </div>
+
+  <div class="card" id="livingCard" hidden>
+    <div class="section-title">🏠 赴美生活费（De Anza 官网 F-1 估算）</div>
+    <table class="nums">
+      <tr><td>强制医疗保险</td><td>$1,665 / 年</td></tr>
+      <tr><td>书本费</td><td>$1,500 / 年</td></tr>
+      <tr><td>住宿（校内双人间 10 个月）</td><td>$10,300 / 年</td></tr>
+      <tr><td>餐费与零花</td><td>$3,500 / 年</td></tr>
+      <tr><td>生活费小计（2 年）</td><td id="livingSub">$33,930</td></tr>
+    </table>
+    <div class="hint">De Anza 官网 F-1 学生费用估算；签证资金证明要求覆盖此总额，无例外。</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🎓 UC 阶段（2 年，非居民）</div>
+    <table class="nums">
+      <tr><td>UC 非居民学费（估算）</td><td>$48,000 / 年</td></tr>
+      <tr><td>UC 阶段小计（2 年）</td><td id="ucSub">$96,000</td></tr>
+    </table>
+    <div class="hint">UC 非居民学费各校略有差异，此处取整估算。</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🧾 四年总账</div>
+    <table class="nums">
+      <tr><td>CC 学费小计</td><td id="ccSub">$17,040</td></tr>
+      <tr id="livingRow" hidden><td>CC 阶段生活费小计</td><td id="livingRowVal">$33,930</td></tr>
+      <tr><td>UC 学费小计</td><td>$96,000</td></tr>
+      <tr class="total"><td><b>合计</b></td><td id="total">$113,040</td></tr>
+    </table>
+    <div class="verdict ok" style="margin-top:12px">
+      🆚 传统四年美国留学约 $240,000<br>
+      <span class="big-num" id="savePct">48%</span> 费用节省（诚实测算）
+    </div>
+    <div class="footnote">
+      学费每年调整，此为 2026-27 口径估算。纯线上模式仅含学费；赴美模式另含 De Anza 官网 F-1 生活费估算（不含往返机票等杂费）。<br>
+      两所学校单价均为官网已核实数字；我们从不编数字。
+    </div>
+    <a class="btn mt" href="guide.html">下一步：入学指南 →</a>
+  </div>
+</div>
+
+<nav class="tabbar">
+  <a href="index.html" data-page="index"><span class="ico">🏠</span>首页</a>
+  <a href="evaluate.html" data-page="evaluate"><span class="ico">📝</span>评估</a>
+  <a href="plan.html" data-page="plan"><span class="ico">🗺️</span>选课</a>
+  <a href="track.html" data-page="track"><span class="ico">📅</span>规划</a>
+  <a href="transfer.html" data-page="transfer"><span class="ico">🎓</span>转学</a>
+  <a href="guide.html" data-page="guide"><span class="ico">📋</span>指南</a>
+</nav>
+<script src="js/app.js?v=1"></script>
+<script>
+"use strict";
+togNavActive("cost");
+
+/* ---- 纯逻辑：可在 node 里单元测试 ---- */
+var UC_YEAR = 48000, UC_YEARS = 2, TRADITIONAL = 240000;
+var LIVING_YEAR = 16965; /* 1665+1500+10300+3500, De Anza F-1 官网估算 */
+function calcCost(perUnit, units, mode) {
+  var ccSub = perUnit * units;
+  var living = (mode === "inperson") ? LIVING_YEAR * 2 : 0;
+  var ucSub = UC_YEAR * UC_YEARS;
+  var total = ccSub + living + ucSub;
+  var savePct = Math.round((1 - total / TRADITIONAL) * 100);
+  return { ccSub: ccSub, living: living, ucSub: ucSub, total: total, savePct: savePct };
+}
+if (typeof module !== "undefined") { module.exports = { calcCost: calcCost }; }
+
+/* ---- 页面交互 ---- */
+var ccSel = document.getElementById("cc"),
+    customWrap = document.getElementById("customWrap"),
+    customRate = document.getElementById("customRate"),
+    units = document.getElementById("units"),
+    unitsVal = document.getElementById("unitsVal"),
+    ccNote = document.getElementById("ccNote");
+
+function currentRate() {
+  if (ccSel.value === "custom") return Math.max(0, parseFloat(customRate.value) || 0);
+  return parseFloat(ccSel.value);
+}
+function currentMode() {
+  var el = document.querySelector('input[name="mode"]:checked');
+  return el ? el.value : "online";
+}
+function recalc() {
+  var rate = currentRate(), u = parseInt(units.value, 10), mode = currentMode();
+  unitsVal.textContent = u;
+  customWrap.hidden = (ccSel.value !== "custom");
+  document.getElementById("livingCard").hidden = (mode !== "inperson");
+  document.getElementById("livingRow").hidden = (mode !== "inperson");
+  var opt = ccSel.options[ccSel.selectedIndex];
+  ccNote.textContent = opt.dataset.note || "";
+  var r = calcCost(rate, u, mode);
+  document.getElementById("ccSub").textContent = fmtUSD(r.ccSub);
+  document.getElementById("livingSub").textContent = fmtUSD(r.living);
+  document.getElementById("livingRowVal").textContent = fmtUSD(r.living);
+  document.getElementById("total").textContent = fmtUSD(r.total);
+  document.getElementById("savePct").textContent = r.savePct + "%";
+  togSet("cost", { rate: rate, units: u, mode: mode });
+}
+[ccSel, customRate, units].forEach(function (el) {
+  el.addEventListener("input", recalc);
+  el.addEventListener("change", recalc);
+});
+document.querySelectorAll('input[name="mode"]').forEach(function (el) {
+  el.addEventListener("change", recalc);
+});
+document.querySelectorAll(".radio-card").forEach(function (c) {
+  c.addEventListener("click", function () {
+    document.querySelectorAll('input[name="mode"]').forEach(function (x) {
+      x.closest(".radio-card").classList.remove("sel");
+    });
+    c.classList.add("sel");
+  });
+});
+(function () {
+  var s = togGet("cost", null);
+  if (s) {
+    if (s.units) units.value = s.units;
+    if (s.mode) {
+      var m = document.querySelector('input[name="mode"][value="' + s.mode + '"]');
+      if (m) { m.checked = true; }
+    }
+  }
+  recalc();
+})();
+</script>
+</body>
+</html>
