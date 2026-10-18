@@ -1,20 +1,24 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>转学服务 · TransferOS-Global</title>
+<title>转学指南 · TransferOS-China</title>
 <link rel="stylesheet" href="css/app.css?v=1">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#7c3aed">
 </head>
 <body>
 <div class="topbar"><div class="topbar-in">
-  <div class="brand">🎓 转学服务</div>
-  <div class="sub">TAG → 网申 → 放榜 → 签证 · 6 步时间线</div>
+  <div class="brand">🎓 转学指南</div>
+  <div class="sub">时间线 · 指南 · 申请表 · 录取后衔接</div>
 </div></div>
-
 <div class="page">
+<div id="evalBanner"></div>
+<section id="sec-transfer">
+
   <div class="card">
     <div class="section-title">✅ 我的转学进度 <span class="hint" id="tProg"></span></div>
     <div class="progress"><div class="progress-in" id="tBar" style="width:0%"></div></div>
@@ -40,7 +44,7 @@
 
   <div class="risk">
     <h3>🛂 F-1 签证（第 6 步前必读）</h3>
-    <p>纯线上读完 CC 后申请 F-1，面签官会重点审查两年网课的学习真实性。完整说明见 <a href="guide.html#visa">入学指南 · 签证风险</a>。</p>
+    <p>纯线上读完 CC 后申请 F-1，面签官会重点审查两年网课的学习真实性。完整说明见 <a href="transfer.html#sec-visa">入学指南 · 签证风险</a>。</p>
   </div>
 
   <div class="card">
@@ -53,21 +57,136 @@
     时间线为 UC 常规申请季整理，政策每年微调，请以 UC 官网为准。<br>
     本工具仅提供信息整理，<strong>不承诺任何录取结果。</strong>
   </div>
-</div>
+</section>
+<section id="sec-guide">
 
+  <div class="card">
+    <div class="section-title">🛤️ 五步时间线（按你的方式看）</div>
+    <div class="timeline">
+      <div class="tl-step"><div class="tl-num">1</div><div class="tl-body"><b>申请社区大学（提前 3-6 个月）</b><div class="hint">De Anza 或 Foothill 在线申请 + 高中成绩单（英文盖章版）+ 语言成绩。<br>💻 纯线上：拿入学确认即可开学，无需签证。<br>✈️ 赴美线下：学校发 I-20 → 准备 $27,189/年资金证明 → 申请 F-1 签证。</div></div></div>
+      <div class="tl-step"><div class="tl-num">2</div><div class="tl-body"><b>选课：IGETC + Major Prep（第 1-4 学期）</b><div class="hint">通识课（IGETC）+ 目标专业的先修课（Major Preparation）。选课直接决定你能转哪所 UC、什么专业——<a href="https://szzxli.github.io/transfer-os/mobile/www/">用 TransferOS 查课程映射</a>。</div></div></div>
+      <div class="tl-step"><div class="tl-num">3</div><div class="tl-body"><b>保持 GPA（全程）</b><div class="hint">UCB/UCLA 热门专业转学 GPA 门槛高，每学期都算数，没有"水过去"的学期。</div></div></div>
+      <div class="tl-step"><div class="tl-num">4</div><div class="tl-body"><b>申请 UC（每年 11 月）</b><div class="hint">UC 申请季为入学前一年的 11 月。TAG（转学保证协议）部分 UC/专业适用，提前查。</div></div></div>
+      <div class="tl-step"><div class="tl-num">5</div><div class="tl-body"><b>F-1 签证（拿到 UC 录取后）</b><div class="hint">凭 UC 录取 + I-20 面签。💻 纯线上的同学注意：⚠️ 先读下面的签证风险框。</div></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🧾 材料清单</div>
+    <ul class="check-list">
+      <li>高中成绩单（英文版，学校盖章）</li>
+      <li>护照（有效期覆盖整个学习计划）</li>
+      <li>Duolingo / 托福成绩单</li>
+      <li>✈️ 赴美线下：资金证明（De Anza 要求 $27,189/年银行证明，无例外）+ 强制医疗保险</li>
+      <li>💻 纯线上：无需资金证明、无需签证</li>
+      <li>在读证明/毕业证（如适用）</li>
+    </ul>
+  </div>
+
+  <div class="risk" id="sec-visa">
+    <h3>🛂 F-1 签证风险（必读）</h3>
+    <p>两年纯网课后申请 F-1 签证，面签官会<strong>重点审查学习真实性</strong>：这两年你是否真实上课、真实考试、成绩真实。</p>
+    <p><strong>应对方法（无法规避，只能充分准备）：</strong></p>
+    <p>· 保留所有课程记录：作业、考试、成绩单、与老师的邮件往来<br>
+    · GPA 真实，不要买成绩、不要代考——一经发现，永久拒签<br>
+    · 面签时能清楚说出自己修了什么课、学到了什么</p>
+    <p>此风险真实存在。我们把它放在这里，而不是藏起来——做决定前请想清楚。</p>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🔗 课程映射工具</div>
+    <p class="hint">选课阶段用得上：查你的 CC 课程能转成 UC 的哪些学分（15 万条映射数据）。</p>
+    <a class="btn ghost" href="https://szzxli.github.io/transfer-os/mobile/www/">打开 TransferOS 课程映射 →</a>
+  </div>
+
+  <div class="disclaimer">
+    本工具仅提供公开信息整理，不构成留学中介服务。<br>
+    <strong>不承诺任何录取结果。</strong>录取由各校招生办决定；政策每年变化，请以学校官网为准。
+  </div>
+</section>
+<section id="sec-apply">
+
+  <div class="alert">
+    <b>⚠️ 三条铁律</b><br>
+    1. 姓名拼音<b>必须手动按护照填写</b>——系统绝不机器翻译姓名，翻错=拒信。<br>
+    2. 生成的英文版<b>必须人工逐项核对</b>后，才能用于正式申请。<br>
+    3. 正式提交<b>必须去各校官网申请系统</b>——本 APP 不代交、不触碰你的申请账号。
+  </div>
+
+  <div class="card">
+    <div class="section-title">👤 个人信息</div>
+    <div class="field"><label>中文姓名</label><input type="text" id="f_name_cn" placeholder="张三"></div>
+    <div class="field"><label>护照拼音姓名（与护照完全一致）*</label>
+      <input type="text" id="f_name_en" placeholder="ZHANG, San" style="text-transform:uppercase">
+      <div class="hint">姓在前全大写，逗号+空格+名。必须和护照机读区一致。</div></div>
+    <div class="field"><label>出生日期</label><input type="date" id="f_dob"></div>
+    <div class="field"><label>国籍</label>
+      <select id="f_nat"><option value="China">中国 China</option><option value="other">其他（英文填写）</option></select></div>
+    <div class="field"><label>护照号码</label><input type="text" id="f_pass" placeholder="E12345678" style="text-transform:uppercase"></div>
+    <div class="field"><label>邮箱</label><input type="email" id="f_email" placeholder="name@example.com"></div>
+    <div class="field"><label>电话（含国家码）</label><input type="tel" id="f_phone" placeholder="+86 13800000000"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🏠 通讯地址</div>
+    <div class="field"><label>省份</label><select id="f_prov"></select></div>
+    <div class="field"><label>城市（中文）</label><input type="text" id="f_city_cn" placeholder="深圳"></div>
+    <div class="field"><label>城市（英文）</label><input type="text" id="f_city_en" placeholder="Shenzhen"></div>
+    <div class="field"><label>详细地址（中文）</label><input type="text" id="f_addr_cn" placeholder="南山区XX路XX号"></div>
+    <div class="field"><label>详细地址（英文，人工翻译核对）</label><input type="text" id="f_addr_en" placeholder="No. XX, XX Road, Nanshan District"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🎓 教育背景</div>
+    <div class="field"><label>高中（中文）</label><input type="text" id="f_hs_cn" placeholder="深圳中学"></div>
+    <div class="field"><label>高中（英文）</label><input type="text" id="f_hs_en" placeholder="Shenzhen Middle School"></div>
+    <div class="field"><label>高中毕业年份</label><input type="number" id="f_hs_yr" min="2000" max="2030" placeholder="2024"></div>
+    <div class="field"><label>国内大学（如在读，中文）</label><input type="text" id="f_uni_cn" placeholder="无则留空"></div>
+    <div class="field"><label>国内大学（英文）</label><input type="text" id="f_uni_en" placeholder="无则留空"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🗣️ 语言成绩</div>
+    <div class="field"><label>Duolingo（160满分）</label><input type="number" id="f_duo" min="10" max="160" placeholder="如 110"></div>
+    <div class="field"><label>托福 iBT（120满分）</label><input type="number" id="f_toefl" min="0" max="120" placeholder="如 70"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🎯 目标学校（白名单）</div>
+    <div class="hint">在<a href="assess.html#sec-whitelist">白名单页</a>勾选，或在这里直接选。</div>
+    <div id="tgtBox"></div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="genBtn">⚡ 生成英文版</button>
+    <button class="btn ghost" id="printBtn">🖨️ 打印</button>
+  </div>
+
+  <div id="outSlot"></div>
+
+  <div class="card" id="statusCard" hidden>
+    <div class="section-title">📊 各校申请状态</div>
+    <div id="statusBox"></div>
+    <div class="hint">状态只保存在本机，供你自己跟踪。正式进度以各校申请系统为准。</div>
+  </div>
+
+  <div class="disclaimer">
+    本表仅帮你整理中英双语申请信息。英文版必须人工核对；正式申请必须去各校官网提交。<br>
+    所有信息只保存在本机浏览器，不上传服务器。
+  </div>
+</section>
+</div>
+<div id="chatRoot"></div>
 <nav class="tabbar">
   <a href="index.html" data-page="index"><span class="ico">🏠</span>首页</a>
-  <a href="evaluate.html" data-page="evaluate"><span class="ico">📝</span>评估</a>
-  <a href="plan.html" data-page="plan"><span class="ico">🗺️</span>选课</a>
-  <a href="track.html" data-page="track"><span class="ico">📅</span>规划</a>
-  <a href="transfer.html" data-page="transfer" class="active"><span class="ico">🎓</span>转学</a>
-  <a href="guide.html" data-page="guide"><span class="ico">📋</span>指南</a>
-  <a href="whitelist.html" data-page="whitelist"><span class="ico">✅</span>白名单</a>
+  <a href="assess.html" data-page="assess"><span class="ico">📝</span>评估选校</a>
+  <a href="planning.html" data-page="planning"><span class="ico">🗺️</span>选课规划</a>
+  <a href="transfer.html" data-page="transfer" class="active"><span class="ico">🎓</span>转学指南</a>
 </nav>
-<div id="chatRoot"></div>
 <script src="js/app.js?v=1"></script>
 <script src="js/chat.js?v=1"></script>
 <script>
+
 "use strict";
 togNavActive("transfer");
 
@@ -116,6 +235,134 @@ function prog() {
   document.getElementById("tProg").textContent = c + " / " + n + "（" + pct + "%）";
 }
 render();
+
+</script>
+<script>
+renderEvalBanner();
+togNavActive("transfer");
+</script>
+<script>
+
+"use strict";
+
+var PROV = [["北京","Beijing"],["天津","Tianjin"],["河北","Hebei"],["山西","Shanxi"],["内蒙古","Inner Mongolia"],
+["辽宁","Liaoning"],["吉林","Jilin"],["黑龙江","Heilongjiang"],["上海","Shanghai"],["江苏","Jiangsu"],
+["浙江","Zhejiang"],["安徽","Anhui"],["福建","Fujian"],["江西","Jiangxi"],["山东","Shandong"],
+["河南","Henan"],["湖北","Hubei"],["湖南","Hunan"],["广东","Guangdong"],["广西","Guangxi"],
+["海南","Hainan"],["重庆","Chongqing"],["四川","Sichuan"],["贵州","Guizhou"],["云南","Yunnan"],
+["西藏","Tibet"],["陕西","Shaanxi"],["甘肃","Gansu"],["青海","Qinghai"],["宁夏","Ningxia"],
+["新疆","Xinjiang"],["香港","Hong Kong"],["澳门","Macao"],["台湾","Taiwan"]];
+var WL = [
+  ["deanza","De Anza College"],["foothill","Foothill College"],["smc","Santa Monica College"],
+  ["dvc","Diablo Valley College"],["wlac","West Los Angeles College"],["csm","College of San Mateo"],
+  ["skyline","Skyline College"],["canada","Cañada College"],["cerritos","Cerritos College"],
+  ["lacc","Los Angeles City College"],["pierce","Los Angeles Pierce College"],
+  ["siskiyous","College of the Siskiyous"]];
+var STATUS = ["未开始","材料准备中","已提交","已录取","被拒/Waitlist"];
+
+function init() {
+  var ps = document.getElementById("f_prov");
+  PROV.forEach(function (p) {
+    var o = document.createElement("option"); o.value = p[1]; o.textContent = p[0] + " " + p[1]; ps.appendChild(o);
+  });
+  var tb = document.getElementById("tgtBox");
+  var sel = togGet("wl_sel", []);
+  WL.forEach(function (w) {
+    var lab = document.createElement("label");
+    lab.className = "opt";
+    lab.innerHTML = '<input type="checkbox" data-id="' + w[0] + '"' + (sel.indexOf(w[0]) >= 0 ? " checked" : "") + '><span>' + esc(w[1]) + '</span>';
+    tb.appendChild(lab);
+  });
+  var saved = togGet("apply_form", null);
+  if (saved) Object.keys(saved).forEach(function (k) {
+    var el = document.getElementById(k);
+    if (el) el.value = saved[k];
+  });
+  renderStatus();
+}
+
+function read() {
+  var o = {};
+  ["f_name_cn","f_name_en","f_dob","f_nat","f_pass","f_email","f_phone","f_prov","f_city_cn","f_city_en",
+   "f_addr_cn","f_addr_en","f_hs_cn","f_hs_en","f_hs_yr","f_uni_cn","f_uni_en","f_duo","f_toefl"].forEach(function (k) {
+    var el = document.getElementById(k);
+    o[k] = el ? el.value.trim() : "";
+  });
+  o.targets = [];
+  document.querySelectorAll("#tgtBox input:checked").forEach(function (cb) {
+    var id = cb.getAttribute("data-id");
+    for (var i = 0; i < WL.length; i++) if (WL[i][0] === id) o.targets.push(WL[i][1]);
+  });
+  return o;
+}
+
+function gen() {
+  var d = read();
+  if (!d.f_name_en) { alert("请先填写护照拼音姓名（与护照完全一致）。"); return; }
+  togSet("apply_form", d);
+  var rows = [
+    ["Full Legal Name (as on passport)", d.f_name_en],
+    ["Name (Chinese)", d.f_name_cn],
+    ["Date of Birth", d.f_dob],
+    ["Nationality", d.f_nat === "China" ? "China" : d.f_nat],
+    ["Passport No.", d.f_pass.toUpperCase()],
+    ["Email", d.f_email],
+    ["Phone", d.f_phone],
+    ["Mailing Address", [d.f_addr_en, d.f_city_en, d.f_prov, "China"].filter(Boolean).join(", ")],
+    ["Mailing Address (Chinese)", [d.f_addr_cn, d.f_city_cn].filter(Boolean).join("")],
+    ["High School", d.f_hs_en + (d.f_hs_cn ? " (" + d.f_hs_cn + ")" : "")],
+    ["High School Graduation Year", d.f_hs_yr],
+    ["University in China", d.f_uni_en || d.f_uni_cn || "N/A"],
+    ["Duolingo English Test", d.f_duo || "—"],
+    ["TOEFL iBT", d.f_toefl || "—"],
+    ["Target Colleges", d.targets.join("; ") || "—"],
+  ];
+  var html = '<div class="card"><div class="section-title">🇬🇧 英文版申请信息（核对后使用）</div>'
+    + '<table class="nums">' + rows.map(function (r) {
+      return "<tr><td>" + esc(r[0]) + "</td><td><b>" + esc(r[1]) + "</b></td></tr>";
+    }).join("") + "</table>"
+    + '<div class="alert" style="margin-top:10px">⚠️ 逐项核对无误后，再填入各校官网申请系统。本页不是正式申请。</div></div>';
+  document.getElementById("outSlot").innerHTML = html;
+  document.getElementById("outSlot").scrollIntoView({ behavior: "smooth" });
+  renderStatus();
+}
+
+function renderStatus() {
+  var tgts = [];
+  document.querySelectorAll("#tgtBox input:checked").forEach(function (cb) {
+    tgts.push(cb.getAttribute("data-id"));
+  });
+  var card = document.getElementById("statusCard"), box = document.getElementById("statusBox");
+  if (!tgts.length) { card.hidden = true; return; }
+  card.hidden = false;
+  var st = togGet("apply_status", {});
+  box.innerHTML = "";
+  tgts.forEach(function (id) {
+    var name = "";
+    for (var i = 0; i < WL.length; i++) if (WL[i][0] === id) name = WL[i][1];
+    var row = document.createElement("div");
+    row.className = "field";
+    var opts = STATUS.map(function (s) {
+      return '<option' + (st[id] === s ? " selected" : "") + ">" + s + "</option>";
+    }).join("");
+    row.innerHTML = "<label>" + esc(name) + "</label>"
+      + '<select data-st="' + id + '">' + opts + "</select>";
+    box.appendChild(row);
+  });
+  box.querySelectorAll("select").forEach(function (s) {
+    s.addEventListener("change", function () {
+      var cur = togGet("apply_status", {});
+      cur[s.getAttribute("data-st")] = s.value;
+      togSet("apply_status", cur);
+    });
+  });
+}
+
+document.getElementById("genBtn").addEventListener("click", gen);
+document.getElementById("printBtn").addEventListener("click", function () { window.print(); });
+document.getElementById("tgtBox").addEventListener("change", renderStatus);
+init();
+
 </script>
 </body>
 </html>

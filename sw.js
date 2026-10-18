@@ -1,18 +1,11 @@
 /* TransferOS-Global service worker — offline-first precache */
-const CACHE = "tog-v12";
+const CACHE = "tog-v13";
 const ASSETS = [
   "./",
   "./index.html",
-  "./evaluate.html",
-  "./cost.html",
-  "./plan.html",
-  "./track.html",
-  "./coach.html",
   "./transfer.html",
-  "./guide.html",
-  "./whitelist.html",
-  "./apply.html",
-  "./transcript.html",
+  "./assess.html",
+  "./planning.html",
   "./css/app.css",
   "./js/app.js",
   "./js/chat.js",
