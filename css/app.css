@@ -189,3 +189,8 @@ table.nums tr.total td { font-size: 16px; color: var(--brand1); border-bottom: n
 /* ---- coach.html ---- */
 textarea { width: 100%; box-sizing: border-box; border: 1px solid #ddd6f3; border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: inherit; }
 input[type="number"], select { font-size: 15px; }
+
+/* ---- 顾问服务 ---- */
+.svc { border: 2px solid #7c3aed; }
+.svc-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: 15px; }
+.price { font-size: 20px; font-weight: 800; color: #7c3aed; white-space: nowrap; }
