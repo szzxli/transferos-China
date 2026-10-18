@@ -17,8 +17,12 @@
 </div></div>
 <div class="page">
 <div id="evalBanner"></div>
-<div class="card secnav"><div class="hint" style="margin:0">本页导航：<a href="#sec-plan">选课</a> · <a href="#sec-track">时间线</a> · <a href="#sec-cost">费用</a> · <a href="#sec-transcript">成绩单</a> · <a href="#sec-coach">辅导</a></div></div>
-<section id="sec-plan">
+<section class="step" id="step-plan">
+  <button type="button" class="step-head" data-step="plan" data-page="planning">
+    <span class="step-num">1</span><span class="step-title">选课</span><span class="step-check" id="check-plan"></span><span class="step-arrow">▾</span>
+  </button>
+  <div class="step-body" id="body-plan" hidden>
+
 
   <div class="hint" style="margin-bottom:10px">💰 还没算过费用？<a href="planning.html#sec-cost">先算费用 →</a></div>
   <div class="card">
@@ -58,8 +62,15 @@
     课程要求来自 ASSIST 转学协议（2026-10-17 提取），仅供规划参考。<br>
     协议每年更新，选课前请以 ASSIST 官网和学校 counselor 确认为准。<strong>不承诺录取。</strong>
   </div>
+
+  </div>
 </section>
-<section id="sec-track">
+<section class="step" id="step-track">
+  <button type="button" class="step-head" data-step="track" data-page="planning">
+    <span class="step-num">2</span><span class="step-title">时间线</span><span class="step-check" id="check-track"></span><span class="step-arrow">▾</span>
+  </button>
+  <div class="step-body" id="body-track" hidden>
+
 
   <div class="alert">
     <b>📌 先说明：</b>De Anza / Foothill 实行 <b>Quarter 学季制</b>（Fall / Winter / Spring / Summer），不是 Semester 学期制。下面的"季"指学季。
@@ -101,8 +112,16 @@
     排课为自动估算：<b>课程先后修关系（prerequisite）未纳入</b>，部分课程有先修要求，实际选课顺序请以学校官网和 counselor 确认为准。<br>
     课程要求来自 ASSIST 协议，仅供规划参考。<strong>不承诺录取。</strong>
   </div>
+<div class="btn-row" style="margin-top:12px"><button class="btn ghost" onclick="stepNext('planning','track')">下一步：算费用 →</button></div>
+
+  </div>
 </section>
-<section id="sec-cost">
+<section class="step" id="step-cost">
+  <button type="button" class="step-head" data-step="cost" data-page="planning">
+    <span class="step-num">3</span><span class="step-title">费用</span><span class="step-check" id="check-cost"></span><span class="step-arrow">▾</span>
+  </button>
+  <div class="step-body" id="body-cost" hidden>
+
 
   <div class="card">
     <div class="section-title">🎚️ 就读方式</div>
@@ -174,8 +193,16 @@
     </div>
     <a class="btn mt" href="transfer.html#sec-guide">下一步：入学指南 →</a>
   </div>
+<div class="btn-row" style="margin-top:12px"><button class="btn" onclick="stepNext('planning','cost')">✓ 费用算好了，下一步 →</button></div>
+
+  </div>
 </section>
-<section id="sec-transcript">
+<section class="step" id="step-transcript">
+  <button type="button" class="step-head" data-step="transcript" data-page="planning">
+    <span class="step-num">4</span><span class="step-title">成绩单</span><span class="step-check" id="check-transcript"></span><span class="step-arrow">▾</span>
+  </button>
+  <div class="step-body" id="body-transcript" hidden>
+
 
   <div class="alert">
     <b>⚠️ 先说清楚</b><br>
@@ -213,8 +240,16 @@
   <div class="disclaimer">
     初筛结果仅供参考。国内学分能否转 CC，取决于成绩单认证 + 学校 counselor 的逐门审核，AI 和本工具都不做最终判定。
   </div>
+<div class="btn-row" style="margin-top:12px"><button class="btn ghost" onclick="stepNext('planning','transcript')">下一步：找辅导 →</button></div>
+
+  </div>
 </section>
-<section id="sec-coach">
+<section class="step" id="step-coach">
+  <button type="button" class="step-head" data-step="coach" data-page="planning">
+    <span class="step-num">5</span><span class="step-title">辅导</span><span class="step-check" id="check-coach"></span><span class="step-arrow">▾</span>
+  </button>
+  <div class="step-body" id="body-coach" hidden>
+
 
   <div id="emptySlot"></div>
 
@@ -238,6 +273,9 @@
   <div class="disclaimer">
     所有记录只保存在本机浏览器（localStorage），不上传任何服务器。<br>
     GPA 为手动记录，仅供自我跟踪，不构成任何官方成绩证明。
+  </div>
+<div class="btn-row" style="margin-top:12px"><button class="btn" onclick="stepNext('planning','coach')">✓ 完成全部规划 🎉</button></div>
+
   </div>
 </section>
 </div>
@@ -910,6 +948,26 @@ function render() {
 
 render();
 
+</script>
+<script>
+(function(){
+  document.querySelectorAll(".step-head").forEach(function(h){
+    h.addEventListener("click", function(){ stepToggle(h.dataset.page, h.dataset.step); });
+  });
+  stepInit("planning", ['plan', 'track', 'cost', 'transcript', 'coach']);
+})();
+</script>
+
+<script>
+(function(){
+  var b;
+  b = document.getElementById("saveBtn");
+  if (b) b.addEventListener("click", function(){ stepNext("planning", "plan"); });
+  b = document.getElementById("tkGenBtn");
+  if (b) b.addEventListener("click", function(){ stepMark("planning", "track"); });
+  b = document.getElementById("offlineBtn");
+  if (b) b.addEventListener("click", function(){ stepMark("planning", "transcript"); });
+})();
 </script>
 </body>
 </html>

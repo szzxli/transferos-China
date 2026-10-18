@@ -230,3 +230,16 @@ input[type="number"], select { font-size: 15px; }
 /* 咨询漏斗卡：默认 hidden，由 FUNNEL_OPEN 控制 */
 .funnel-card{border:2px solid #7c3aed;background:#faf5ff}
 .funnel-card[hidden]{display:none}
+
+/* 步骤式折叠 */
+.step{margin-bottom:10px;border:1px solid #e5e0f5;border-radius:12px;overflow:hidden;background:#fff}
+.step-head{width:100%;display:flex;align-items:center;gap:10px;padding:14px;background:#fff;border:none;font-size:16px;text-align:left;cursor:pointer;color:#1f2937}
+.step-num{width:28px;height:28px;border-radius:50%;background:#7c3aed;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;flex:none;font-weight:700}
+.step.done .step-num{background:#16a34a}
+.step-title{font-weight:600}
+.step-check{margin-left:auto;font-size:16px}
+.step-arrow{color:#9ca3af;transition:transform .2s;flex:none}
+.step.open .step-arrow{transform:rotate(180deg)}
+.step-body{padding:2px 12px 14px}
+.step-body[hidden]{display:none}
+.step-body .card{margin:8px 0}

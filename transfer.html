@@ -17,7 +17,12 @@
 </div></div>
 <div class="page">
 <div id="evalBanner"></div>
-<section id="sec-transfer">
+<section class="step" id="step-transfer">
+  <button type="button" class="step-head" data-step="transfer" data-page="transfer">
+    <span class="step-num">1</span><span class="step-title">转学时间线</span><span class="step-check" id="check-transfer"></span><span class="step-arrow">▾</span>
+  </button>
+  <div class="step-body" id="body-transfer" hidden>
+
 
   <div class="card">
     <div class="section-title">✅ 我的转学进度 <span class="hint" id="tProg"></span></div>
@@ -57,8 +62,16 @@
     时间线为 UC 常规申请季整理，政策每年微调，请以 UC 官网为准。<br>
     本工具仅提供信息整理，<strong>不承诺任何录取结果。</strong>
   </div>
+<div class="btn-row" style="margin-top:12px"><button class="btn" onclick="stepNext('transfer','transfer')">✓ 时间线清楚了，下一步 →</button></div>
+
+  </div>
 </section>
-<section id="sec-guide">
+<section class="step" id="step-guide">
+  <button type="button" class="step-head" data-step="guide" data-page="transfer">
+    <span class="step-num">2</span><span class="step-title">入学指南</span><span class="step-check" id="check-guide"></span><span class="step-arrow">▾</span>
+  </button>
+  <div class="step-body" id="body-guide" hidden>
+
 
   <div class="card">
     <div class="section-title">🛤️ 五步时间线（按你的方式看）</div>
@@ -103,8 +116,16 @@
     本工具仅提供公开信息整理，不构成留学中介服务。<br>
     <strong>不承诺任何录取结果。</strong>录取由各校招生办决定；政策每年变化，请以学校官网为准。
   </div>
+<div class="btn-row" style="margin-top:12px"><button class="btn" onclick="stepNext('transfer','guide')">✓ 已了解，下一步 →</button></div>
+
+  </div>
 </section>
-<section id="sec-apply">
+<section class="step" id="step-apply">
+  <button type="button" class="step-head" data-step="apply" data-page="transfer">
+    <span class="step-num">3</span><span class="step-title">申请表</span><span class="step-check" id="check-apply"></span><span class="step-arrow">▾</span>
+  </button>
+  <div class="step-body" id="body-apply" hidden>
+
 
   <div class="alert">
     <b>⚠️ 三条铁律</b><br>
@@ -178,6 +199,8 @@
   <div class="disclaimer">
     本表仅帮你整理中英双语申请信息。英文版必须人工核对；正式申请必须去各校官网提交。<br>
     所有信息只保存在本机浏览器，不上传服务器。
+  </div>
+
   </div>
 </section>
 </div>
@@ -369,6 +392,21 @@ document.getElementById("printBtn").addEventListener("click", function () { wind
 document.getElementById("tgtBox").addEventListener("change", renderStatus);
 init();
 
+</script>
+<script>
+(function(){
+  document.querySelectorAll(".step-head").forEach(function(h){
+    h.addEventListener("click", function(){ stepToggle(h.dataset.page, h.dataset.step); });
+  });
+  stepInit("transfer", ['transfer', 'guide', 'apply']);
+})();
+</script>
+
+<script>
+(function(){
+  var b = document.getElementById("genBtn");
+  if (b) b.addEventListener("click", function(){ stepMark("transfer", "apply"); });
+})();
 </script>
 </body>
 </html>

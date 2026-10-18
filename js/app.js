@@ -69,3 +69,58 @@ function funnelShow(id) {
     if (el) el.hidden = false;
   }
 }
+
+/* ---- 步骤式折叠：点一步→展开→提交→✅→下一步 ---- */
+var STEP_ORDER = {};
+function paintSteps(page) {
+  var st = togGet("steps_" + page, {});
+  (STEP_ORDER[page] || []).forEach(function (id) {
+    var done = !!st[id];
+    var stepEl = document.getElementById("step-" + id);
+    if (stepEl) stepEl.classList.toggle("done", done);
+    var chk = document.getElementById("check-" + id);
+    if (chk) chk.textContent = done ? "✅" : "";
+  });
+}
+function setStepOpen(id, open) {
+  var body = document.getElementById("body-" + id);
+  var stepEl = document.getElementById("step-" + id);
+  if (!body || !stepEl) return;
+  body.hidden = !open;
+  stepEl.classList.toggle("open", open);
+}
+function stepToggle(page, id) {
+  var body = document.getElementById("body-" + id);
+  var willOpen = body.hidden;
+  (STEP_ORDER[page] || []).forEach(function (oid) { setStepOpen(oid, false); });
+  setStepOpen(id, willOpen);
+}
+function stepMark(page, id) {
+  var st = togGet("steps_" + page, {});
+  st[id] = true;
+  togSet("steps_" + page, st);
+  paintSteps(page);
+}
+function stepNext(page, id) {
+  stepMark(page, id);
+  var order = STEP_ORDER[page] || [];
+  var i = order.indexOf(id);
+  var next = order[Math.min(i + 1, order.length - 1)];
+  order.forEach(function (oid) { setStepOpen(oid, false); });
+  setStepOpen(next, true);
+  var el = document.getElementById("step-" + next);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function stepInit(page, order) {
+  STEP_ORDER[page] = order;
+  paintSteps(page);
+  var hash = (location.hash || "").replace("#", "").replace(/^sec-/, "");
+  var target = null;
+  if (hash && order.indexOf(hash) >= 0) target = hash;
+  if (!target) {
+    var st = togGet("steps_" + page, {});
+    for (var i = 0; i < order.length; i++) { if (!st[order[i]]) { target = order[i]; break; } }
+    target = target || order[0];
+  }
+  setStepOpen(target, true);
+}
