@@ -1,0 +1,284 @@
+[
+ {
+  "a": "Two modes: 💻 fully online ≈ $113,040 total, ~53% less than traditional four years ($240,000); ✈️ in-person ≈ $146,970 total, ~39% less. Use the cost calculator on the Assess & Choose page for details.",
+  "keys": [
+   "费用",
+   "多少钱",
+   "花费",
+   "贵吗",
+   "省多少"
+  ],
+  "q": "How are costs calculated"
+ },
+ {
+  "a": "De Anza / Foothill nonresident: $284/unit (2026-27 official). Other whitelisted schools differ — e.g. Santa Monica $486/unit, Siskiyous $353/unit. See the Assess & Choose page.",
+  "keys": [
+   "学费",
+   "学分",
+   "unit",
+   "多少钱一学分"
+  ],
+  "q": "Cost"
+ },
+ {
+  "a": "TAG (Transfer Admission Guarantee): 6 UCs participate — UCD, UCI, UCM, UCR, UCSB, UCSC. Requires 45 quarter units at a CCC and a qualifying GPA (e.g. 3.4 for UCI/UCSB), apply 9/1–9/30 each year. Fully-online CC students may apply — no residency requirement.",
+  "keys": [
+   "TAG",
+   "保录",
+   "保证录取",
+   "保底"
+  ],
+  "q": "Cc tuition"
+ },
+ {
+  "a": "Yes, but those three don’t do TAG — only regular transfer applications (11/1–11/30), competing on GPA and major prep.",
+  "keys": [
+   "UCB",
+   "UCLA",
+   "UCSD",
+   "伯克利",
+   "洛杉矶"
+  ],
+  "q": "What is tag"
+ },
+ {
+  "a": "12 CCs verified to enroll international students fully online: De Anza, Foothill, Santa Monica, Diablo Valley, West LA, College of San Mateo, Skyline, Cañada, Cerritos, LA City College, LA Pierce, Siskiyous. See the Assess & Choose page.",
+  "keys": [
+   "评估选校",
+   "学校名单",
+   "哪些学校",
+   "选校"
+  ],
+  "q": "Tag"
+ },
+ {
+  "a": "Three hard bars: ① 16+; ② high school diploma (English stamped transcript); ③ English — Duolingo 105 or TOEFL 61 (common bar, check school sites). Take the 2-minute self-check on the Assess & Choose page.",
+  "keys": [
+   "申请条件",
+   "要求",
+   "门槛",
+   "需要什么"
+  ],
+  "q": "Ucb"
+ },
+ {
+  "a": "California community colleges require applicants to be 16+. If under, wait until you qualify.",
+  "keys": [
+   "年龄",
+   "16岁",
+   "未满"
+  ],
+  "q": "Ucla"
+ },
+ {
+  "a": "Common bar: Duolingo 105 / TOEFL iBT 61. If short: retake, or take CC ESL bridge courses (≈ $2,840 + 2 quarters, estimate).",
+  "keys": [
+   "Duolingo",
+   "多邻国",
+   "托福",
+   "英语",
+   "语言成绩",
+   "雅思"
+  ],
+  "q": "Can i get into"
+ },
+ {
+  "a": "ESL bridge: transitional English courses, ~2 courses × 5 units × $284 ≈ $2,840, ~2 extra quarters. Actual placement test after enrollment decides.",
+  "keys": [
+   "ESL",
+   "语言课",
+   "桥梁"
+  ],
+  "q": "Whitelist"
+ },
+ {
+  "a": "Fully-online mode needs no visa. After transferring to UC, apply for F-1: proof of funds ≈ $27,189/yr (De Anza official estimate, no exceptions). ⚠️ After two years of pure online study, the F-1 interview will heavily scrutinize study authenticity — see visa risks on the Transfer Guide page.",
+  "keys": [
+   "签证",
+   "F-1",
+   "面签",
+   "资金证明"
+  ],
+  "q": "Which schools"
+ },
+ {
+  "a": "Yes, valid. UC policy: transfer credit depends on course content and accreditation, not delivery mode. Online = in-person.",
+  "keys": [
+   "网课",
+   "线上",
+   "online",
+   "远程"
+  ],
+  "q": "Requirements"
+ },
+ {
+  "a": "International students pay nonresident tuition, ≈ $48,000/yr (estimate). UCOP is clear: nonresident undergrads basically can’t become residents.",
+  "keys": [
+   "UC学费",
+   "大学学费",
+   "nonresident",
+   "外州"
+  ],
+  "q": "Conditions"
+ },
+ {
+  "a": "CC stage: 1-year transfer (4 quarters, intensive) or 2-year (7 quarters). Then 2 more years at UC for the bachelor’s.",
+  "keys": [
+   "转学指南",
+   "几年",
+   "多久",
+   "transfer"
+  ],
+  "q": "Age requirement"
+ },
+ {
+  "a": "IGETC: California GE pattern — completing it satisfies UC lower-division GE. Plan it alongside ASSIST major prep; see the Course Planning page.",
+  "keys": [
+   "IGETC"
+  ],
+  "q": "Age"
+ },
+ {
+  "a": "On the Course Planning page: pick CC → target UC → major, check completed courses for coverage. Data from official ASSIST agreements.",
+  "keys": [
+   "选课选课规划",
+   "课程",
+   "plan"
+  ],
+  "q": "English requirement"
+ },
+ {
+  "a": "The Course Planning page auto-schedules from your saved plan: 1 yr / 4 qtrs or 2 yrs / 7 qtrs, quarter system with per-quarter unit caps.",
+  "keys": [
+   "选课规划",
+   "track",
+   "学期",
+   "排课"
+  ],
+  "q": "English"
+ },
+ {
+  "a": "Key dates: TAG 9/1–9/30 → UC app 11/1–11/30 → transcripts Jan → decisions Mar–Apr → SIR+I-20 May → F-1 visa Jun–Jul. See the Transfer Guide page.",
+  "keys": [
+   "申请时间",
+   "什么时候",
+   "deadline",
+   "截止",
+   "申请季"
+  ],
+  "q": "Esl"
+ },
+ {
+  "a": "UC transfer essays (PIQ): choose 4 of 8 prompts, 350 words each.",
+  "keys": [
+   "PIQ",
+   "文书",
+   "essay",
+   "个人陈述"
+  ],
+  "q": "Bridge"
+ },
+ {
+  "a": "High school transcript, English with school stamp — required; get it from your high school office.",
+  "keys": [
+   "成绩单",
+   "transcript",
+   "高中"
+  ],
+  "q": "Visa"
+ },
+ {
+  "a": "Enter pinyin manually per your passport (family name in CAPS first, e.g. ZHANG, San). Machine-translated names = rejection. Use the application form on the Assess & Choose page to organize.",
+  "keys": [
+   "护照",
+   "姓名",
+   "拼音",
+   "名字"
+  ],
+  "q": "Online credits valid"
+ },
+ {
+  "a": "Each CC charges on its own site, ~$50/school, paid online when applying.",
+  "keys": [
+   "申请费",
+   "报名费"
+  ],
+  "q": "Online credits"
+ },
+ {
+  "a": "US two-year public colleges: low tuition, high transfer rates. After 2 years, transfer to UC for the bachelor’s — same diploma as direct UC admission.",
+  "keys": [
+   "社区大学",
+   "CC是什么",
+   "大专"
+  ],
+  "q": "Uc tuition"
+ },
+ {
+  "a": "On F-1 you may work on campus; OPT after graduation. Studying fully online from China involves no US work.",
+  "keys": [
+   "打工",
+   "工作",
+   "OPT",
+   "实习"
+  ],
+  "q": "How many years"
+ },
+ {
+  "a": "International students get basically no scholarships at CC stage — budget as self-funded.",
+  "keys": [
+   "奖学金",
+   "scholarship"
+  ],
+  "q": "Duration"
+ },
+ {
+  "a": "In-person housing ≈ $10,300/yr (De Anza official estimate). Fully-online mode has no such cost.",
+  "keys": [
+   "住宿",
+   "住房",
+   "租房"
+  ],
+  "q": "What is igetc"
+ },
+ {
+  "a": "F-1 students must buy the school’s mandatory insurance, ≈ $1,665/yr (De Anza official).",
+  "keys": [
+   "保险",
+   "医保"
+  ],
+  "q": "Igetc"
+ },
+ {
+  "a": "__HUMAN__",
+  "keys": [
+   "客服",
+   "人工",
+   "真人",
+   "微信",
+   "联系",
+   "咨询"
+  ],
+  "q": "How to choose courses"
+ },
+ {
+  "a": "Hi! I’m the TransferOS assistant 🤖 Ask me about costs, TAG, whitelisted schools, visas, application materials — I’ll hand you to a human if I can’t answer.",
+  "keys": [
+   "你好",
+   "hi",
+   "hello",
+   "您好",
+   "在吗"
+  ],
+  "q": "Course selection"
+ },
+ {
+  "a": "You’re welcome! Good luck with your application 🎓 Ask anytime.",
+  "keys": [
+   "谢谢",
+   "thanks",
+   "感谢"
+  ],
+  "q": "How to schedule"
+ }
+]
