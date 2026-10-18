@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>成绩单解析 · TransferOS-China</title>
+<link rel="stylesheet" href="css/app.css?v=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c3aed">
+</head>
+<body>
+<div class="topbar"><div class="topbar-in">
+  <div class="brand">📜 成绩单解析</div>
+  <div class="sub">国内已修课程 → CC 免修初筛</div>
+</div></div>
+
+<div class="page">
+  <div class="alert">
+    <b>⚠️ 先说清楚</b><br>
+    1. 这是<b>初筛</b>，不是判定——正式流程：成绩单先做认证（IERF/WES）→ 入学后找 counselor 逐门 petition，最终以学校为准。<br>
+    2. AI 只给<b>定性三档</b>（高度相关/部分相关/不相关），不编"相似度 88%"这种假数字。<br>
+    3. 粘贴课程信息前请<b>删掉学号、姓名等个人信息</b>，只留课程名和大纲。
+  </div>
+
+  <div class="card">
+    <div class="section-title">⚡ 离线初筛（免费、秒出）</div>
+    <p class="hint">把国内已修课程名粘贴进来，每行一门。内置 35 门常见课映射表。</p>
+    <div class="field"><label for="courses">已修课程（每行一门）</label>
+      <textarea id="courses" rows="6" placeholder="高等数学I&#10;线性代数&#10;C语言程序设计&#10;大学物理I&#10;思想道德修养与法律基础"></textarea></div>
+    <div class="btn-row"><button class="btn" id="offlineBtn">开始初筛</button></div>
+    <div id="offlineOut"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🤖 AI 精析（BYOK）</div>
+    <p class="hint">粘贴课程大纲/课程描述，AI 做语义初筛。Key 只存本机浏览器，不上传。</p>
+    <div class="field"><label for="apiKey">DeepSeek API Key（本地保存）</label>
+      <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off"></div>
+    <div class="field"><label for="syllabus">课程大纲/描述</label>
+      <textarea id="syllabus" rows="5" placeholder="粘贴《高等数学I》的大纲：函数、极限、导数、积分、级数……"></textarea></div>
+    <div class="btn-row"><button class="btn" id="aiBtn">AI 分析</button></div>
+    <div id="aiOut"></div>
+    <div class="footnote">没有 Key？去 <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a> 注册获取（按量付费，很便宜）。</div>
+  </div>
+
+  <div class="disclaimer">
+    初筛结果仅供参考。国内学分能否转 CC，取决于成绩单认证 + 学校 counselor 的逐门审核，AI 和本工具都不做最终判定。
+  </div>
+</div>
+
+<nav class="tabbar">
+  <a href="index.html" data-page="index"><span class="ico">🏠</span>首页</a>
+  <a href="evaluate.html" data-page="evaluate"><span class="ico">📝</span>评估</a>
+  <a href="plan.html" data-page="plan"><span class="ico">🗺️</span>选课</a>
+  <a href="track.html" data-page="track"><span class="ico">🗓️</span>规划</a>
+  <a href="transfer.html" data-page="transfer"><span class="ico">🎓</span>转学</a>
+  <a href="guide.html" data-page="guide"><span class="ico">📋</span>指南</a>
+  <a href="whitelist.html" data-page="whitelist"><span class="ico">✅</span>白名单</a>
+</nav>
+<script src="js/app.js?v=1"></script>
+<script src="js/chat.js?v=1"></script>
+<script>
+"use strict";
+togNavActive("evaluate");
+
+/* ---- 内置映射表：纯逻辑，可单元测试 ---- */
+var COURSE_MAP = [
+  { keys: ["高等数学", "高数", "微积分"], cc: "MATH-1A / 1B", tier: "high", note: "对应微积分序列，petition 成功率高" },
+  { keys: ["数学分析"], cc: "MATH-1A / 1B", tier: "high", note: "内容常深于 CC 微积分，带大纲去谈" },
+  { keys: ["线性代数"], cc: "MATH-2B", tier: "high", note: "直接对应线性代数" },
+  { keys: ["概率论", "数理统计"], cc: "MATH-10", tier: "high", note: "对应统计学，UC 转学也认" },
+  { keys: ["离散数学"], cc: "CIS-35A / MATH-22", tier: "high", note: "CS 专业重要先修课" },
+  { keys: ["复变函数", "数学物理方法"], cc: "MATH-2A", tier: "mid", note: "部分内容重叠，看大纲" },
+  { keys: ["大学物理", "普通物理"], cc: "PHYS-4A / 4B / 4C", tier: "high", note: "理工科核心序列，注意实验课单独算" },
+  { keys: ["物理实验"], cc: "PHYS-4 系列实验", tier: "mid", note: "实验课单独 petition" },
+  { keys: ["无机化学", "普通化学", "大学化学"], cc: "CHEM-1A", tier: "high", note: "注意实验部分" },
+  { keys: ["有机化学"], cc: "CHEM-12A", tier: "high", note: "UC 转学看重" },
+  { keys: ["分析化学", "物理化学"], cc: "CHEM 系高阶", tier: "mid", note: "看具体大纲" },
+  { keys: ["C语言", "C 程序设计"], cc: "CIS-22A", tier: "high", note: "CS 入门课，常可免" },
+  { keys: ["C++", "面向对象"], cc: "CIS-22B", tier: "high", note: "" },
+  { keys: ["Java程序设计"], cc: "CIS-36A", tier: "high", note: "" },
+  { keys: ["Python", "程序设计基础"], cc: "CIS-41A", tier: "high", note: "" },
+  { keys: ["数据结构"], cc: "CIS-22C", tier: "high", note: "CS 核心先修课，免修价值大" },
+  { keys: ["算法设计", "算法分析"], cc: "CIS-22C 后续", tier: "mid", note: "" },
+  { keys: ["计算机组成原理", "组成原理"], cc: "CIS-21JA", tier: "high", note: "" },
+  { keys: ["操作系统"], cc: "CIS-26B", tier: "high", note: "" },
+  { keys: ["计算机网络", "网络原理"], cc: "CIS-28", tier: "high", note: "" },
+  { keys: ["数据库", "SQL"], cc: "CIS-64A", tier: "high", note: "" },
+  { keys: ["软件工程"], cc: "CIS-63", tier: "mid", note: "各校课纲差异大" },
+  { keys: ["数字逻辑", "数字电路", "数电"], cc: "CIS-21JB", tier: "high", note: "" },
+  { keys: ["微机原理", "单片机"], cc: "CIS-21JC", tier: "mid", note: "" },
+  { keys: ["编译原理"], cc: "高阶 CS", tier: "mid", note: "CC 很少开，看目标 UC" },
+  { keys: ["人工智能导论", "机器学习"], cc: "高阶 CS", tier: "mid", note: "CC 基本不开，转 UC 后用" },
+  { keys: ["大学英语", "综合英语"], cc: "EWRT-1A（部分）", tier: "mid", note: "英语课折抵看 placement test，不保证" },
+  { keys: ["体育", "大学体育"], cc: "PE（1 unit）", tier: "mid", note: "一般只算 1 学分体育课" },
+  { keys: ["思想道德", "毛泽东思想", "马克思主义", "中国近现代史", "形势与政策", "习近平"], cc: "—", tier: "none", note: "思政类课程无法转学分" },
+  { keys: ["军事理论", "军训"], cc: "—", tier: "none", note: "无法转学分" },
+  { keys: ["心理健康", "职业生涯规划"], cc: "—", tier: "none", note: "无法转学分" },
+  { keys: ["微观经济学", "宏观经济学", "西方经济学"], cc: "ECON-1 / 2", tier: "high", note: "商科/经济专业核心" },
+  { keys: ["会计学原理", "基础会计"], cc: "ACCT-1A", tier: "high", note: "" },
+  { keys: ["管理学原理"], cc: "BUS-10", tier: "mid", note: "" },
+  { keys: ["心理学导论", "普通心理学"], cc: "PSYC-1", tier: "high", note: "" },
+];
+var TIER_TXT = { high: "🟢 高度相关", mid: "🟡 部分相关", none: "⚪ 不相关" };
+
+function matchCourse(line) {
+  var t = line.replace(/[\s　ⅠⅡⅢⅣ\(\)（）AB上下12ⅰ]/g, "");
+  for (var i = 0; i < COURSE_MAP.length; i++) {
+    var e = COURSE_MAP[i];
+    for (var j = 0; j < e.keys.length; j++) {
+      if (line.indexOf(e.keys[j]) >= 0 || t.indexOf(e.keys[j].replace(/[\s]/g, "")) >= 0) return e;
+    }
+  }
+  return null;
+}
+if (typeof module !== "undefined") { module.exports = { matchCourse: matchCourse, COURSE_MAP: COURSE_MAP }; }
+
+/* ---- 页面交互 ---- */
+document.getElementById("offlineBtn").addEventListener("click", function () {
+  var lines = document.getElementById("courses").value.split("\n")
+    .map(function (s) { return s.trim(); }).filter(Boolean);
+  if (!lines.length) { alert("请先粘贴课程名"); return; }
+  var out = document.getElementById("offlineOut");
+  out.innerHTML = "";
+  var box = document.createElement("div");
+  box.innerHTML = lines.map(function (ln) {
+    var m = matchCourse(ln);
+    if (!m) return '<div class="dim-row"><span class="dim-ico">❓</span><div><b>' + esc(ln) + '</b> — 未在映射表里，用下面 AI 精析试试<div class="fix">→ 或带着大纲直接问 counselor</div></div></div>';
+    var sug = m.tier === "none" ? "→ 这类课转不了，不用准备材料"
+      : "→ 建议动作：做成绩单认证（IERF/WES）后，带大纲找 counselor petition「" + m.cc + "」";
+    return '<div class="dim-row"><span class="dim-ico">' + (m.tier === "high" ? "🟢" : m.tier === "mid" ? "🟡" : "⚪") + '</span><div><b>' + esc(ln) + '</b> — ' + TIER_TXT[m.tier]
+      + (m.cc !== "—" ? ' · 可能对应 <b>' + esc(m.cc) + '</b>' : '')
+      + (m.note ? '<div class="hint">' + esc(m.note) + '</div>' : '')
+      + '<div class="fix">' + esc(sug) + '</div></div></div>';
+  }).join("");
+  out.appendChild(box);
+  var hi = lines.map(matchCourse).filter(function (m) { return m && m.tier === "high"; }).length;
+  var info = document.createElement("div");
+  info.className = "alert";
+  info.style.marginTop = "10px";
+  info.innerHTML = "初筛小结：<b>" + hi + "</b> 门高度相关值得 petition。每门 CC 课约 $284×5 = $1,420，能免一门省一门（估算）。";
+  out.appendChild(info);
+});
+
+(function () {
+  var k = togGet("ds_key", "");
+  if (k) document.getElementById("apiKey").value = k;
+})();
+
+document.getElementById("aiBtn").addEventListener("click", function () {
+  var key = document.getElementById("apiKey").value.trim();
+  var syl = document.getElementById("syllabus").value.trim();
+  var out = document.getElementById("aiOut");
+  if (!key) { alert("请先填写 DeepSeek API Key"); return; }
+  if (!syl) { alert("请粘贴课程大纲"); return; }
+  togSet("ds_key", key);
+  out.innerHTML = '<p class="hint">🤖 AI 分析中…</p>';
+  var sys = "你是加州社区大学转学分的初筛助手。用户粘贴国内大学课程大纲，请用中文逐门输出：课程名｜相关度（只能是 高度相关/部分相关/不相关 三档之一，绝不输出百分比数字）｜可能对应的 CC 课程代码（如 MATH-1A）｜一句话理由｜建议动作。最后必须加一段：以上为 AI 初筛仅供参考，正式流程是成绩单认证（IERF/WES）+ 入学后找 counselor 逐门 petition，最终以学校为准。";
+  fetch("https://api.deepseek.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+    body: JSON.stringify({
+      model: "deepseek-chat",
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: syl }
+      ],
+      temperature: 0.3
+    })
+  }).then(function (r) {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }).then(function (j) {
+    var txt = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "无返回";
+    out.innerHTML = '<div class="card" style="margin:0"><div class="section-title">🤖 AI 初筛结果</div><div style="white-space:pre-wrap;font-size:14px">' + esc(txt) + '</div></div>';
+  }).catch(function (e) {
+    out.innerHTML = '<div class="alert">请求失败：' + esc(e.message) + '。检查 Key 是否正确、网络能否访问 api.deepseek.com。</div>';
+  });
+});
+</script>
+<div id="chatRoot"></div>
+</body>
+</html>
