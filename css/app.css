@@ -202,3 +202,27 @@ input[type="number"], select { font-size: 15px; }
 .evalbar.warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
 .evalbar.bad { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
 .evalbar a { color: inherit; font-weight: 700; }
+
+/* ---- 客服组件 ---- */
+#chatFab { position: fixed; right: 16px; bottom: 76px; width: 52px; height: 52px; border-radius: 50%;
+  background: #7c3aed; color: #fff; border: none; font-size: 24px; cursor: pointer; z-index: 999;
+  box-shadow: 0 4px 14px rgba(124,58,237,.4); }
+#chatPanel { position: fixed; right: 12px; bottom: 140px; width: min(340px, calc(100vw - 24px)); height: 440px;
+  max-height: 60vh; background: #fff; border-radius: 14px; z-index: 999; display: flex; flex-direction: column;
+  box-shadow: 0 8px 30px rgba(0,0,0,.18); overflow: hidden; border: 1px solid #e9e2f7; }
+#chatPanel[hidden] { display: none; }
+.chat-head { background: #7c3aed; color: #fff; padding: 10px 12px; display: flex;
+  justify-content: space-between; align-items: center; font-size: 15px; }
+.chat-link { background: none; border: none; color: #fff; font-size: 13px; cursor: pointer; margin-left: 8px; }
+.chat-msgs { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: #faf8ff; }
+.msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
+.msg.bot { background: #fff; border: 1px solid #e9e2f7; align-self: flex-start; }
+.msg.user { background: #7c3aed; color: #fff; align-self: flex-end; }
+.chat-chips { display: flex; gap: 6px; padding: 8px 10px; overflow-x: auto; background: #fff; border-top: 1px solid #f0ebfa; }
+.chip { flex: none; border: 1px solid #7c3aed; color: #7c3aed; background: #fff; border-radius: 16px;
+  padding: 5px 12px; font-size: 13px; cursor: pointer; }
+.chat-input { display: flex; border-top: 1px solid #f0ebfa; background: #fff; }
+.chat-input input { flex: 1; border: none; padding: 12px; font-size: 14px; outline: none; }
+.chat-input button { border: none; background: #7c3aed; color: #fff; padding: 0 18px; font-size: 14px; cursor: pointer; }
+.human-card { background: #f5f0ff; border: 1px dashed #7c3aed; border-radius: 10px; padding: 10px; text-align: center; }
+.human-card img { max-width: 150px; margin: 8px auto; display: block; border-radius: 8px; }

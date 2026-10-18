@@ -1,5 +1,5 @@
 /* TransferOS-Global service worker — offline-first precache */
-const CACHE = "tog-v5";
+const CACHE = "tog-v6";
 const ASSETS = [
   "./",
   "./index.html",
@@ -14,6 +14,8 @@ const ASSETS = [
   "./apply.html",
   "./css/app.css",
   "./js/app.js",
+  "./js/chat.js",
+  "./data/faq.json",
   "./manifest.json",
   "./data/deanza-uc_berkeley-p1.json",
   "./data/deanza-uc_berkeley-p2.json",
