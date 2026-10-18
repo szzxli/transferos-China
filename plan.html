@@ -15,6 +15,7 @@
 </div></div>
 
 <div class="page">
+  <div id="evalBanner"></div>
   <div class="hint" style="margin-bottom:10px">💰 还没算过费用？<a href="cost.html">先算费用 →</a></div>
   <div class="card">
     <div class="section-title">🏫 选择你的 CC</div>
@@ -67,6 +68,7 @@
 <script src="js/app.js?v=1"></script>
 <script>
 "use strict";
+renderEvalBanner();
 togNavActive("plan");
 
 var DATA = null, CUR = { school: "deanza", uc: "", major: "", reqs: [] };

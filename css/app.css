@@ -195,3 +195,10 @@ input[type="number"], select { font-size: 15px; }
 .wl.sel { border-color: #7c3aed; background: #faf8ff; }
 .wl-head { display: flex; gap: 10px; align-items: center; cursor: pointer; font-size: 16px; margin-bottom: 6px; }
 .wl-head input { width: 20px; height: 20px; accent-color: #7c3aed; flex: none; }
+
+/* ---- 评估状态栏 ---- */
+.evalbar { border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 14px; }
+.evalbar.ok { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+.evalbar.warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+.evalbar.bad { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+.evalbar a { color: inherit; font-weight: 700; }

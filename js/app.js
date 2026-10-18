@@ -26,3 +26,21 @@ function togNavActive(page) {
     a.classList.toggle("active", a.dataset.page === page);
   });
 }
+/* 评估状态栏：选课/规划/指南页顶部按评估结果高亮定制路径 */
+function renderEvalBanner(slotId) {
+  var slot = document.getElementById(slotId || "evalBanner");
+  if (!slot) return;
+  var e = togGet("eval", null);
+  if (!e || !e.verdict) { slot.innerHTML = ""; return; }
+  var modeTxt = e.mode === "inperson" ? "赴美线下" : "纯线上";
+  var h = "";
+  if (e.verdict === "ok") {
+    h = '<div class="evalbar ok">✅ 评估通过 · ' + esc(modeTxt) + '模式</div>';
+  } else if (e.verdict === "warn") {
+    h = '<div class="evalbar warn">⚠️ 评估有短板' + (e.esl ? ' · 英语未达标，ESL 桥梁约 +$2,840' : '')
+      + ' · <a href="evaluate.html">重新评估</a></div>';
+  } else {
+    h = '<div class="evalbar bad">❌ 评估未通过 · <a href="evaluate.html">查看原因</a></div>';
+  }
+  slot.innerHTML = h;
+}
