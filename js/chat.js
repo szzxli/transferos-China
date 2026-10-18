@@ -31,12 +31,22 @@ function chatInit() {
   document.getElementById("chatText").addEventListener("keydown", function (e) {
     if (e.key === "Enter") chatSend();
   });
-  fetch("data/faq.json?v=1").then(function (r) { return r.json(); }).then(function (j) {
+  var _lang = "zh-CN";
+  try { _lang = localStorage.getItem("tog_lang") || "zh-CN"; } catch (e) {}
+  var _faqFile = _lang === "en" ? "data/faq-en.json?v=1" : _lang === "zh-TW" ? "data/faq-tw.json?v=1" : "data/faq.json?v=1";
+  var _greet = _lang === "en" ? "Hello" : _lang === "zh-TW" ? "你好" : "你好";
+  var _chips = _lang === "en"
+    ? ["How are costs calculated", "Which schools", "What is TAG", "Visa risks", "Materials needed"]
+    : _lang === "zh-TW"
+    ? ["費用怎麼算？", "哪些學校能上？", "TAG是什麼？", "簽證有風險嗎？", "申請要什麼材料？"]
+    : ["费用怎么算？", "哪些学校能上？", "TAG是什么？", "签证有风险吗？", "申请要什么材料？"];
+  fetch(_faqFile).then(function (r) { return r.json(); }).then(function (j) {
     CHAT_FAQ = j; CHAT_READY = true;
-    chatBotSay(faqFind("你好").a);
-    chatChips(["费用怎么算？", "哪些学校能上？", "TAG是什么？", "签证有风险吗？", "申请要什么材料？"]);
+    var g = faqFind(_greet);
+    chatBotSay(g ? g.a : "");
+    chatChips(_chips);
   }).catch(function () {
-    chatBotSay("知识库加载失败，请稍后重试，或直接转人工。");
+    chatBotSay(_lang === "en" ? "Knowledge base failed to load. Retry later or talk to a human." : "知识库加载失败，请稍后重试，或直接转人工。");
   });
 }
 
