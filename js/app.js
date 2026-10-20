@@ -33,7 +33,7 @@ function togNavActive(page) {
     a.classList.toggle("active", a.dataset.page === page);
   });
 }
-/* 评估状态栏：选课/规划/指南页顶部按评估结果高亮定制路径 */
+/* 评估状态栏：选课/规划/指南页顶部按评估结果高亮定制通道 */
 function renderEvalBanner(slotId) {
   var slot = document.getElementById(slotId || "evalBanner");
   if (!slot) return;

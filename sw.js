@@ -1,5 +1,5 @@
 /* TransferOS-China service worker — offline-first precache */
-const CACHE = "tog-v28";
+const CACHE = "tog-v30";
 const ASSETS = [
   "./",
   "./index.html",

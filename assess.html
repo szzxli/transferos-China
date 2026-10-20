@@ -51,7 +51,7 @@
   <!-- Step 4: 英语 -->
   <div class="card" id="step4" hidden>
     <div class="section-title">🗣️ 英语成绩</div>
-    <div class="hint">常见要求线：Duolingo 105 / 托福 61（具体以学校官网为准）。</div>
+    <div class="hint">学校官网录取线：Duolingo 95 / 托福 61（De Anza、Foothill 两校）。本评估用 Duolingo 105 作稳妥规划线：低于它不等于不能录取，但建议预留英语桥梁课的预算。</div>
     <div class="field"><label for="duo">Duolingo 英语测试</label>
       <select id="duo">
         <option value="none">还没考 / 不填</option>
@@ -141,16 +141,16 @@ function evaluateEligibility(a) {
   var engOk = (a.duo === "gte105") || (a.toefl === "gte61");
   var engTried = (a.duo !== "none") || (a.toefl !== "none");
   if (engOk) {
-    dims.push({ key: "eng", st: "ok", label: "英语", msg: "达到常见要求线", fix: "" });
+    dims.push({ key: "eng", st: "ok", label: "英语", msg: "达到稳妥规划线（录取线 Duolingo 95 / 托福 61）", fix: "" });
   } else if (engTried) {
     var cost = ESL_PER_UNIT * ESL_UNITS;
     esl = { cost: cost, quarters: 2 };
-    dims.push({ key: "eng", st: "warn", label: "英语", msg: "低于常见要求线（Duolingo 105 / 托福 61）",
+    dims.push({ key: "eng", st: "warn", label: "英语", msg: "低于稳妥规划线 Duolingo 105（录取线 95 / 托福 61）",
       fix: "两条路：① 刷分到线；② 先修 CC 的 ESL 语言桥梁课——约 2 门×5 学分×$284 = $" + cost.toLocaleString("en-US")
         + "，约 2 个 quarter（估算，实际以入学 placement test 为准）。" });
   } else {
     dims.push({ key: "eng", st: "warn", label: "英语", msg: "还没考",
-      fix: "先去考 Duolingo（出分快、便宜）或托福，目标 Duolingo 105 / 托福 61。" });
+      fix: "先去考 Duolingo（出分快、便宜）或托福：录取线 Duolingo 95 / 托福 61，目标定在 105 更稳妥。" });
   }
   var verdict;
   if (dims.some(function (d) { return d.st === "bad" || d.st === "missing"; })) verdict = "bad";
@@ -200,8 +200,8 @@ function evFinish() {
       + (d.fix ? '<div class="fix">→ ' + esc(d.fix) + '</div>' : '') + '</div></div>';
   }).join("");
   var vHtml;
-  if (r.verdict === "ok") vHtml = '<div class="verdict ok">✅ 路径可行：四个维度都达标，去选课吧。</div>';
-  else if (r.verdict === "warn") vHtml = '<div class="verdict warn">⚠️ 补齐短板：按上面的提示处理，路径即可走通。</div>';
+  if (r.verdict === "ok") vHtml = '<div class="verdict ok">✅ 这条通道走得通：四个维度都达标，去选课吧。</div>';
+  else if (r.verdict === "warn") vHtml = '<div class="verdict warn">⚠️ 补齐短板：按上面的提示处理，这条通道即可走通。</div>';
   else vHtml = '<div class="verdict bad">❌ 暂不符合：有红色硬伤，按提示处理后再来。</div>';
   document.getElementById("resultSlot").innerHTML =
     '<div class="card"><div class="section-title">📊 评估结果</div>' + rows + vHtml + r.modeNote
