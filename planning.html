@@ -204,17 +204,18 @@
       <input type="number" id="cuLiving" value="0" min="0" step="100"></div>
     <div class="field"><label for="cuYears">社区大学就读年数</label>
       <input type="number" id="cuYears" value="2" min="0" step="0.5"></div>
-    <div class="field"><label for="cuUcTuition">加州大学每年学费（美元）</label>
-      <input type="number" id="cuUcTuition" value="48000" min="0" step="500"></div>
+    <div class="field"><label for="cuUcTuition">加州大学每年学费与杂费（美元）</label>
+      <input type="number" id="cuUcTuition" value="56000" min="0" step="500"></div>
     <div class="field"><label for="cuUcLiving">加州大学每年生活费与保险（美元）</label>
-      <input type="number" id="cuUcLiving" value="0" min="0" step="500"></div>
+      <input type="number" id="cuUcLiving" value="28000" min="0" step="500"></div>
     <div class="field"><label for="cuBase">对比基线：四年直读每年总预算（美元，口径要一致）</label>
-      <input type="number" id="cuBase" placeholder="例如 60000" min="0" step="1000"></div>
+      <input type="number" id="cuBase" value="84000" placeholder="例如 84000" min="0" step="1000"></div>
     <table class="nums">
       <tr><td>这条通道总计</td><td id="cuTotal">$113,040</td></tr>
       <tr><td>四年直读总计</td><td id="cuBaseTotal">待填写</td></tr>
     </table>
     <div class="verdict ok" id="cuVerdict">填入对比基线后，这里显示节省比例。</div>
+    <p class="hint">默认值不是猜的：取加州大学官网 2026-27 学年非居民就读成本——洛杉矶分校全年 $84,623（学费与杂费 $55,976 ＋ 生活费与保险 $28,647），欧文分校住校全年约 $85,277。本表取整：学费与杂费 $56,000、生活费与保险 $28,000、直读基线 $84,000／年。确定目标学校后，请按该校官网数字修改。</p>
   </div>
 <script>
 (function () {
@@ -236,7 +237,10 @@
   ["cuRate", "cuUnits", "cuLiving", "cuYears", "cuUcTuition", "cuUcLiving", "cuBase"].forEach(function (id) {
     document.getElementById(id).addEventListener("input", calc);
   });
-  calc();
+  /* fmtUSD 在 js/app.js 中定义（本脚本之后才加载），首次计算须等页面就绪，
+     否则加载时报错、显示停留在写死的旧数字。 */
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", calc);
+  else calc();
 })();
 </script>
 <div class="btn-row" style="margin-top:12px"><button class="btn" onclick="stepNext('planning','cost')">✓ 费用算好了，下一步 →</button></div>
