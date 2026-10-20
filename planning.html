@@ -13,7 +13,7 @@
 <body>
 <div class="topbar"><div class="topbar-in">
   <div class="brand"><span class="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M11 27 20 11l9 16M15 21h10"/></svg></span>选课规划</div>
-  <div class="sub">选课 · 时间线 · 费用 · 成绩单 · 辅导</div>
+  <div class="sub">选课 · 时间线 · 费用 · 成绩单 · 学期陪伴</div>
 </div></div>
 <div class="page">
 <div id="evalBanner"></div>
@@ -292,13 +292,13 @@
   <div class="disclaimer">
     初筛结果仅供参考。国内学分能否转 CC，取决于成绩单认证 + 学校 counselor 的逐门审核，AI 和本工具都不做最终判定。
   </div>
-<div class="btn-row" style="margin-top:12px"><button class="btn ghost" onclick="stepNext('planning','transcript')">下一步：找辅导 →</button></div>
+<div class="btn-row" style="margin-top:12px"><button class="btn ghost" onclick="stepNext('planning','transcript')">下一步：学期陪伴 →</button></div>
 
   </div>
 </section>
 <section class="step" id="step-coach">
   <button type="button" class="step-head" data-step="coach" data-page="planning">
-    <span class="step-num">5</span><span class="step-title">辅导</span><span class="step-check" id="check-coach"></span><span class="step-arrow">▾</span>
+    <span class="step-num">5</span><span class="step-title">学期陪伴（自助版）</span><span class="step-check" id="check-coach"></span><span class="step-arrow">▾</span>
   </button>
   <div class="step-body" id="body-coach" hidden>
 
@@ -310,10 +310,31 @@
     <div class="progress"><div class="progress-in" id="allBar" style="width:0%"></div></div>
     <table class="nums">
       <tr><td>已完成学季</td><td id="doneQ">0 / 0</td></tr>
+      <tr><td>已完成学分</td><td id="doneUnits">0 / 0</td></tr>
       <tr><td>平均 GPA（已完成学季）</td><td id="avgGpa">—</td></tr>
+      <tr><td>距保录计划（TAG）成绩线 3.4</td><td id="tagDist">—</td></tr>
       <tr><td>总体进度</td><td id="allPct">0%</td></tr>
     </table>
-    <div class="hint">GPA 按学季手动填写（0–4.0）；"已完成"的学季才计入平均 GPA。</div>
+    <div class="hint">GPA 按学季手动填写（0–4.0）；"已完成"的学季才计入平均 GPA。保录线的距离为参考值，正式核算以转学申请时学校计算为准。</div>
+    <div id="missedSlot"></div>
+    <div class="btn-row"><button class="btn" id="sumGenBtn" type="button">📋 生成学期小结（可转发给家人）</button></div>
+    <div id="sumOutSlot"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🗓️ 关键节点（通用）</div>
+    <table class="nums">
+      <tr><td>保录计划（TAG）申请</td><td>每年 9 月</td></tr>
+      <tr><td>加州大学转学申请</td><td>每年 11 月 1–30 日</td></tr>
+      <tr><td>加退课截止</td><td>开学后约 2 周（以学校校历为准）</td></tr>
+      <tr><td>期中查成绩</td><td>开学约第 5–6 周，决定是否退课</td></tr>
+      <tr><td>期末对账</td><td>成绩公布后，回到这一页更新</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🤝 真人陪伴版，多什么？</div>
+    <p>自助版是记账和提醒；真人陪伴版在此之上多四件事：开学前逐门复核选课对不对、关键节点提前提醒到人、期中成绩拉分时给出退课判断、每学期一份人工写的对账小结发给家长。有需要，点右下角 💬 客服咨询。</p>
   </div>
 
   <div id="qSlot"></div>
@@ -954,22 +975,56 @@ function save() { togSet("coach", coach); renderSum(); }
 
 function renderSum() {
   if (!track) return;
-  var n = track.plan.length, done = 0, gpas = [];
+  var n = track.plan.length, done = 0, gpas = [], doneU = 0, totU = 0, missed = [], noGpa = 0, lastDone = -1;
   track.plan.forEach(function (q, i) {
+    totU += q.units || 0;
     if (coach.status[i] === "done") {
-      done++;
+      done++; doneU += q.units || 0; lastDone = i;
       var g = parseFloat(coach.gpa[i]);
-      if (!isNaN(g) && g >= 0 && g <= 4) gpas.push(g);
+      if (!isNaN(g) && g >= 0 && g <= 4) gpas.push(g); else noGpa++;
     }
   });
+  track.plan.forEach(function (q, i) {
+    if (i < lastDone && coach.status[i] !== "done") missed.push(i + 1);
+  });
   var pct = n ? Math.round(done / n * 100) : 0;
+  var avg = gpas.length ? gpas.reduce(function (a, b) { return a + b; }, 0) / gpas.length : null;
   document.getElementById("allBar").style.width = pct + "%";
   document.getElementById("doneQ").textContent = done + " / " + n;
+  document.getElementById("doneUnits").textContent = doneU + " / " + totU;
   document.getElementById("allPct").textContent = pct + "%";
-  document.getElementById("avgGpa").textContent = gpas.length
-    ? (gpas.reduce(function (a, b) { return a + b; }, 0) / gpas.length).toFixed(2) : "—";
+  document.getElementById("avgGpa").textContent = avg == null ? "—" : avg.toFixed(2);
+  var td = document.getElementById("tagDist");
+  if (avg == null) { td.textContent = "—"; td.style.color = ""; }
+  else if (avg >= 3.4) { td.textContent = "高于线 " + (avg - 3.4).toFixed(2) + " ✅"; td.style.color = "#16a34a"; }
+  else { td.textContent = "还差 " + (3.4 - avg).toFixed(2) + " ⚠️"; td.style.color = "#dc2626"; }
   document.getElementById("planName").textContent =
     track.meta ? track.meta.major + " · " + (track.pace === "1yr" ? "1 年" : "2 年") : "";
+  var warn = "";
+  if (missed.length) warn += '<div class="alert" style="margin-top:10px">⚠️ 第 ' + missed.join("、") + " 季还没对账，后面的学季却已完成——可能漏修了课，请逐季确认状态。</div>";
+  if (noGpa) warn += '<div class="alert" style="margin-top:10px">⚠️ 有 ' + noGpa + " 个已完成学季还没填 GPA，平均成绩和保录线距离算不准，请补填。</div>";
+  document.getElementById("missedSlot").innerHTML = warn;
+  window.__coachSum = { done: done, n: n, doneU: doneU, totU: totU, avg: avg, pct: pct, missed: missed,
+    major: track.meta ? track.meta.major : "", uc: track.meta ? track.meta.uc : "" };
+}
+
+function genSummary() {
+  var c = window.__coachSum;
+  if (!c) return;
+  var lines = [];
+  lines.push("【学期小结】" + (c.major ? c.major + " · 目标 " + c.uc : ""));
+  lines.push("进度：已完成 " + c.done + "/" + c.n + " 个学季，" + c.doneU + "/" + c.totU + " 学分（" + c.pct + "%）。");
+  if (c.avg == null) lines.push("成绩：已完成学季还没有填 GPA，暂时算不出平均成绩。");
+  else if (c.avg >= 3.4) lines.push("成绩：平均 GPA " + c.avg.toFixed(2) + "，高于保录计划（TAG）3.4 的成绩线 " + (c.avg - 3.4).toFixed(2) + "，保持住。");
+  else lines.push("成绩：平均 GPA " + c.avg.toFixed(2) + "，距保录计划（TAG）3.4 的成绩线还差 " + (3.4 - c.avg).toFixed(2) + "，后续学季要往上拉。");
+  if (c.missed.length) lines.push("注意：第 " + c.missed.join("、") + " 季还没对账，可能漏修课程，需要确认。");
+  lines.push("下一步：按规划修下一学季的课，成绩出来后回来更新这一页。");
+  lines.push("（本小结由 TransferOS-China 学期陪伴自助版生成，数据为手动记录，仅供参考。）");
+  document.getElementById("sumOutSlot").innerHTML =
+    '<div class="field" style="margin-top:10px"><label>小结文本（长按或全选复制，转发给家人）</label>'
+    + '<textarea rows="6" readonly id="sumText">' + lines.join("\n") + "</textarea></div>";
+  var t = document.getElementById("sumText");
+  t.focus(); t.select();
 }
 
 function render() {
@@ -1025,6 +1080,8 @@ function render() {
     });
   });
   renderSum();
+  var gb = document.getElementById("sumGenBtn");
+  if (gb) gb.addEventListener("click", genSummary);
 }
 
 render();
