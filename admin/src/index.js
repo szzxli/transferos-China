@@ -147,7 +147,10 @@ const DDL = [
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady || !db) return;
-  for (const sql of DDL) await db.exec(sql);
+  for (let i = 0; i < DDL.length; i++) {
+    try { await db.prepare(DDL[i]).run(); }
+    catch (e) { throw new Error("ensureSchema DDL#" + i + ": " + (e && e.message ? e.message : String(e))); }
+  }
   schemaReady = true;
 }
 function nowIso() { return new Date().toISOString(); }
@@ -1291,7 +1294,7 @@ export default {
       if (p.startsWith("/api/")) {
         if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(req) });
         if (!env.DB) return jsonResp(req, { ok: false, error: "db not configured" }, 500);
-        return handleApi(req, env, url);
+        return await handleApi(req, env, url);
       }
       if (p === "/admin" || p.startsWith("/admin/")) {
         if (!env.ADMIN_KEY) {
@@ -1305,7 +1308,7 @@ export default {
           });
         }
         await ensureSchema(env.DB);
-        return handleAdmin(req, env, url);
+        return await handleAdmin(req, env, url);
       }
       return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
     } catch (e) {
