@@ -6,13 +6,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>选课规划 · TransferOS-China</title>
-<link rel="stylesheet" href="css/app.css?v=5">
+<link rel="stylesheet" href="css/app.css?v=7">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#7c3aed">
+<meta name="theme-color" content="#132625">
 </head>
 <body>
 <div class="topbar"><div class="topbar-in">
-  <div class="brand">🗺️ 选课规划</div>
+  <div class="brand"><span class="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M11 27 20 11l9 16M15 21h10"/></svg></span>选课规划</div>
   <div class="sub">选课 · 时间线 · 费用 · 成绩单 · 辅导</div>
 </div></div>
 <div class="page">
@@ -24,7 +24,7 @@
   <div class="step-body" id="body-plan" hidden>
 
 
-  <div class="hint" style="margin-bottom:10px">💰 还没算过费用？<a href="planning.html#sec-cost">先算费用 →</a></div>
+  <div class="hint" style="margin-bottom:10px">💰 还没算过费用？<a href="#step-cost">先算费用 →</a></div>
   <div class="card">
     <div class="section-title">🏫 选择你的 CC</div>
     <label class="radio-card"><input type="radio" name="school" value="deanza" checked> De Anza College</label>
@@ -193,6 +193,52 @@
     </div>
     <a class="btn mt" href="transfer.html#sec-guide">下一步：入学指南 →</a>
   </div>
+  <div class="card">
+    <div class="section-title">🧮 自己填一版</div>
+    <div class="hint">预设数字不合你家的情况时，按你查到的学校官网数字自己填。对比基线不填，就不显示节省比例。</div>
+    <div class="field"><label for="cuRate">社区大学每学分学费（美元）</label>
+      <input type="number" id="cuRate" value="284" min="0" step="1"></div>
+    <div class="field"><label for="cuUnits">社区大学总学分</label>
+      <input type="number" id="cuUnits" value="60" min="0" step="1"></div>
+    <div class="field"><label for="cuLiving">社区大学阶段每年生活费与保险（美元；线上就读可填 0）</label>
+      <input type="number" id="cuLiving" value="0" min="0" step="100"></div>
+    <div class="field"><label for="cuYears">社区大学就读年数</label>
+      <input type="number" id="cuYears" value="2" min="0" step="0.5"></div>
+    <div class="field"><label for="cuUcTuition">加州大学每年学费（美元）</label>
+      <input type="number" id="cuUcTuition" value="48000" min="0" step="500"></div>
+    <div class="field"><label for="cuUcLiving">加州大学每年生活费与保险（美元）</label>
+      <input type="number" id="cuUcLiving" value="0" min="0" step="500"></div>
+    <div class="field"><label for="cuBase">对比基线：四年直读每年总预算（美元，口径要一致）</label>
+      <input type="number" id="cuBase" placeholder="例如 60000" min="0" step="1000"></div>
+    <table class="nums">
+      <tr><td>这条通道总计</td><td id="cuTotal">$113,040</td></tr>
+      <tr><td>四年直读总计</td><td id="cuBaseTotal">待填写</td></tr>
+    </table>
+    <div class="verdict ok" id="cuVerdict">填入对比基线后，这里显示节省比例。</div>
+  </div>
+<script>
+(function () {
+  function n(id) { var v = parseFloat(document.getElementById(id).value); return (isNaN(v) || v < 0) ? 0 : v; }
+  function calc() {
+    var total = n("cuRate") * n("cuUnits") + n("cuLiving") * n("cuYears") + (n("cuUcTuition") + n("cuUcLiving")) * 2;
+    document.getElementById("cuTotal").textContent = fmtUSD(total);
+    var base = n("cuBase") * 4;
+    var bt = document.getElementById("cuBaseTotal"), vd = document.getElementById("cuVerdict");
+    if (base > 0) {
+      bt.textContent = fmtUSD(base);
+      var pct = Math.round((1 - total / base) * 100);
+      vd.innerHTML = "🆚 相比四年直读，节省约 <span class=\"big-num\">" + pct + "%</span>（按你填的数字测算）";
+    } else {
+      bt.textContent = "待填写";
+      vd.textContent = "填入对比基线后，这里显示节省比例。";
+    }
+  }
+  ["cuRate", "cuUnits", "cuLiving", "cuYears", "cuUcTuition", "cuUcLiving", "cuBase"].forEach(function (id) {
+    document.getElementById(id).addEventListener("input", calc);
+  });
+  calc();
+})();
+</script>
 <div class="btn-row" style="margin-top:12px"><button class="btn" onclick="stepNext('planning','cost')">✓ 费用算好了，下一步 →</button></div>
 
   </div>
