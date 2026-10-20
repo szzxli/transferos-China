@@ -6,13 +6,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>评估选校 · TransferOS-China</title>
-<link rel="stylesheet" href="css/app.css?v=5">
+<link rel="stylesheet" href="css/app.css?v=7">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#7c3aed">
+<meta name="theme-color" content="#132625">
 </head>
 <body>
 <div class="topbar"><div class="topbar-in">
-  <div class="brand">📝 评估选校</div>
+  <div class="brand"><span class="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M11 27 20 11l9 16M15 21h10"/></svg></span>评估选校</div>
   <div class="sub">4维评估 · 12所白名单CC · 纯本地判定</div>
 </div></div>
 <div class="page">
@@ -88,6 +88,7 @@
   </div>
 
   <div id="wlList"></div>
+  <div id="wlCompare"></div>
 
   <div class="card">
     <div class="section-title">📝 下一步</div>
@@ -305,15 +306,43 @@ function render() {
       + '<div class="btn-row"><a class="btn ghost sm" href="' + s.applyUrl + '" target="_blank" rel="noopener">学校申请页 ↗</a></div>';
     box.appendChild(div);
   });
+  renderCompare(sel);
   box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
     cb.addEventListener("change", function () {
       var cur = getSel(), id = cb.getAttribute("data-id");
       if (cb.checked && cur.indexOf(id) < 0) cur.push(id);
       if (!cb.checked) cur = cur.filter(function (x) { return x !== id; });
       togSet("wl_sel", cur);
+      renderCompare(cur);
       cb.closest(".wl").classList.toggle("sel", cb.checked);
     });
   });
+}
+function renderCompare(sel) {
+  var box = document.getElementById("wlCompare");
+  if (!box) return;
+  if (!sel || sel.length === 0) { box.innerHTML = ""; return; }
+  if (sel.length === 1) {
+    box.innerHTML = '<div class="hint" style="margin:10px 2px">已选 1 所，再勾一所就能并排对比。</div>';
+    return;
+  }
+  var picks = sel.slice(0, 3).map(function (id) {
+    return SCHOOLS.find(function (x) { return x.id === id; });
+  }).filter(Boolean);
+  var h = '<div class="card cmp"><div class="section-title">🔍 并排对比（' + picks.length + ' 所）</div>';
+  if (sel.length > 3) h += '<p class="hint">对比最多 3 所，按勾选顺序取前 3 所。</p>';
+  h += '<div class="cmp-scroll"><table class="cmp-table"><tr><th></th>'
+    + picks.map(function (x) { return '<th>' + esc(x.zh) + '</th>'; }).join("") + '</tr>';
+  h += '<tr><td class="cmp-k">城市</td>'
+    + picks.map(function (x) { return '<td>' + esc(x.city) + '</td>'; }).join("") + '</tr>';
+  h += '<tr><td class="cmp-k">非居民学费</td>'
+    + picks.map(function (x) { return '<td><b>' + esc(x.tuition) + '</b><br><span class="hint">' + esc(x.tuitionNote || "") + '</span></td>'; }).join("") + '</tr>';
+  h += '<tr><td class="cmp-k">线上政策</td>'
+    + picks.map(function (x) { return '<td>' + esc(x.policy) + '</td>'; }).join("") + '</tr>';
+  h += '<tr><td class="cmp-k">申请页</td>'
+    + picks.map(function (x) { return '<td><a href="' + x.applyUrl + '" target="_blank" rel="noopener">学校申请页 ↗</a></td>'; }).join("") + '</tr>';
+  h += '</table></div></div>';
+  box.innerHTML = h;
 }
 render();
 
