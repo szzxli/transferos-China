@@ -1,0 +1,11 @@
+name = "transferos-admin"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "transferos-admin"
+# 注意：如果部署时提示找不到 D1 数据库，请先去 Cloudflare 后台
+# Workers & Pages -> D1 里新建一个名为 transferos-admin 的数据库，
+# 然后把它的 database_id 粘到这里（取消下一行的注释）：
+# database_id = "请粘贴你的数据库 ID"

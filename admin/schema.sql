@@ -1,0 +1,42 @@
+-- TransferOS-China 业务管理后台 · D1 初始化脚本
+-- 用法：在 Cloudflare 后台打开 D1 数据库 transferos-admin 的 Console，
+-- 把本文件内容全部粘贴进去执行一次即可（表结构与种子数据）。
+-- Worker 在首次收到请求时也会自动建表（CREATE TABLE IF NOT EXISTS），
+-- 所以即使不执行本文件，表也会自动创建；本文件主要作用是导入种子代理数据。
+
+CREATE TABLE IF NOT EXISTS agents(
+  code TEXT PRIMARY KEY, name TEXT, region TEXT,
+  kind TEXT, active INTEGER DEFAULT 1, created_at TEXT);
+
+CREATE TABLE IF NOT EXISTS leads(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, wechat TEXT, phone TEXT,
+  source TEXT, ref TEXT, eval_summary TEXT, status TEXT DEFAULT 'new',
+  note TEXT, created_at TEXT, updated_at TEXT);
+
+CREATE TABLE IF NOT EXISTS visits(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ref TEXT, page TEXT, day TEXT,
+  count INTEGER DEFAULT 0, UNIQUE(ref, page, day));
+
+CREATE TABLE IF NOT EXISTS orders(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, customer TEXT,
+  package TEXT, amount INTEGER DEFAULT 0, stage TEXT, ref TEXT,
+  is_renewal INTEGER DEFAULT 0, commission_rate INTEGER DEFAULT 30,
+  commission INTEGER DEFAULT 0, paid_status TEXT DEFAULT 'unpaid',
+  settle_status TEXT DEFAULT 'unsettled', created_at TEXT);
+
+CREATE TABLE IF NOT EXISTS faqs(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, lang TEXT DEFAULT 'zh-CN',
+  q TEXT, a TEXT, sort INTEGER DEFAULT 0, active INTEGER DEFAULT 1);
+
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
+
+-- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）
+INSERT OR IGNORE INTO agents(code, name, region, kind, active, created_at) VALUES
+  ('GD001', '广东', '广东', 'agent', 1, datetime('now')),
+  ('MO001', '澳门', '澳门', 'agent', 1, datetime('now')),
+  ('CD001', '成都', '成都', 'agent', 1, datetime('now')),
+  ('AH001', '安徽', '安徽', 'agent', 1, datetime('now')),
+  ('WXQ01', '社群', '线上', 'channel', 1, datetime('now')),
+  ('VDY01', '自营视频', '线上', 'channel', 1, datetime('now'));
+
+INSERT OR IGNORE INTO settings(key, value) VALUES('announcement', '');
