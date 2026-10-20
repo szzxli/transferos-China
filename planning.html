@@ -169,10 +169,11 @@
   <div class="card">
     <div class="section-title">🎓 UC 阶段（2 年，非居民）</div>
     <table class="nums">
-      <tr><td>UC 非居民学费（估算）</td><td>$48,000 / 年</td></tr>
-      <tr><td>UC 阶段小计（2 年）</td><td id="ucSub">$96,000</td></tr>
+      <tr><td>学费与杂费（非居民）</td><td>$56,000 / 年</td></tr>
+      <tr><td>生活费与保险（住校）</td><td>$28,000 / 年</td></tr>
+      <tr><td>UC 阶段小计（2 年）</td><td id="ucSub">$168,000</td></tr>
     </table>
-    <div class="hint">UC 非居民学费各校略有差异，此处取整估算。</div>
+    <div class="hint">取加州大学官网 2026-27 学年非居民就读成本的平均数取整（洛杉矶分校全年 $84,623、欧文分校住校约 $85,277）；各校略有差异。</div>
   </div>
 
   <div class="card">
@@ -180,22 +181,22 @@
     <table class="nums">
       <tr><td>CC 学费小计</td><td id="ccSub">$17,040</td></tr>
       <tr id="livingRow" hidden><td>CC 阶段生活费小计</td><td id="livingRowVal">$33,930</td></tr>
-      <tr><td>UC 学费小计</td><td>$96,000</td></tr>
-      <tr class="total"><td><b>合计</b></td><td id="total">$113,040</td></tr>
+      <tr><td>UC 阶段小计</td><td>$168,000</td></tr>
+      <tr class="total"><td><b>合计</b></td><td id="total">$185,040</td></tr>
     </table>
     <div class="verdict ok" style="margin-top:12px">
-      🆚 传统四年美国留学约 $240,000<br>
-      <span class="big-num" id="savePct">48%</span> 费用节省（诚实测算）
+      🆚 传统四年美国留学约 $336,000<br>
+      <span class="big-num" id="savePct">45%</span> 费用节省（诚实测算）
     </div>
     <div class="footnote">
-      学费每年调整，此为 2026-27 口径估算。纯线上模式仅含学费；赴美模式另含 De Anza 官网 F-1 生活费估算（不含往返机票等杂费）。<br>
-      两所学校单价均为官网已核实数字；我们从不编数字。
+      学费每年调整，此为 2026-27 口径估算。基线 = 四年直读非居民成本 $84,000／年 × 4 年。线上模式的社区大学阶段按居家线上计（生活费 0）；赴美模式另含 De Anza 官网 F-1 生活费估算（不含往返机票等杂费）；两个模式的加州大学阶段都按住校成本计。<br>
+      所有单价均为官网已核实数字；我们从不编数字。
     </div>
     <a class="btn mt" href="transfer.html#sec-guide">下一步：入学指南 →</a>
   </div>
   <div class="card">
     <div class="section-title">🧮 自己填一版</div>
-    <div class="hint">预设数字不合你家的情况时，按你查到的学校官网数字自己填。对比基线不填，就不显示节省比例。</div>
+    <div class="hint">预设用的是官网平均数，已全部预填好；你家情况不同，就按目标学校官网数字改，改任何一项都会实时重算。</div>
     <div class="field"><label for="cuRate">社区大学每学分学费（美元）</label>
       <input type="number" id="cuRate" value="284" min="0" step="1"></div>
     <div class="field"><label for="cuUnits">社区大学总学分</label>
@@ -211,8 +212,8 @@
     <div class="field"><label for="cuBase">对比基线：四年直读每年总预算（美元，口径要一致）</label>
       <input type="number" id="cuBase" value="84000" placeholder="例如 84000" min="0" step="1000"></div>
     <table class="nums">
-      <tr><td>这条通道总计</td><td id="cuTotal">$113,040</td></tr>
-      <tr><td>四年直读总计</td><td id="cuBaseTotal">待填写</td></tr>
+      <tr><td>这条通道总计</td><td id="cuTotal">$185,040</td></tr>
+      <tr><td>四年直读总计</td><td id="cuBaseTotal">$336,000</td></tr>
     </table>
     <div class="verdict ok" id="cuVerdict">填入对比基线后，这里显示节省比例。</div>
     <p class="hint">默认值不是猜的：取加州大学官网 2026-27 学年非居民就读成本——洛杉矶分校全年 $84,623（学费与杂费 $55,976 ＋ 生活费与保险 $28,647），欧文分校住校全年约 $85,277。本表取整：学费与杂费 $56,000、生活费与保险 $28,000、直读基线 $84,000／年。确定目标学校后，请按该校官网数字修改。</p>
@@ -746,12 +747,12 @@ useSavedPlan();
 togNavActive("planning");
 
 /* ---- 纯逻辑：可在 node 里单元测试 ---- */
-var UC_YEAR = 48000, UC_YEARS = 2, TRADITIONAL = 240000;
+var UC_YEAR = 56000, UC_LIVING_YEAR = 28000, UC_YEARS = 2, TRADITIONAL = 336000;
 var LIVING_YEAR = 16965; /* 1665+1500+10300+3500, De Anza F-1 官网估算 */
 function calcCost(perUnit, units, mode) {
   var ccSub = perUnit * units;
   var living = (mode === "inperson") ? LIVING_YEAR * 2 : 0;
-  var ucSub = UC_YEAR * UC_YEARS;
+  var ucSub = (UC_YEAR + UC_LIVING_YEAR) * UC_YEARS;
   var total = ccSub + living + ucSub;
   var savePct = Math.round((1 - total / TRADITIONAL) * 100);
   return { ccSub: ccSub, living: living, ucSub: ucSub, total: total, savePct: savePct };
