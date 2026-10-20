@@ -1,4 +1,4 @@
-/* TransferOS-China v0.1 共享工具 — 纯前端，无后端调用 */
+/* TransferOS-China v0.1 共享工具 — 前端工具 + 匿名访问计数上报 */
 "use strict";
 
 var LS_PREFIX = "tog_";
@@ -17,6 +17,22 @@ function togSet(key, val) {
   try {
     var qm = /[?&]ref=([A-Za-z0-9_-]{1,24})/.exec(location.search || "");
     if (qm) togSet("ref", qm[1]);
+  } catch (e) {}
+})();
+/* 匿名访问计数：页面加载时向管理后台上报一次（仅归因码 + 页面名，失败静默，不影响页面功能） */
+var TOG_API_BASE = "https://transferos-admin.szzxli711.workers.dev";
+(function () {
+  try {
+    var ref = togGet("ref", null);
+    if (typeof ref !== "string" || !/^[A-Za-z0-9_-]{1,24}$/.test(ref)) ref = "DIRECT";
+    var seg = (location.pathname || "/").split("/").pop() || "";
+    var page = seg.replace(/\.html$/i, "") || "index";
+    fetch(TOG_API_BASE + "/api/ping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ref: ref, page: page }),
+      keepalive: true
+    }).catch(function () {});
   } catch (e) {}
 })();
 function esc(s) {
