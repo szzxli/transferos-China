@@ -86,8 +86,8 @@
   <div class="card" id="tkPickCard" hidden>
     <div class="section-title">🎯 重新选择</div>
     <div class="field"><label>学校</label>
-      <label class="radio-card"><input type="radio" name="school" value="deanza" checked> De Anza College</label>
-      <label class="radio-card"><input type="radio" name="school" value="foothill"> Foothill College</label>
+      <label class="radio-card"><input type="radio" name="tkSchool" value="deanza" checked> De Anza College</label>
+      <label class="radio-card"><input type="radio" name="tkSchool" value="foothill"> Foothill College</label>
     </div>
     <div class="field"><label for="ucSel">目标 UC</label><select id="tkUcSel"></select></div>
     <div class="field"><label for="majorSel">专业</label><select id="tkMajorSel"></select></div>
@@ -576,6 +576,7 @@ if (typeof module !== "undefined") { module.exports = { buildSchedule: buildSche
 /* ================= 页面交互 ================= */
 
 var TK_DATA = null, CUR = { school: "deanza", uc: "", major: "", reqs: [] };
+var TK_FOR = null; /* TK_DATA 实际装载的 (school, uc)，查找前必须对账 */
 
 function selVal(name) {
   var el = document.querySelector('input[name="' + name + '"]:checked');
@@ -611,6 +612,7 @@ function loadData(school, cb) {
   });
 }
 function loadMajors(cb) {
+  var forUc = CUR.uc, forSchool = TK_DATA.school;
   var n = TK_DATA.parts[CUR.uc], slug = TK_UC_SLUGS[CUR.uc];
   var ps = [];
   for (var i = 1; i <= n; i++) {
@@ -620,6 +622,7 @@ function loadMajors(cb) {
     var majors = [];
     parts.forEach(function (p) { majors = majors.concat(p.majors); });
     TK_DATA.majors = majors;
+    TK_FOR = { school: forSchool, uc: forUc };
     buildMajors(); if (cb) cb();
   }).catch(function () {
     document.getElementById("tkLoadHint").textContent = "⚠️ 专业数据加载失败，请重试。";
@@ -639,10 +642,10 @@ function findReqs(school, uc, major, cb) {
     for (var i = 0; i < list.length; i++) if (list[i].major === major) prog = list[i];
     cb(prog ? { reqs: prog.reqs, year: prog.year } : null);
   };
-  var needReload = !TK_DATA || CUR.school !== school || TK_DATA.majors.length === 0 || CUR.uc !== uc;
-  if (!needReload) { done(); return; }
+  var fresh = TK_DATA && TK_FOR && TK_FOR.school === school && TK_FOR.uc === uc && (TK_DATA.majors || []).length > 0;
+  if (fresh) { done(); return; }
   var afterIdx = function () { CUR.uc = uc; loadMajors(done); };
-  if (!TK_DATA || CUR.school !== school) loadData(school, afterIdx);
+  if (!TK_DATA || !TK_FOR || TK_FOR.school !== school) loadData(school, afterIdx);
   else afterIdx();
 }
 
@@ -653,7 +656,7 @@ document.querySelectorAll('input[name="src"]').forEach(function (el) {
     else if (el.value === "plan") useSavedPlan();
   });
 });
-document.querySelectorAll('input[name="school"]').forEach(function (el) {
+document.querySelectorAll('input[name="tkSchool"]').forEach(function (el) {
   el.addEventListener("change", function () { loadData(el.value); });
 });
 document.getElementById("tkUcSel").addEventListener("change", function (e) { CUR.uc = e.target.value; loadMajors(); });
@@ -685,9 +688,10 @@ document.getElementById("tkGenBtn").addEventListener("click", function () {
       go(r && r.reqs, { school: p.school, uc: p.uc, major: p.major, year: r && r.year });
     });
   } else {
-    var school = selVal("school");
-    findReqs(school, CUR.uc, CUR.major, function (r) {
-      go(r && r.reqs, { school: school, uc: CUR.uc, major: CUR.major, year: r && r.year });
+    var school = selVal("tkSchool");
+    var tkUc = document.getElementById("tkUcSel").value, tkMajor = document.getElementById("tkMajorSel").value;
+    findReqs(school, tkUc, tkMajor, function (r) {
+      go(r && r.reqs, { school: school, uc: tkUc, major: tkMajor, year: r && r.year });
     });
   }
 });
