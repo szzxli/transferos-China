@@ -45,7 +45,7 @@
   <div class="card" id="listCard" hidden>
     <div class="section-title">📚 转学课程清单 <span class="hint" id="covHint"></span></div>
     <div class="progress"><div class="progress-in" id="covBar" style="width:0%"></div></div>
-    <div class="hint">勾选你已修 / 计划修的课。"任选其一"组勾一门即算满足该项要求。</div>
+    <div class="hint">勾选你已修 / 计划修的课。同一个要求有多个备选时，勾一门即可（同名要求已合并）；带「荣誉」标记的是同一门课的荣誉版，满足的要求相同，内容更深。微积分等系列课通常要按顺序整组修完。</div>
     <div id="reqList"></div>
     <div class="btn-row">
       <button class="btn" id="saveBtn">💾 保存我的选课计划</button>
@@ -404,25 +404,46 @@ function buildMajorSel() {
   else { document.getElementById("listCard").hidden = true; }
 }
 
+function buildGroups(reqs) {
+  /* ASSIST 原始报告会把同一个 UC 目标拆成多组（组间为 Or，任选一组）；
+     合并同名目标为一张卡，备选并池，勾一门即满足。无目标名的通识要求不合并。 */
+  var groups = [], byKey = {};
+  reqs.forEach(function (rq, ri) {
+    var key = rq.uc_course ? ("T:" + rq.uc_course) : ("S:" + ri);
+    var g = byKey[key];
+    if (!g) {
+      g = { target: rq.uc_course || "", title: rq.uc_title || "", options: [], seen: {} };
+      byKey[key] = g; groups.push(g);
+    }
+    if (!g.title && rq.uc_title) g.title = rq.uc_title;
+    rq.options.forEach(function (o) {
+      if (g.seen[o.code]) return;
+      g.seen[o.code] = 1; g.options.push(o);
+    });
+  });
+  return groups;
+}
+
 function showReqs() {
   var list = DATA.majors || [];
   var prog = null;
   for (var i = 0; i < list.length; i++) if (list[i].major === CUR.major) prog = list[i];
   if (!prog) return;
-  CUR.reqs = prog.reqs; checked = {};
-  document.getElementById("yearHint").textContent = "协议学年：" + prog.year + " · 共 " + prog.reqs.length + " 项要求";
+  CUR.reqs = prog.reqs; CUR.groups = buildGroups(prog.reqs); checked = {};
+  document.getElementById("yearHint").textContent = "协议学年：" + prog.year + " · 共 " + CUR.groups.length + " 项要求";
   var box = document.getElementById("reqList");
   box.innerHTML = "";
-  prog.reqs.forEach(function (rq, ri) {
+  CUR.groups.forEach(function (g, gi) {
     var div = document.createElement("div");
     div.className = "req";
-    var head = '<div class="req-head"><b>' + esc(rq.uc_course || "通识/选修要求") + '</b>'
-      + (rq.uc_title ? ' <span class="hint">' + esc(rq.uc_title) + '</span>' : '')
-      + (rq.options.length > 1 && rq.logic === "Or" ? ' <span class="tag">任选其一</span>' : '') + '</div>';
-    var opts = rq.options.map(function (o) {
-      var id = "rq" + ri + "_" + o.code.replace(/\W/g, "");
-      return '<label class="opt"><input type="checkbox" data-ri="' + ri + '" value="' + esc(o.code) + '" id="' + id + '">'
-        + '<span><b>' + esc(o.code) + '</b> ' + esc(o.title)
+    var head = '<div class="req-head"><b>' + esc(g.target || "通识/选修要求") + '</b>'
+      + (g.title ? ' <span class="hint">' + esc(g.title) + '</span>' : '')
+      + (g.options.length > 1 ? ' <span class="tag">任选其一</span>' : '') + '</div>';
+    var opts = g.options.map(function (o) {
+      var id = "rq" + gi + "_" + o.code.replace(/\W/g, "");
+      var hon = /HONORS/i.test(o.title || "") ? ' <span class="tag tag-h">荣誉</span>' : '';
+      return '<label class="opt"><input type="checkbox" data-gi="' + gi + '" value="' + esc(o.code) + '" id="' + id + '">'
+        + '<span><b>' + esc(o.code) + '</b> ' + esc(o.title) + hon
         + (o.units ? ' <span class="hint">' + o.units + ' 学分</span>' : '') + '</span></label>';
     }).join("");
     div.innerHTML = head + opts;
@@ -430,8 +451,11 @@ function showReqs() {
   });
   box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
     cb.addEventListener("change", function () {
-      var ri = cb.getAttribute("data-ri");
-      if (cb.checked) checked[ri] = cb.value; else delete checked[ri];
+      var gi = cb.getAttribute("data-gi");
+      if (cb.checked) {
+        box.querySelectorAll('input[data-gi="' + gi + '"]').forEach(function (x) { if (x !== cb) x.checked = false; });
+        checked[gi] = cb.value;
+      } else if (checked[gi] === cb.value) delete checked[gi];
       updateCov();
     });
   });
@@ -441,7 +465,7 @@ function showReqs() {
 }
 
 function updateCov() {
-  var total = CUR.reqs.length, done = Object.keys(checked).length;
+  var total = (CUR.groups || CUR.reqs).length, done = Object.keys(checked).length;
   var pct = total ? Math.round(done / total * 100) : 0;
   document.getElementById("covBar").style.width = pct + "%";
   document.getElementById("covHint").textContent = done + " / " + total + "（" + pct + "%）";
@@ -453,13 +477,13 @@ document.getElementById("saveBtn").addEventListener("click", function () {
   var done = Object.keys(checked).length;
   plans.unshift({
     school: CUR.school, uc: CUR.uc, major: CUR.major,
-    done: done, total: CUR.reqs.length,
+    done: done, total: (CUR.groups || CUR.reqs).length,
     courses: Object.keys(checked).map(function (ri) { return checked[ri]; }),
     ts: Date.now()
   });
   togSet("plans", plans.slice(0, 20));
   renderSaved();
-  alert("已保存： " + CUR.major + "（" + done + "/" + CUR.reqs.length + "）");
+  alert("已保存： " + CUR.major + "（" + done + "/" + (CUR.groups || CUR.reqs).length + "）");
 });
 document.getElementById("clearBtn").addEventListener("click", function () {
   checked = {};

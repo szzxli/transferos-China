@@ -326,3 +326,5 @@ input[type="number"], select { font-size: 15px; }
 .fit-row p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
 .cta-band { background: linear-gradient(150deg, #132625, #1d5c47); color: #fff; border-radius: 20px; padding: 24px 20px; margin: 20px 0 14px; }
 .cta-band h2 { font-family: "Noto Serif SC", "Songti SC", serif; font-size: 26px; line-height: 1.4; margin: 10px 0 18px; font-weight: 900; }
+
+.tag-h { background: #f0e3ba; color: #6b5510; }
