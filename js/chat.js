@@ -56,10 +56,13 @@ function chatInit() {
   function _apiKeys(q) {
     var clean = String(q || "").replace(/[？?！!。．·、,，:：;；""''「」()（）]/g, " ");
     var parts = clean.split(/\s+/).filter(function (s) { return s.length >= 2; });
-    var keys = parts.slice();
+    var seen = {}, keys = [];
+    function add(k) { if (k && !seen[k]) { seen[k] = 1; keys.push(k); } }
+    parts.forEach(add);
     var whole = clean.replace(/\s+/g, "");
-    if (whole.length >= 2) keys.push(whole);
-    return keys.slice(0, 8);
+    if (whole.length >= 2) add(whole);
+    for (var i = 0; i + 1 < whole.length && keys.length < 14; i++) add(whole.substr(i, 2));
+    return keys.slice(0, 14);
   }
   if (CHAT_CONFIG.apiBase) {
     fetch(CHAT_CONFIG.apiBase + "/api/faq?lang=" + encodeURIComponent(_lang))
