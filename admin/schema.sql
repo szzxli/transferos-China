@@ -30,6 +30,29 @@ CREATE TABLE IF NOT EXISTS faqs(
 
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
 
+-- ===== v2 新增表（无种子数据）=====
+CREATE TABLE IF NOT EXISTS students(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, order_id INTEGER,
+  name TEXT, package TEXT, stage TEXT DEFAULT 'diag',
+  stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT);
+
+CREATE TABLE IF NOT EXISTS content_items(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
+  pub_date TEXT, ref TEXT, type TEXT, created_at TEXT);
+
+CREATE TABLE IF NOT EXISTS content_metrics(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, item_id INTEGER, day TEXT,
+  views INTEGER DEFAULT 0, consults INTEGER DEFAULT 0, leads INTEGER DEFAULT 0);
+
+CREATE TABLE IF NOT EXISTS tasks(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, owner TEXT,
+  due TEXT, status TEXT DEFAULT 'todo', note TEXT, created_at TEXT, updated_at TEXT);
+
+CREATE TABLE IF NOT EXISTS staff(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, role TEXT,
+  contact TEXT, start_date TEXT, status TEXT DEFAULT 'active',
+  note TEXT, created_at TEXT);
+
 -- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）
 INSERT OR IGNORE INTO agents(code, name, region, kind, active, created_at) VALUES
   ('GD001', '广东', '广东', 'agent', 1, datetime('now')),
