@@ -187,6 +187,33 @@ async function handleApi(req, env, url) {
     return jsonResp(req, (rows.results || []).map((f) => ({ id: f.id, lang: f.lang, q: f.q, a: f.a, sort: f.sort })));
   }
 
+  if (p === "/api/admin/summary") {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    const token = String(req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (!env.LEAD_API_TOKEN || token !== env.LEAD_API_TOKEN) return jsonResp(req, { ok: false, error: "unauthorized" }, 401);
+    await ensureSchema(db);
+    const since7 = new Date(Date.now() - 7 * 864e5).toISOString();
+    const byStatus = await db.prepare(`SELECT status, COUNT(*) AS n FROM leads GROUP BY status`).all();
+    const newLeads = await db.prepare(
+      `SELECT name, source, ref, created_at FROM leads WHERE created_at >= ? ORDER BY created_at DESC LIMIT 50`
+    ).bind(since7).all();
+    const stale = await db.prepare(
+      `SELECT name, status, updated_at FROM leads WHERE status IN ('new','contacted') AND updated_at < ? ORDER BY updated_at ASC LIMIT 50`
+    ).bind(since7).all();
+    const visitsToday = await db.prepare(`SELECT COALESCE(SUM(count),0) AS n FROM visits WHERE day = ?`).bind(todayStr()).first();
+    const unsettled = await db.prepare(
+      `SELECT COALESCE(SUM(commission),0) AS cents FROM orders WHERE settle_status = 'unsettled'`
+    ).first();
+    return jsonResp(req, {
+      ok: true,
+      leads_by_status: (byStatus.results || []).map((r) => ({ status: r.status, n: r.n })),
+      new_leads_7d: newLeads.results || [],
+      stale_leads: stale.results || [],
+      visits_today: visitsToday ? visitsToday.n : 0,
+      unsettled_commission_cents: unsettled ? unsettled.cents : 0,
+    });
+  }
+
   return jsonResp(req, { ok: false, error: "not found" }, 404);
 }
 

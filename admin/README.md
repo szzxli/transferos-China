@@ -27,6 +27,7 @@
 
 1. `transferos-admin` Worker → **Settings** → **Variables and Secrets**
 2. **Add** 一条 Secret：变量名 **`ADMIN_KEY`**，值就是你自己定的后台登录密码（比如一串字母数字，越长越好）
+3. 再 **Add** 一条 Secret：变量名 **`LEAD_API_TOKEN`**，值是另一串随机字符（线索管家 bot 专用，只读接口凭证，跟登录密码不要用同一串；设好后把这串发给 Noor 配置提醒）
 3. 保存后去 **Deployments** 点 **Redeploy**（或等下一次自动部署）让密码生效
 
 ### 4. 打开后台
