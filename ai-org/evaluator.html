@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>企业评估 · AI 数字员工评估器</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="siteNav"><div class="navIn"><a class="brand" href="index.html">AI 数字员工业务</a><nav><a href="index.html">首页</a><a href="evaluator.html" class="active">企业评估</a><a href="guide.html">个人指南</a><a href="services.html">服务与标准</a><a href="partner.html">合作入口</a></nav></div></header>
+<div class="wrap">
+<header class="top">
+  <h1><span class="en">AI WORKFORCE EVALUATOR</span>AI 数字员工评估器</h1>
+  <p class="sub">企业版：输入企业常规信息，估算 AI 数字化经济效益区间（含组织就绪度与磨合成本），并生成组织实施结构方案。个人版：估算个人使用 AI 智能体的省时与净效益。所有数字由确定性公式计算，系数来源逐项标注。</p>
+</header>
+
+<div class="modeTabs noPrint" role="tablist">
+  <button class="btn modeTab active" id="tabEnt" type="button">企业版</button>
+  <button class="btn modeTab ghost" id="tabPer" type="button">个人版</button>
+</div>
+
+<div id="entWrap">
+<section class="card noPrint" id="presetsCard">
+  <h2>示例企业（演示数据，一键填充）</h2>
+  <button class="btn ghost" data-preset="tax">财税公司 · 30 人</button>
+  <button class="btn ghost" data-preset="ecom">电商公司 · 80 人</button>
+  <button class="btn ghost" data-preset="edu">教培机构 · 50 人</button>
+  <button class="btn ghost" data-preset="mfg">制造企业 · 350 人（中型）</button>
+  <span class="hint">以下均为示例演示值，非真实企业数据。</span>
+</section>
+
+<form class="card" id="evalForm" novalidate>
+  <h2>一、企业信息</h2>
+  <div class="grid">
+    <div><label for="f_industry">所在行业</label>
+      <select id="f_industry">
+        <option value="tax">财税服务</option><option value="edu">教培/留学</option>
+        <option value="ecom">电商零售</option><option value="mfg">制造/外贸</option>
+        <option value="health">医疗健康服务</option><option value="estate">地产中介</option>
+        <option value="other">其他服务业</option>
+      </select></div>
+    <div><label for="f_revenue">年营收（万元）</label><input id="f_revenue" type="number" min="0" placeholder="如 1200"></div>
+    <div><label for="f_total">员工总数（人）</label><input id="f_total" type="number" min="0" placeholder="如 50"></div>
+    <div><label for="f_cost">平均月人力成本（元/人，含社保等企业承担部分）</label><input id="f_cost" type="number" min="0" placeholder="如 7500"></div>
+    <div><label for="f_digital">数字化基础</label>
+      <select id="f_digital">
+        <option value="paper">纸质与微信办公</option>
+        <option value="basic" selected>基础办公软件（表格/文档/IM）</option>
+        <option value="system">有业务系统（ERP/CRM/行业软件）</option>
+      </select></div>
+    <div><label for="f_volume">月业务量（可选，如咨询量或订单量，件/月）</label><input id="f_volume" type="number" min="0" placeholder="如 1500"></div>
+  </div>
+
+  <h3>组织就绪度（v2 新增：决定毛节约能落地多少）</h3>
+  <div class="grid">
+    <div><label for="f_doc">流程文档化程度</label>
+      <select id="f_doc">
+        <option value="none">几乎没有（靠口头与经验）</option>
+        <option value="partial" selected>部分有（核心流程有文档）</option>
+        <option value="good">较完善（岗位与流程成文）</option>
+      </select></div>
+    <div><label for="f_lit">员工数字素养</label>
+      <select id="f_lit">
+        <option value="low">偏低（工具使用吃力）</option>
+        <option value="mid" selected>中等</option>
+        <option value="high">偏高（普遍熟练）</option>
+      </select></div>
+    <div><label for="f_drive">管理层推动力</label>
+      <select id="f_drive">
+        <option value="watch">观望（先看看再说）</option>
+        <option value="support" selected>支持（愿意投入）</option>
+        <option value="strong">强力推动（列为重点工程）</option>
+      </select></div>
+    <div><label for="f_meeting">会议密度</label>
+      <select id="f_meeting">
+        <option value="low">低（以异步沟通为主）</option>
+        <option value="mid" selected>中</option>
+        <option value="high">高（会议文化重）</option>
+      </select></div>
+  </div>
+
+  <h3>各部门人数</h3>
+  <div class="deptgrid">
+    <div><label for="d_service">客户服务</label><input id="d_service" type="number" min="0" value="0"></div>
+    <div><label for="d_sales">销售</label><input id="d_sales" type="number" min="0" value="0"></div>
+    <div><label for="d_content">市场内容</label><input id="d_content" type="number" min="0" value="0"></div>
+    <div><label for="d_finance">财务行政</label><input id="d_finance" type="number" min="0" value="0"></div>
+    <div><label for="d_ops">运营交付</label><input id="d_ops" type="number" min="0" value="0"></div>
+    <div><label for="d_misc">其他</label><input id="d_misc" type="number" min="0" value="0"></div>
+  </div>
+  <p class="hint" id="deptHint">部门合计：0 人</p>
+
+  <h3>当前痛点（多选）</h3>
+  <div class="checks" id="painBox">
+    <label><input type="checkbox" value="labor">人力成本高</label>
+    <label><input type="checkbox" value="slow">响应慢</label>
+    <label><input type="checkbox" value="cac">获客贵</label>
+    <label><input type="checkbox" value="unstable">交付不稳定</label>
+    <label><input type="checkbox" value="scattered">数据散乱</label>
+    <label><input type="checkbox" value="night">夜间无人值守</label>
+  </div>
+
+  <h3>假设调节（系数可调，调节后重新生成即可看到变化）</h3>
+  <div class="grid">
+    <div><label>保守档情景实现率 <span class="num" id="v_rc">60%</span></label><input id="p_rc" type="range" min="30" max="100" value="60"></div>
+    <div><label>中性档情景实现率 <span class="num" id="v_rn">85%</span></label><input id="p_rn" type="range" min="40" max="100" value="85"></div>
+    <div><label>重复劳动占比缩放 <span class="num" id="v_rs">×1.00</span></label><input id="p_rs" type="range" min="50" max="130" value="100"></div>
+    <div><label>单岗位托管单价下限（元/月，定价假设）</label><input id="p_hl" type="number" min="0" value="9800"></div>
+    <div><label>单岗位托管单价上限（元/月，定价假设）</label><input id="p_hh" type="number" min="0" value="19800"></div>
+  </div>
+
+  <button class="btn" type="submit" id="btnGen">生成评估报告</button>
+  <p class="hint err" id="formErr"></p>
+</form>
+</div>
+
+<div id="perWrap" style="display:none">
+<section class="card noPrint">
+  <h2>示例个人（演示数据，一键填充）</h2>
+  <button class="btn ghost" data-ppreset="consultant" type="button">自由职业顾问</button>
+  <span class="hint">示例演示值，非真实个人数据。</span>
+</section>
+
+<form class="card" id="pForm" novalidate>
+  <h2>个人使用 AI 智能体评估</h2>
+  <div class="grid">
+    <div><label for="pf_occ">职业类型</label>
+      <select id="pf_occ">
+        <option value="staff">公司职员</option>
+        <option value="freelancer">自由职业者</option>
+        <option value="owner">个体经营者</option>
+        <option value="manager">管理者</option>
+        <option value="student">学生</option>
+      </select></div>
+    <div><label for="pf_hours">每周工作小时</label><input id="pf_hours" type="number" min="0" placeholder="如 50"></div>
+    <div><label for="pf_income">月收入（元，与时薪二选一）</label><input id="pf_income" type="number" min="0" placeholder="如 20000"></div>
+    <div><label for="pf_hourly">时薪（元/小时，填了优先于月收入）</label><input id="pf_hourly" type="number" min="0" placeholder="如 300"></div>
+    <div><label for="pf_lit">数字素养自评</label>
+      <select id="pf_lit">
+        <option value="entry">入门（新工具上手慢）</option>
+        <option value="skilled" selected>熟练</option>
+        <option value="expert">精通</option>
+      </select></div>
+    <div><label for="pf_spend">当前 AI 工具月支出（元）</label><input id="pf_spend" type="number" min="0" placeholder="如 100"></div>
+  </div>
+
+  <h3>任务时间分布（每周小时）</h3>
+  <div class="deptgrid">
+    <div><label for="t_comm">沟通与会议</label><input id="t_comm" type="number" min="0" value="0"></div>
+    <div><label for="t_writing">写作与文档</label><input id="t_writing" type="number" min="0" value="0"></div>
+    <div><label for="t_data">数据与表格</label><input id="t_data" type="number" min="0" value="0"></div>
+    <div><label for="t_research">信息搜集与研究</label><input id="t_research" type="number" min="0" value="0"></div>
+    <div><label for="t_support">客服与答疑</label><input id="t_support" type="number" min="0" value="0"></div>
+    <div><label for="t_learning">学习进修</label><input id="t_learning" type="number" min="0" value="0"></div>
+    <div><label for="t_other">其他</label><input id="t_other" type="number" min="0" value="0"></div>
+  </div>
+  <p class="hint" id="taskHint">任务合计：0 小时</p>
+
+  <h3>当前痛点（多选）</h3>
+  <div class="checks" id="pPainBox">
+    <label><input type="checkbox" value="repeat">重复劳动多</label>
+    <label><input type="checkbox" value="fragmented">时间碎片</label>
+    <label><input type="checkbox" value="learnslow">学习慢</label>
+    <label><input type="checkbox" value="acquire">获客难</label>
+    <label><input type="checkbox" value="writing">文案难产</label>
+  </div>
+
+  <h3>时间变现率（假设调节）</h3>
+  <div class="grid">
+    <div><label>省下的时间有多少能变成收入 <span class="num" id="v_mr">50%</span></label><input id="pf_mr" type="range" min="0" max="100" value="50"></div>
+  </div>
+  <p class="hint">说明：省下的时间只有转化成收入或高质量生活才计价值；本评估只按收入口径计，变现率可自行下调。</p>
+
+  <button class="btn" type="submit" id="btnGenP">生成个人评估报告</button>
+  <p class="hint err" id="pFormErr"></p>
+</form>
+</div>
+
+<section class="card" id="report"></section>
+</div>
+<footer class="siteFoot"><div class="footIn">
+<p>本站所有价格均为<strong>定价假设</strong>，将在付费验证完成后定版；评估器结果由确定性公式计算、系数来源逐项标注，是基于公开基准与假设的估算，不是收益承诺。</p>
+<p>数据口径：平台只收结构数据与脱敏聚合指标；客户业务原文不出客户环境；敏感数据永不接触。</p>
+</div></footer>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+<script>/* 挂载适配：#personal 深链切到个人版（不改 app.js 本体） */
+if (location.hash === "#personal") { document.getElementById("tabPer").click(); }</script>
+</body>
+</html>
