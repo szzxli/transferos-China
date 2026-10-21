@@ -242,6 +242,32 @@ async function ensureClientKey(db, student) {
   await db.prepare("UPDATE students SET client_key = ? WHERE id = ?").bind(key, student.id).run();
   return key;
 }
+// slugify: 学生专属名（对外定位符）生成规则——取学生英文名 / pinyin，小写，
+// 仅保留 a-z 0-9，其余字符（含空格、标点、非拉丁字母）折叠为连字符，首尾去连字符，最长 40；
+// 清洗后为空时回退 "student"。重名冲突不在此处理，见 uniqueSlug。
+function slugify(name) {
+  const s = String(name === null || name === undefined ? "" : name).toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/g, "");
+  return s || "student";
+}
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+// uniqueSlug: 保证 slug 全表唯一——候选已被他人占用时依次追加数字后缀（richa → richa2 → richa3…）
+async function uniqueSlug(db, base, excludeId) {
+  let candidate = base, n = 2;
+  for (;;) {
+    const row = await db.prepare("SELECT id FROM students WHERE slug = ?").bind(candidate).first();
+    if (!row || (excludeId && row.id === excludeId)) return candidate;
+    candidate = base + n; n++;
+  }
+}
+// ensureStudentSlug: 学生尚无 slug 时由姓名生成、去重并落库，返回当前 slug
+async function ensureStudentSlug(db, student) {
+  if (!student) return null;
+  if (student.slug) return student.slug;
+  const slug = await uniqueSlug(db, slugify(student.name), student.id);
+  await db.prepare("UPDATE students SET slug = ? WHERE id = ?").bind(slug, student.id).run();
+  return slug;
+}
 
 // ===== 数据库结构（与 schema.sql 保持一致）=====
 const DDL = [
@@ -270,7 +296,7 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, order_id INTEGER,
     name TEXT, package TEXT, stage TEXT DEFAULT 'diag',
     stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT,
-    client_key TEXT)`,
+    client_key TEXT, slug TEXT)`,
   `CREATE TABLE IF NOT EXISTS content_items(
     id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
     pub_date TEXT, ref TEXT, type TEXT, status TEXT DEFAULT 'published', created_at TEXT)`,
@@ -346,8 +372,11 @@ const GOAL_MIGRATIONS = [
   "ALTER TABLE student_goals ADD COLUMN school_system TEXT",
 ];
 // v7 迁移：students 补 client_key 列（学生端 APP 只读访问密钥），同样幂等
+// v8 迁移：students 补 slug 列（学生专属名，对外定位符）+ 唯一索引（NULL 不互斥，存量行安全），同样幂等
 const STUDENT_MIGRATIONS = [
   "ALTER TABLE students ADD COLUMN client_key TEXT",
+  "ALTER TABLE students ADD COLUMN slug TEXT",
+  "CREATE UNIQUE INDEX IF NOT EXISTS idx_students_slug ON students(slug)",
 ];
 let schemaReady = false;
 async function ensureSchema(db) {
@@ -686,16 +715,19 @@ async function handleApi(req, env, url) {
     return jsonResp(req, { ok: true, id, status: "done", already_done: false });
   }
 
-  // 学生端只读接口（v7，一对一专属客户端 APP 专用）：
-  // GET /api/client/<学生id>?key=<访问密钥>。密钥为 students.client_key（每名学生一个随机密钥），
+  // 学生端只读接口（v7，一对一专属客户端 APP 专用；v8 起定位符同时支持 slug）：
+  // GET /api/client/<学生id 或 slug>?key=<访问密钥>。密钥为 students.client_key（每名学生一个随机密钥），
   // 无 key / key 不对 / 学生不存在一律 404，不暴露学生存在性。只读，不接受任何写入。
   // 返回六块数据，选课分组与汇总复用 groupCoursesByTerm / courseProgress，与后台客户端页同口径。
-  const clientApiMatch = p.match(/^\/api\/client\/(\d+)$/);
+  const clientApiMatch = p.match(/^\/api\/client\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
   if (clientApiMatch) {
     if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
     await ensureSchema(db);
-    const sid = parseInt(clientApiMatch[1], 10);
-    const student = await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(sid).first();
+    const locator = clientApiMatch[1];
+    const student = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(locator).first();
+    const sid = student ? student.id : 0;
     const key = url.searchParams.get("key") || "";
     if (!student || !student.client_key || !timingSafeEq(key, String(student.client_key))) {
       return jsonResp(req, { ok: false, error: "not found" }, 404);
@@ -725,7 +757,7 @@ async function handleApi(req, env, url) {
     return jsonResp(req, {
       ok: true,
       student: {
-        id: student.id, name: student.name || "", package: student.package || "",
+        id: student.id, slug: student.slug || "", name: student.name || "", package: student.package || "",
         stage: student.stage || "", stage_label: DELIVERY_STAGES[student.stage] || student.stage || "",
         note: student.note || "",
       },
@@ -775,13 +807,20 @@ async function handleApi(req, env, url) {
     if (!name) return jsonResp(req, { ok: false, error: "student.name required" }, 400);
     await ensureSchema(db);
     const existing = await db.prepare(
-      `SELECT id, client_key FROM students WHERE name = ? ORDER BY id ASC LIMIT 1`).bind(name).first();
+      `SELECT id, client_key, slug, name FROM students WHERE name = ? ORDER BY id ASC LIMIT 1`).bind(name).first();
     if (existing) {
       const key = await ensureClientKey(db, existing);
-      return jsonResp(req, { ok: true, existed: true, student_id: existing.id, client_key: key });
+      const slug = await ensureStudentSlug(db, existing);
+      return jsonResp(req, { ok: true, existed: true, student_id: existing.id, client_key: key, slug });
     }
     // —— 校验并归一化（先全量校验，任一不合法整单拒绝）——
     const bad = (msg) => jsonResp(req, { ok: false, error: msg }, 400);
+    // slug（v8）：可显式指定（须符合小写字母/数字/连字符规则），不给则由姓名 slugify 生成；冲突自动加数字后缀
+    let slugBase = null;
+    if (stu.slug !== undefined && stu.slug !== null && String(stu.slug).trim() !== "") {
+      slugBase = String(stu.slug).trim().toLowerCase();
+      if (!SLUG_RE.test(slugBase)) return bad("student.slug invalid (a-z 0-9 -, max 40)");
+    }
     const numOrNull = (v) => {
       if (v === undefined || v === null || v === "") return null;
       const n = Number(v);
@@ -880,12 +919,13 @@ async function handleApi(req, env, url) {
     // —— 落库 ——
     const now = nowIso();
     const clientKey = genClientKey();
+    const slug = await uniqueSlug(db, slugBase || slugify(name), 0);
     const stage = stu.stage && validStage(String(stu.stage)) ? String(stu.stage) : "diag";
     const sr = await db.prepare(
-      `INSERT INTO students(lead_id, order_id, name, package, stage, stage_since, note, created_at, updated_at, client_key)
-       VALUES(NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO students(lead_id, order_id, name, package, stage, stage_since, note, created_at, updated_at, client_key, slug)
+       VALUES(NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(name, clampStr(stu.package, 60) || null, stage, now,
-      clampStr(stu.note, 2000), now, now, clientKey).run();
+      clampStr(stu.note, 2000), now, now, clientKey, slug).run();
     const sid = sr.meta.last_row_id;
     if (goalIn) {
       await db.prepare(
@@ -924,7 +964,7 @@ async function handleApi(req, env, url) {
       ).bind(sid, m.meeting_date, m.topic, m.summary, m.action_items, m.next_date, now, now).run();
     }
     return jsonResp(req, {
-      ok: true, existed: false, student_id: sid, client_key: clientKey,
+      ok: true, existed: false, student_id: sid, client_key: clientKey, slug,
       counts: {
         goal: goalIn ? 1 : 0, goal_lines: linesIn.length, status: statusIn.length,
         exams: examsIn.length, courses: coursesIn.length, meetings: meetingsIn.length,
@@ -2108,6 +2148,7 @@ async function pageClient(env, url, sid) {
     return htmlResp(layout("专属客户端", "/admin/delivery",
       `<div class="card"><h2>学生专属客户端</h2><p class="mut">未找到该学生（学生 #${sid} 不存在）。<a href="/admin/delivery">返回交付页</a></p></div>`));
   }
+  if (!student.slug) student.slug = await ensureStudentSlug(db, student); // v8：打开页面时补齐专属名
   const nowMs = Date.now();
   const stageDays = daysInStage(student.stage_since, nowMs);
   const goal = await db.prepare("SELECT * FROM student_goals WHERE student_id=?").bind(sid).first();
@@ -2155,8 +2196,8 @@ async function pageClient(env, url, sid) {
   <div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px">
     <p style="margin:4px 0"><strong>学生端 APP（只读）</strong> <span class="mut">学生用专属链接打开自己的客户端，只能看不能改；编辑仍在本页。</span></p>
     ${student.client_key
-      ? `<p class="mut" style="margin:4px 0">访问密钥：<code>${esc(student.client_key)}</code><br>专属链接：<code>https://zhuanuc.com/one-on-one-app/?s=${sid}&amp;k=${esc(student.client_key)}</code></p>`
-      : `<p class="mut" style="margin:4px 0">尚未生成访问密钥，生成后把专属链接发给学生即可。</p>`}
+      ? `<p class="mut" style="margin:4px 0">访问密钥：<code>${esc(student.client_key)}</code><br>专属链接（推荐，用专属名）：<code>https://zhuanuc.com/one-on-one-app/?s=${esc(student.slug || "")}&amp;k=${esc(student.client_key)}</code><br>备用链接（用编号）：<code>https://zhuanuc.com/one-on-one-app/?s=${sid}&amp;k=${esc(student.client_key)}</code></p>`
+      : `<p class="mut" style="margin:4px 0">尚未生成访问密钥，生成后把专属链接发给学生即可。专属名：<code>${esc(student.slug || "")}</code></p>`}
     <form method="post" style="margin:6px 0 0" onsubmit="return confirm('${student.client_key ? "重置后旧链接立即失效，确定重置访问密钥？" : "确定生成访问密钥？"}')">
       <input type="hidden" name="action" value="key_rotate">
       <button class="small ghost" type="submit">${student.client_key ? "重置密钥" : "生成访问密钥"}</button>
@@ -2556,4 +2597,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, slugify, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES };

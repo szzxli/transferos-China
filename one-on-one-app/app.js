@@ -1,7 +1,7 @@
 "use strict";
 /* 一对一专属客户端（学生端，只读）
- * 数据来自管理后台只读接口 GET /api/client/<学生id>?key=<访问密钥>。
- * 入口：专属链接 ?s=<学生id>&k=<密钥>（可加 &api=<接口域名> 覆盖默认接口）；
+ * 数据来自管理后台只读接口 GET /api/client/<学生id 或 slug>?key=<访问密钥>。
+ * 入口：专属链接 ?s=<学生id 或专属名 slug>&k=<密钥>（可加 &api=<接口域名> 覆盖默认接口）；
  * 无参数时显示门页，输入一次后存 localStorage。页面无任何编辑功能。 */
 const DEFAULT_API_BASE = "https://transferos-admin.szzxli711.workers.dev";
 const LS_S = "ooo_student_id", LS_K = "ooo_client_key", LS_A = "ooo_api_base";
@@ -59,12 +59,12 @@ async function load() {
     return;
   }
   if (resp.status === 404) {
-    showState("没找到这份客户端：学生编号或访问密钥不正确，或链接已更新。请核对导师发的最新链接。", false);
+    showState("没找到这份客户端：专属名 / 编号或访问密钥不正确，或链接已更新。请核对导师发的最新链接。", false);
     $("state-retry").hidden = false;
     $("state-retry").textContent = "重新输入编号与密钥";
     $("state-retry").onclick = () => {
       localStorage.removeItem(LS_S); localStorage.removeItem(LS_K);
-      showGate("请输入导师发给你的学生编号与访问密钥。");
+      showGate("请输入导师发给你的专属名（或编号）与访问密钥。");
     };
     return;
   }
