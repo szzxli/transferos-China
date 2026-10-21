@@ -196,6 +196,28 @@ const EXAM_RESULTS = { pass: "达标", fail: "未达标", pending: "待考/待�
 // v6 通用模板：目标人生线——类型与状态（多条线 + 优先级排序，字段与逻辑不绑定任何个案）
 const LINE_TYPES = { main: "主线", parallel: "并行线", passive: "被动等待线" };
 const LINE_STATUSES = { active: "进行中", paused: "暂停", done: "已完成", dropped: "已放弃" };
+
+// ===== v10 新增：成长时间线 / 关键日期 / 行动清单 / 导师建议 / 知识卡 / 导师沟通 =====
+const ACTION_STATUSES = { todo: "待办", done: "已完成" };
+const MESSAGE_SENDERS = { student: "学生", mentor: "导师" };
+const MESSAGE_MAX_LEN = 500;        // 学生留言正文上限（字）
+const MESSAGE_RATE_LIMIT = 3;       // 同一学生 60 秒内最多 3 条，超限 429
+const MESSAGE_RATE_WINDOW_MS = 60 * 1000;
+const KNOWLEDGE_LIMIT = 10;         // 客户端接口单次最多下发 10 条知识卡
+
+/* 知识卡匹配（纯函数）：知识条目的 tag 命中学生主题集合即下发。
+ * 主题集合 = 人生线类型集合（main/parallel/passive）
+ *   + 有考试记录 → exam、study；有学业目标 → study；
+ *   + 任一人生线名称含「创业/生意/business」→ business。 */
+function knowledgeTagsFor(goalLines, exams, goal) {
+  const tags = new Set();
+  const lines = goalLines || [];
+  for (const l of lines) if (l && l.line_type) tags.add(String(l.line_type));
+  if ((exams || []).length) { tags.add("exam"); tags.add("study"); }
+  if (goal) tags.add("study");
+  if (lines.some((l) => /创业|生意|business/i.test(String((l && l.name) || "")))) tags.add("business");
+  return [...tags];
+}
 // groupCoursesByTerm: 按 term 分组（学期字符串降序，最新学期在前；组内保持传入顺序）
 function groupCoursesByTerm(courses) {
   const map = new Map();
@@ -307,6 +329,68 @@ function signatureSuggestions(student, goal, goalLines, exams) {
 }
 
 // ===== 数据库结构（与 schema.sql 保持一致）=====
+/* v10 新模块数组校验（导入与补录共用）：入参 body 的 milestones / key_dates / actions / advice 四段，
+ * 任一条不合法返回 { error }，整单拒绝不落半截数据；合法返回归一化数组。 */
+function normClientExtras(body) {
+  const out = { milestones: [], keyDates: [], actions: [], advice: [] };
+  const intOr = (v, dflt) => {
+    if (v === undefined || v === null || v === "") return dflt;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const msRaw = Array.isArray(body.milestones) ? body.milestones : [];
+  if (msRaw.length > 100) return { error: "too many milestones (max 100)" };
+  for (let i = 0; i < msRaw.length; i++) {
+    const m = msRaw[i] || {};
+    const title = clampStr(m.title, 120);
+    if (!title) return { error: "milestones[" + i + "].title required" };
+    const sort = intOr(m.sort, 0);
+    if (sort === undefined) return { error: "milestones[" + i + "] bad sort" };
+    out.milestones.push({
+      date_text: clampStr(m.date_text, 40) || null, title,
+      detail: clampStr(m.detail, 2000), kind: clampStr(m.kind, 20) || null, sort,
+    });
+  }
+  const kdRaw = Array.isArray(body.key_dates) ? body.key_dates : [];
+  if (kdRaw.length > 100) return { error: "too many key_dates (max 100)" };
+  for (let i = 0; i < kdRaw.length; i++) {
+    const k = kdRaw[i] || {};
+    const title = clampStr(k.title, 120);
+    if (!title) return { error: "key_dates[" + i + "].title required" };
+    const date = clampStr(k.date, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
+      return { error: "key_dates[" + i + "].date must be YYYY-MM-DD" };
+    }
+    out.keyDates.push({ date, title });
+  }
+  const acRaw = Array.isArray(body.actions) ? body.actions : [];
+  if (acRaw.length > 100) return { error: "too many actions (max 100)" };
+  for (let i = 0; i < acRaw.length; i++) {
+    const a = acRaw[i] || {};
+    const title = clampStr(a.title, 120);
+    if (!title) return { error: "actions[" + i + "].title required" };
+    const status = a.status === undefined || a.status === null || a.status === "" ? "todo" : String(a.status);
+    if (!ACTION_STATUSES[status]) return { error: "actions[" + i + "] bad status" };
+    const sort = intOr(a.sort, 0);
+    if (sort === undefined) return { error: "actions[" + i + "] bad sort" };
+    out.actions.push({
+      title, detail: clampStr(a.detail, 2000), due_text: clampStr(a.due_text, 40) || null,
+      status, sort,
+    });
+  }
+  const adRaw = Array.isArray(body.advice) ? body.advice : [];
+  if (adRaw.length > 100) return { error: "too many advice (max 100)" };
+  for (let i = 0; i < adRaw.length; i++) {
+    const a = adRaw[i] || {};
+    const title = clampStr(a.title, 120);
+    if (!title) return { error: "advice[" + i + "].title required" };
+    const sort = intOr(a.sort, 0);
+    if (sort === undefined) return { error: "advice[" + i + "] bad sort" };
+    out.advice.push({ title, body: clampStr(a.body, 4000), sort });
+  }
+  return out;
+}
+
 const DDL = [
   `CREATE TABLE IF NOT EXISTS agents(
     code TEXT PRIMARY KEY, name TEXT, region TEXT,
@@ -333,7 +417,8 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, order_id INTEGER,
     name TEXT, package TEXT, stage TEXT DEFAULT 'diag',
     stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT,
-    client_key TEXT, slug TEXT, signature TEXT, signature_set_at TEXT)`,
+    client_key TEXT, slug TEXT, signature TEXT, signature_set_at TEXT,
+    vision_text TEXT, mentor_message TEXT, mentor_message_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS content_items(
     id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
     pub_date TEXT, ref TEXT, type TEXT, status TEXT DEFAULT 'published', created_at TEXT)`,
@@ -380,7 +465,37 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     name TEXT, line_type TEXT DEFAULT 'parallel', priority INTEGER DEFAULT 1,
     status TEXT DEFAULT 'active', next_step TEXT, created_at TEXT, updated_at TEXT)`,
+  // ===== v10 新增表 =====
+  // 成长时间线（date_text 为自由文本，可写「2025 秋季」式学期文本，日期未知留空；sort 升序）
+  `CREATE TABLE IF NOT EXISTS student_milestones(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    date_text TEXT, title TEXT, detail TEXT, kind TEXT,
+    sort INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT)`,
+  // 关键日期（date 为 ISO 日期 YYYY-MM-DD，供 APP 算倒计时）
+  `CREATE TABLE IF NOT EXISTS student_key_dates(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    date TEXT, title TEXT, created_at TEXT, updated_at TEXT)`,
+  // 行动清单（只读下发学生端；status: todo 待办 / done 已完成；sort 升序）
+  `CREATE TABLE IF NOT EXISTS student_actions(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    title TEXT, detail TEXT, due_text TEXT,
+    status TEXT DEFAULT 'todo', sort INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT)`,
+  // 知识卡（全局库，tag 与学生主题匹配后下发；enabled=0 不下发）
+  `CREATE TABLE IF NOT EXISTS knowledge_items(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, body TEXT,
+    tag TEXT, enabled INTEGER DEFAULT 1, created_at TEXT, updated_at TEXT)`,
+  // 导师建议（方案正文：诊断结论 / 策略摘要，与行动清单的待办分工不同；sort 升序维护，接口按时间倒序）
+  `CREATE TABLE IF NOT EXISTS student_advice(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    title TEXT, body TEXT, sort INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT)`,
+  // 导师沟通留言（双向；sender: student / mentor；read_by_* 供两端未读计数）
+  `CREATE TABLE IF NOT EXISTS student_messages(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    sender TEXT DEFAULT 'student', body TEXT, created_at TEXT,
+    read_by_student INTEGER DEFAULT 0, read_by_mentor INTEGER DEFAULT 0)`,
 ];
+// v10 迁移：students 补愿景（vision_text）与导师寄语（mentor_message / mentor_message_at）列，幂等
+
 // v3 迁移：给既有 staff 表补列（重复执行时列已存在会抛错，逐条捕获忽略，保证幂等）
 const STAFF_MIGRATIONS = [
   "ALTER TABLE staff ADD COLUMN kind TEXT DEFAULT 'human'",
@@ -417,6 +532,9 @@ const STUDENT_MIGRATIONS = [
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_students_slug ON students(slug)",
   "ALTER TABLE students ADD COLUMN signature TEXT",
   "ALTER TABLE students ADD COLUMN signature_set_at TEXT",
+  "ALTER TABLE students ADD COLUMN vision_text TEXT",
+  "ALTER TABLE students ADD COLUMN mentor_message TEXT",
+  "ALTER TABLE students ADD COLUMN mentor_message_at TEXT",
 ];
 let schemaReady = false;
 async function ensureSchema(db) {
@@ -785,6 +903,46 @@ async function handleApi(req, env, url) {
     return jsonResp(req, { ok: true, signature: sig, signature_set_at: ts });
   }
 
+  // 学生端导师沟通留言（v10，一对一 APP 第二个写接口）：POST /api/client/message
+  // 请求体 { s: <学生id 或 slug>, key: <访问密钥>, body: <留言正文> }。校验口径与只读/签名接口一致：
+  // 学生不存在 / 无 key / key 不对一律 404；正文 trim 后须非空且 ≤500 字，非法 400；
+  // 防刷：同一学生 60 秒内最多 3 条，超限 429。落库 sender='student'，导师侧未读。
+  if (p === "/api/client/message") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const locator = String((body && body.s) || "").trim();
+    const student = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : (locator ? await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(locator).first() : null);
+    const key = String((body && body.key) || "");
+    if (!student || !student.client_key || !timingSafeEq(key, String(student.client_key))) {
+      return jsonResp(req, { ok: false, error: "not found" }, 404);
+    }
+    const text = String((body && body.body) || "").trim();
+    if (!text) return jsonResp(req, { ok: false, error: "message required" }, 400);
+    if ([...text].length > MESSAGE_MAX_LEN) {
+      return jsonResp(req, { ok: false, error: "message too long (max " + MESSAGE_MAX_LEN + ")" }, 400);
+    }
+    const since = new Date(Date.now() - MESSAGE_RATE_WINDOW_MS).toISOString();
+    const recent = await db.prepare(
+      `SELECT COUNT(*) AS n FROM student_messages WHERE student_id = ? AND sender = 'student' AND created_at >= ?`
+    ).bind(student.id, since).first();
+    if (recent && recent.n >= MESSAGE_RATE_LIMIT) {
+      return jsonResp(req, { ok: false, error: "too frequent, retry in a minute" }, 429);
+    }
+    const ts = nowIso();
+    const r = await db.prepare(
+      `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor)
+       VALUES(?, 'student', ?, ?, 1, 0)`
+    ).bind(student.id, text, ts).run();
+    return jsonResp(req, {
+      ok: true,
+      message: { id: r.meta.last_row_id, sender: "student", body: text, created_at: ts },
+    });
+  }
+
   // 学生端只读接口（v7，一对一专属客户端 APP 专用；v8 起定位符同时支持 slug）：
   // GET /api/client/<学生id 或 slug>?key=<访问密钥>。密钥为 students.client_key（每名学生一个随机密钥），
   // 无 key / key 不对 / 学生不存在一律 404，不暴露学生存在性。写入仅限上方 v9 签名接口，其余只读。
@@ -813,6 +971,32 @@ async function handleApi(req, env, url) {
       `SELECT * FROM student_courses WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(sid).all()).results || [];
     const meetings = (await db.prepare(
       `SELECT * FROM student_meetings WHERE student_id = ? ORDER BY meeting_date DESC, id DESC LIMIT 200`).bind(sid).all()).results || [];
+    // —— v10 新模块 ——
+    const milestones = (await db.prepare(
+      `SELECT * FROM student_milestones WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 200`).bind(sid).all()).results || [];
+    const keyDates = (await db.prepare(
+      `SELECT * FROM student_key_dates WHERE student_id = ? ORDER BY date ASC, id ASC LIMIT 100`).bind(sid).all()).results || [];
+    const actionRows = (await db.prepare(
+      `SELECT * FROM student_actions WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 200`).bind(sid).all()).results || [];
+    const adviceRows = (await db.prepare(
+      `SELECT * FROM student_advice WHERE student_id = ? ORDER BY created_at DESC, id DESC LIMIT 100`).bind(sid).all()).results || [];
+    const messageRows = (await db.prepare(
+      `SELECT * FROM student_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(sid).all()).results || [];
+    // 未读计数在标记已读之前计算：本次下发的 unread_mentor 反映「打开 APP 时有几条导师留言未读」，
+    // 标记后下次 GET 归零；前端据此在「导师」页签亮红点。
+    const unreadMentor = messageRows.filter((m) => m.sender === "mentor" && !m.read_by_student).length;
+    if (unreadMentor) {
+      await db.prepare(
+        `UPDATE student_messages SET read_by_student = 1 WHERE student_id = ? AND sender = 'mentor' AND read_by_student = 0`
+      ).bind(sid).run();
+    }
+    const kTags = knowledgeTagsFor(goalLines, exams, goal);
+    let knowledge = [];
+    if (kTags.length) {
+      const allK = (await db.prepare(
+        `SELECT * FROM knowledge_items WHERE enabled = 1 ORDER BY id ASC LIMIT 200`).all()).results || [];
+      knowledge = allK.filter((k) => kTags.includes(String(k.tag || ""))).slice(0, KNOWLEDGE_LIMIT);
+    }
     const lineOut = (l) => ({
       id: l.id, name: l.name || "", line_type: l.line_type || "",
       line_type_label: LINE_TYPES[l.line_type] || l.line_type || "",
@@ -862,6 +1046,30 @@ async function handleApi(req, env, url) {
         id: m.id, meeting_date: m.meeting_date || "", topic: m.topic || "",
         summary: m.summary || "", action_items: m.action_items || "", next_date: m.next_date || "",
       })),
+      // —— v10 ——
+      vision_text: student.vision_text || "",
+      mentor_message: student.mentor_message || "",
+      mentor_message_at: student.mentor_message_at || "",
+      milestones: milestones.map((m) => ({
+        id: m.id, date_text: m.date_text || "", title: m.title || "",
+        detail: m.detail || "", kind: m.kind || "", sort: m.sort,
+      })),
+      key_dates: keyDates.map((k) => ({ id: k.id, date: k.date || "", title: k.title || "" })),
+      actions: actionRows.map((a) => ({
+        id: a.id, title: a.title || "", detail: a.detail || "", due_text: a.due_text || "",
+        status: a.status || "", status_label: ACTION_STATUSES[a.status] || a.status || "", sort: a.sort,
+      })),
+      advice: adviceRows.map((a) => ({
+        id: a.id, title: a.title || "", body: a.body || "", created_at: a.created_at || "",
+      })),
+      knowledge: knowledge.map((k) => ({
+        id: k.id, title: k.title || "", body: k.body || "", tag: k.tag || "",
+      })),
+      messages: messageRows.map((m) => ({
+        id: m.id, sender: m.sender || "", sender_label: MESSAGE_SENDERS[m.sender] || m.sender || "",
+        body: m.body || "", created_at: m.created_at || "",
+      })),
+      unread_mentor: unreadMentor,
     });
   }
 
@@ -989,16 +1197,19 @@ async function handleApi(req, env, url) {
         next_date: clampStr(m.next_date, 10) || null,
       });
     }
+    const extras = normClientExtras(body || {});
+    if (extras.error) return bad(extras.error);
     // —— 落库 ——
     const now = nowIso();
     const clientKey = genClientKey();
     const slug = await uniqueSlug(db, slugBase || slugify(name), 0);
     const stage = stu.stage && validStage(String(stu.stage)) ? String(stu.stage) : "diag";
     const sr = await db.prepare(
-      `INSERT INTO students(lead_id, order_id, name, package, stage, stage_since, note, created_at, updated_at, client_key, slug)
-       VALUES(NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO students(lead_id, order_id, name, package, stage, stage_since, note, created_at, updated_at, client_key, slug, vision_text)
+       VALUES(NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(name, clampStr(stu.package, 60) || null, stage, now,
-      clampStr(stu.note, 2000), now, now, clientKey, slug).run();
+      clampStr(stu.note, 2000), now, now, clientKey, slug,
+      clampStr(stu.vision_text, 2000) || null).run();
     const sid = sr.meta.last_row_id;
     if (goalIn) {
       await db.prepare(
@@ -1036,13 +1247,183 @@ async function handleApi(req, env, url) {
          VALUES(?,?,?,?,?,?,?,?)`
       ).bind(sid, m.meeting_date, m.topic, m.summary, m.action_items, m.next_date, now, now).run();
     }
+    for (const m of extras.milestones) {
+      await db.prepare(
+        `INSERT INTO student_milestones(student_id, date_text, title, detail, kind, sort, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, m.date_text, m.title, m.detail, m.kind, m.sort, now, now).run();
+    }
+    for (const k of extras.keyDates) {
+      await db.prepare(
+        `INSERT INTO student_key_dates(student_id, date, title, created_at, updated_at)
+         VALUES(?,?,?,?,?)`
+      ).bind(sid, k.date, k.title, now, now).run();
+    }
+    for (const a of extras.actions) {
+      await db.prepare(
+        `INSERT INTO student_actions(student_id, title, detail, due_text, status, sort, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, a.title, a.detail, a.due_text, a.status, a.sort, now, now).run();
+    }
+    for (const a of extras.advice) {
+      await db.prepare(
+        `INSERT INTO student_advice(student_id, title, body, sort, created_at, updated_at)
+         VALUES(?,?,?,?,?,?)`
+      ).bind(sid, a.title, a.body, a.sort, now, now).run();
+    }
     return jsonResp(req, {
       ok: true, existed: false, student_id: sid, client_key: clientKey, slug,
       counts: {
         goal: goalIn ? 1 : 0, goal_lines: linesIn.length, status: statusIn.length,
         exams: examsIn.length, courses: coursesIn.length, meetings: meetingsIn.length,
+        milestones: extras.milestones.length, key_dates: extras.keyDates.length,
+        actions: extras.actions.length, advice: extras.advice.length,
       },
     });
+  }
+
+  // 学生数据补录入口（v10，Bearer LEAD_API_TOKEN）：给「已存在」的学生增量灌入新模块数据。
+  // 导入接口对同名学生幂等跳过，补不了新数据，故另设本口。请求体：
+  // { student:{id?|slug?|name?}（三选一定位）, student_patch:{vision_text?, mentor_message?},
+  //   goal_line_renames:[{from,to}], milestones?/key_dates?/actions?/advice?（同导入校验，按标题去重）,
+  //   messages?:[{sender?,body}]（按 sender+body 去重）, knowledge?:[{title,body,tag,enabled?}]（全局库，按标题去重） }
+  // 已存在的条目跳过并计数，不覆盖、不重复写。
+  if (p === "/api/admin/students/enrich") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    const token = String(req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (!env.LEAD_API_TOKEN || token !== env.LEAD_API_TOKEN) return jsonResp(req, { ok: false, error: "unauthorized" }, 401);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const stuRef = (body && body.student) || {};
+    let student = null;
+    if (stuRef.id) student = await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(stuRef.id, 10)).first();
+    if (!student && stuRef.slug) student = await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(String(stuRef.slug)).first();
+    if (!student && stuRef.name) student = await db.prepare(`SELECT * FROM students WHERE name = ? ORDER BY id ASC LIMIT 1`).bind(clampStr(stuRef.name, 60)).first();
+    if (!student) return jsonResp(req, { ok: false, error: "student not found" }, 404);
+    const sid = student.id;
+    const bad = (msg) => jsonResp(req, { ok: false, error: msg }, 400);
+    const extras = normClientExtras(body || {});
+    if (extras.error) return bad(extras.error);
+    const now = nowIso();
+    const counts = {
+      patched: 0, renamed: 0,
+      milestones: { inserted: 0, skipped: 0 }, key_dates: { inserted: 0, skipped: 0 },
+      actions: { inserted: 0, skipped: 0 }, advice: { inserted: 0, skipped: 0 },
+      messages: { inserted: 0, skipped: 0 }, knowledge: { inserted: 0, skipped: 0 },
+    };
+    // —— 学生字段补丁（愿景 / 导师寄语；寄语不许在此替导师编话，只搬运调用方给的文本）——
+    const patch = (body && body.student_patch) || {};
+    if (Object.prototype.hasOwnProperty.call(patch, "vision_text")) {
+      await db.prepare(`UPDATE students SET vision_text = ?, updated_at = ? WHERE id = ?`)
+        .bind(clampStr(patch.vision_text, 2000) || null, now, sid).run();
+      counts.patched++;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "mentor_message")) {
+      const mm = clampStr(patch.mentor_message, 2000);
+      if (mm) {
+        await db.prepare(`UPDATE students SET mentor_message = ?, mentor_message_at = ?, updated_at = ? WHERE id = ?`)
+          .bind(mm, now, now, sid).run();
+      } else {
+        await db.prepare(`UPDATE students SET mentor_message = NULL, mentor_message_at = NULL, updated_at = ? WHERE id = ?`)
+          .bind(now, sid).run();
+      }
+      counts.patched++;
+    }
+    // —— 人生线改名（按旧名精确匹配，可附带替换 next_step 说明，改完计数）——
+    const renames = Array.isArray(body.goal_line_renames) ? body.goal_line_renames : [];
+    if (renames.length > 20) return bad("too many goal_line_renames (max 20)");
+    for (const rn of renames) {
+      const from = clampStr(rn && rn.from, 80);
+      const to = clampStr(rn && rn.to, 80);
+      if (!from || !to) return bad("goal_line_renames need from+to");
+      if (rn && rn.next_step !== undefined) {
+        await db.prepare(
+          `UPDATE student_goal_lines SET name = ?, next_step = ?, updated_at = ? WHERE student_id = ? AND name = ?`
+        ).bind(to, clampStr(rn.next_step, 200) || null, now, sid, from).run();
+      } else {
+        await db.prepare(
+          `UPDATE student_goal_lines SET name = ?, updated_at = ? WHERE student_id = ? AND name = ?`
+        ).bind(to, now, sid, from).run();
+      }
+      // 注：D1 run() 的 meta.changes 在本地 shim 下不可得，renamed 计数以生产 D1 为准，本地以落库状态验
+      const chk = await db.prepare(
+        `SELECT id FROM student_goal_lines WHERE student_id = ? AND name = ?`).bind(sid, to).first();
+      if (chk) counts.renamed++;
+    }
+    // —— 新模块四段（按标题去重）——
+    for (const m of extras.milestones) {
+      const dup = await db.prepare(`SELECT id FROM student_milestones WHERE student_id = ? AND title = ?`).bind(sid, m.title).first();
+      if (dup) { counts.milestones.skipped++; continue; }
+      await db.prepare(
+        `INSERT INTO student_milestones(student_id, date_text, title, detail, kind, sort, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, m.date_text, m.title, m.detail, m.kind, m.sort, now, now).run();
+      counts.milestones.inserted++;
+    }
+    for (const k of extras.keyDates) {
+      const dup = await db.prepare(`SELECT id FROM student_key_dates WHERE student_id = ? AND date = ? AND title = ?`).bind(sid, k.date, k.title).first();
+      if (dup) { counts.key_dates.skipped++; continue; }
+      await db.prepare(
+        `INSERT INTO student_key_dates(student_id, date, title, created_at, updated_at) VALUES(?,?,?,?,?)`
+      ).bind(sid, k.date, k.title, now, now).run();
+      counts.key_dates.inserted++;
+    }
+    for (const a of extras.actions) {
+      const dup = await db.prepare(`SELECT id FROM student_actions WHERE student_id = ? AND title = ?`).bind(sid, a.title).first();
+      if (dup) { counts.actions.skipped++; continue; }
+      await db.prepare(
+        `INSERT INTO student_actions(student_id, title, detail, due_text, status, sort, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, a.title, a.detail, a.due_text, a.status, a.sort, now, now).run();
+      counts.actions.inserted++;
+    }
+    for (const a of extras.advice) {
+      const dup = await db.prepare(`SELECT id FROM student_advice WHERE student_id = ? AND title = ?`).bind(sid, a.title).first();
+      if (dup) { counts.advice.skipped++; continue; }
+      await db.prepare(
+        `INSERT INTO student_advice(student_id, title, body, sort, created_at, updated_at) VALUES(?,?,?,?,?,?)`
+      ).bind(sid, a.title, a.body, a.sort, now, now).run();
+      counts.advice.inserted++;
+    }
+    // —— 留言补录（按 sender+body 去重；导师留言 read_by_student=0 待学生读，学生留言视为导师已读场景外慎用）——
+    const msgsRaw = Array.isArray(body.messages) ? body.messages : [];
+    if (msgsRaw.length > 50) return bad("too many messages (max 50)");
+    for (let i = 0; i < msgsRaw.length; i++) {
+      const m = msgsRaw[i] || {};
+      const sender = m.sender === undefined || m.sender === null || m.sender === "" ? "mentor" : String(m.sender);
+      if (!MESSAGE_SENDERS[sender]) return bad("messages[" + i + "] bad sender");
+      const text = clampStr(m.body, MESSAGE_MAX_LEN);
+      if (!text) return bad("messages[" + i + "].body required");
+      const dup = await db.prepare(
+        `SELECT id FROM student_messages WHERE student_id = ? AND sender = ? AND body = ?`).bind(sid, sender, text).first();
+      if (dup) { counts.messages.skipped++; continue; }
+      await db.prepare(
+        `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor)
+         VALUES(?,?,?,?,?,?)`
+      ).bind(sid, sender, text, now, sender === "mentor" ? 0 : 1, sender === "mentor" ? 1 : 0).run();
+      counts.messages.inserted++;
+    }
+    // —— 知识卡（全局库，按标题去重）——
+    const knowRaw = Array.isArray(body.knowledge) ? body.knowledge : [];
+    if (knowRaw.length > 50) return bad("too many knowledge (max 50)");
+    for (let i = 0; i < knowRaw.length; i++) {
+      const k = knowRaw[i] || {};
+      const title = clampStr(k.title, 120);
+      if (!title) return bad("knowledge[" + i + "].title required");
+      const itemBody = clampStr(k.body, 4000);
+      if (!itemBody) return bad("knowledge[" + i + "].body required");
+      const tag = clampStr(k.tag, 40);
+      if (!tag) return bad("knowledge[" + i + "].tag required");
+      const enabled = k.enabled === undefined || k.enabled === null ? 1 : (k.enabled ? 1 : 0);
+      const dup = await db.prepare(`SELECT id FROM knowledge_items WHERE title = ?`).bind(title).first();
+      if (dup) { counts.knowledge.skipped++; continue; }
+      await db.prepare(
+        `INSERT INTO knowledge_items(title, body, tag, enabled, created_at, updated_at) VALUES(?,?,?,?,?,?)`
+      ).bind(title, itemBody, tag, enabled, now, now).run();
+      counts.knowledge.inserted++;
+    }
+    return jsonResp(req, { ok: true, student_id: sid, counts });
   }
 
   return jsonResp(req, { ok: false, error: "not found" }, 404);
@@ -1088,7 +1469,7 @@ function layout(title, active, body) {
   const tabs = [
     ["/admin", "首页"], ["/admin/leads", "线索"], ["/admin/delivery", "交付"],
     ["/admin/agents", "代理"], ["/admin/orders", "订单"], ["/admin/content", "内容"],
-    ["/admin/tasks", "任务"], ["/admin/staff", "人员"],
+    ["/admin/tasks", "任务"], ["/admin/staff", "人员"], ["/admin/knowledge", "知识库"],
   ];
   const nav = tabs.map(([href, label]) =>
     `<a href="${href}" class="${active === href ? "on" : ""}">${label}</a>`).join("");
@@ -1429,6 +1810,11 @@ async function postDelivery(req, env) {
     await db.prepare("DELETE FROM student_meetings WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM student_exams WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM student_goal_lines WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_milestones WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_key_dates WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_actions WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_advice WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_messages WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM students WHERE id=?").bind(delId).run();
     return redirect("/admin/delivery");
   }
@@ -2212,6 +2598,70 @@ async function postStaff(req, env) {
   return redirect("/admin/staff");
 }
 
+// ===== 知识库（v10：全局知识卡，导师维护，学生端按主题匹配下发）=====
+async function pageKnowledge(env, url) {
+  const db = env.DB;
+  const items = (await db.prepare("SELECT * FROM knowledge_items ORDER BY id ASC LIMIT 500").all()).results || [];
+  const editId = toInt(url.searchParams.get("edit"), 0);
+  const editItem = editId ? items.find((k) => k.id === editId) : null;
+  const kf = editItem || { title: "", body: "", tag: "", enabled: 1 };
+  const rows = items.map((k) => `<tr>
+    <td>${esc(k.title || "")}</td><td><span class="pill">${esc(k.tag || "")}</span></td>
+    <td>${k.enabled ? '<span class="ok">启用</span>' : '<span class="mut">停用</span>'}</td>
+    <td>${esc((k.body || "").slice(0, 60))}${(k.body || "").length > 60 ? "…" : ""}</td>
+    <td><a href="/admin/knowledge?edit=${k.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条知识卡？')">
+      <input type="hidden" name="action" value="knowledge_delete"><input type="hidden" name="id" value="${k.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const body = `
+  <div class="card"><h2>知识库（全局知识卡）</h2>
+  <p class="mut">标签 tag 与学生主题匹配后下发到学生端 APP「导师 · 知识卡」：可用人生线类型 main / parallel / passive，
+  或主题 exam（考试）/ study（学业）/ business（创业）。停用的条目不下发；每名学生最多下发 ${KNOWLEDGE_LIMIT} 条。</p>
+  <h3>${editItem ? "编辑知识卡 #" + editItem.id : "新增知识卡"}</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="${editItem ? "knowledge_update" : "knowledge_add"}">
+    ${editItem ? `<input type="hidden" name="id" value="${editItem.id}">` : ""}
+    <div class="row">
+      <div style="flex:2"><label>标题 *</label><input name="title" required maxlength="120" value="${esc(kf.title || "")}"></div>
+      <div><label>标签 tag *</label><input name="tag" required maxlength="40" value="${esc(kf.tag || "")}" placeholder="如 study / exam / business"></div>
+      <div><label>状态</label><select name="enabled">
+        <option value="1"${kf.enabled ? " selected" : ""}>启用</option>
+        <option value="0"${kf.enabled ? "" : " selected"}>停用</option></select></div>
+    </div>
+    <label>正文 *</label><textarea name="body" required maxlength="4000">${esc(kf.body || "")}</textarea>
+    <button type="submit">${editItem ? "保存修改" : "添加知识卡"}</button>
+    ${editItem ? `<a class="btn ghost" href="/admin/knowledge">取消编辑</a>` : ""}
+  </form>
+  ${items.length ? `<div class="wrap"><table><tr><th>标题</th><th>标签</th><th>状态</th><th>正文</th><th></th><th></th></tr>${rows}</table></div>` : `<p class="mut">暂无知识卡。</p>`}
+  </div>`;
+  return htmlResp(layout("知识库", "/admin/knowledge", body));
+}
+async function postKnowledge(req, env) {
+  const db = env.DB;
+  const fd = await req.formData();
+  const action = String(fd.get("action") || "");
+  if (action === "knowledge_add" || action === "knowledge_update") {
+    const title = clampStr(fd.get("title"), 120);
+    const body = clampStr(fd.get("body"), 4000);
+    const tag = clampStr(fd.get("tag"), 40);
+    if (!title || !body || !tag) return redirect("/admin/knowledge");
+    const enabled = String(fd.get("enabled") || "1") === "0" ? 0 : 1;
+    if (action === "knowledge_update") {
+      await db.prepare("UPDATE knowledge_items SET title=?, body=?, tag=?, enabled=?, updated_at=? WHERE id=?")
+        .bind(title, body, tag, enabled, nowIso(), toInt(fd.get("id"), 0)).run();
+    } else {
+      await db.prepare("INSERT INTO knowledge_items(title, body, tag, enabled, created_at, updated_at) VALUES(?,?,?,?,?,?)")
+        .bind(title, body, tag, enabled, nowIso(), nowIso()).run();
+    }
+    return redirect("/admin/knowledge");
+  }
+  if (action === "knowledge_delete") {
+    await db.prepare("DELETE FROM knowledge_items WHERE id=?").bind(toInt(fd.get("id"), 0)).run();
+    return redirect("/admin/knowledge");
+  }
+  return redirect("/admin/knowledge");
+}
+
 // ===== 学生专属客户端（一对一工作台 v6：目标 / 状态快照 / 选课规划 / 辅导会议）=====
 // 直达页 /admin/client/<学生id>，仍走后台登录鉴权；数据只落本模块四张表，与交付阶段不联动。
 async function pageClient(env, url, sid) {
@@ -2240,6 +2690,23 @@ async function pageClient(env, url, sid) {
     "SELECT * FROM student_exams WHERE student_id=? ORDER BY exam_date DESC, id DESC LIMIT 200").bind(sid).all()).results || [];
   const goalLines = (await db.prepare(
     "SELECT * FROM student_goal_lines WHERE student_id=? ORDER BY priority ASC, id ASC LIMIT 100").bind(sid).all()).results || [];
+  // —— v10 查询 ——
+  const milestones = (await db.prepare(
+    "SELECT * FROM student_milestones WHERE student_id=? ORDER BY sort ASC, id ASC LIMIT 200").bind(sid).all()).results || [];
+  const keyDates = (await db.prepare(
+    "SELECT * FROM student_key_dates WHERE student_id=? ORDER BY date ASC, id ASC LIMIT 100").bind(sid).all()).results || [];
+  const actionRows = (await db.prepare(
+    "SELECT * FROM student_actions WHERE student_id=? ORDER BY sort ASC, id ASC LIMIT 200").bind(sid).all()).results || [];
+  const adviceRows = (await db.prepare(
+    "SELECT * FROM student_advice WHERE student_id=? ORDER BY created_at DESC, id DESC LIMIT 100").bind(sid).all()).results || [];
+  const messageRows = (await db.prepare(
+    "SELECT * FROM student_messages WHERE student_id=? ORDER BY id ASC LIMIT 500").bind(sid).all()).results || [];
+  const unreadStudentMsgs = messageRows.filter((m) => m.sender === "student" && !m.read_by_mentor).length;
+  if (unreadStudentMsgs) {
+    await db.prepare(
+      "UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0"
+    ).bind(sid).run();
+  }
 
   const bar = (done, total) => {
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -2284,6 +2751,20 @@ async function pageClient(env, url, sid) {
         <input type="hidden" name="action" value="signature_save">
         <input name="signature" maxlength="30" value="${esc(student.signature || "")}" placeholder="输入签名（≤30 字），留空保存 = 清空" style="min-width:260px">
         <button class="small" type="submit">保存签名</button>
+      </form>
+    </div>
+    <div style="border-top:1px dashed #eee;margin-top:10px;padding-top:8px">
+      <p style="margin:4px 0"><strong>导师寄语与愿景</strong> <span class="mut">寄语显示在学生端 APP 首页顶部（带日期），愿景显示在「规划」页愿景板；都为空则不显示。请只写导师本人要说的话，不要代拟。</span></p>
+      ${student.mentor_message
+        ? `<p class="mut" style="margin:4px 0">当前寄语：<strong>${esc(student.mentor_message)}</strong>${student.mentor_message_at ? `（${esc(String(student.mentor_message_at).slice(0, 10))}）` : ""}</p>`
+        : `<p class="mut" style="margin:4px 0">尚未写寄语。</p>`}
+      <form method="post" style="margin:6px 0 0">
+        <input type="hidden" name="action" value="profile_save">
+        <label>导师寄语（留空保存 = 清空）</label>
+        <textarea name="mentor_message" maxlength="2000" placeholder="写给这个学生的话，会原样出现在 TA 的 APP 首页">${esc(student.mentor_message || "")}</textarea>
+        <label>愿景（vision，终点画面一句话，留空 = 不显示愿景板文字）</label>
+        <textarea name="vision_text" maxlength="2000" placeholder="如 BSN + NCLEX-RN → 空军护理军官">${esc(student.vision_text || "")}</textarea>
+        <button class="small" type="submit">保存寄语与愿景</button>
       </form>
     </div>
   </div></div>`;
@@ -2467,7 +2948,138 @@ async function pageClient(env, url, sid) {
   </form>
   ${meetings.length ? `<div class="wrap"><table><tr><th>日期</th><th>专题</th><th>纪要</th><th>待办</th><th>下次会议</th><th></th><th></th></tr>${meetingRows}</table></div>` : `<p class="mut">暂无会议记录。</p>`}
   </div>`;
-  return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery", hero + goalCard + statusCard + examCard + courseCard + meetingCard));
+  // —— 成长时间线（v10）——
+  const editMsId = toInt(url.searchParams.get("edit_milestone"), 0);
+  const editMs = editMsId ? milestones.find((m) => m.id === editMsId) : null;
+  const msf = editMs || { date_text: "", title: "", detail: "", kind: "", sort: milestones.length + 1 };
+  const msRows = milestones.map((m) => `<tr>
+    <td>${m.sort ?? ""}</td><td>${esc(m.date_text || "—")}</td><td>${esc(m.title || "")}</td>
+    <td>${esc(m.kind || "")}</td><td>${esc((m.detail || "").slice(0, 60))}${(m.detail || "").length > 60 ? "…" : ""}</td>
+    <td><a href="/admin/client/${sid}?edit_milestone=${m.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条里程碑？')">
+      <input type="hidden" name="action" value="milestone_delete"><input type="hidden" name="id" value="${m.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const milestoneCard = `
+  <div class="card"><h2>成长时间线</h2>
+  <p class="mut">显示在学生端 APP「成长」页顶部。日期文本可写「2025 秋季」式学期文本，未知留空，切勿编造日期。</p>
+  <h3>${editMs ? "编辑里程碑 #" + editMs.id : "新增里程碑"}</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="${editMs ? "milestone_update" : "milestone_add"}">
+    ${editMs ? `<input type="hidden" name="id" value="${editMs.id}">` : ""}
+    <div class="row">
+      <div><label>日期文本（可空）</label><input name="date_text" maxlength="40" value="${esc(msf.date_text || "")}" placeholder="如 2025 秋季"></div>
+      <div style="flex:2"><label>标题 *</label><input name="title" required maxlength="120" value="${esc(msf.title || "")}"></div>
+      <div><label>类别 kind（可空）</label><input name="kind" maxlength="20" value="${esc(msf.kind || "")}" placeholder="如 exam / school"></div>
+      <div><label>排序（小的在前）</label><input name="sort" type="number" value="${esc(msf.sort ?? 0)}"></div>
+    </div>
+    <label>详情</label><textarea name="detail" maxlength="2000">${esc(msf.detail || "")}</textarea>
+    <button type="submit">${editMs ? "保存修改" : "添加里程碑"}</button>
+    ${editMs ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
+  </form>
+  ${milestones.length ? `<div class="wrap"><table><tr><th>排序</th><th>日期</th><th>标题</th><th>类别</th><th>详情</th><th></th><th></th></tr>${msRows}</table></div>` : `<p class="mut">暂无里程碑。</p>`}
+  </div>`;
+  // —— 关键日期（v10）——
+  const editKdId = toInt(url.searchParams.get("edit_keydate"), 0);
+  const editKd = editKdId ? keyDates.find((k) => k.id === editKdId) : null;
+  const kdf = editKd || { date: "", title: "" };
+  const kdRows = keyDates.map((k) => `<tr>
+    <td>${esc(k.date || "")}</td><td>${esc(k.title || "")}</td>
+    <td><a href="/admin/client/${sid}?edit_keydate=${k.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这个关键日期？')">
+      <input type="hidden" name="action" value="keydate_delete"><input type="hidden" name="id" value="${k.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const keyDateCard = `
+  <div class="card"><h2>关键日期（倒计时）</h2>
+  <p class="mut">显示在学生端 APP 首页倒计时卡；日期必须是真实确定的日子，不确定的不要填。</p>
+  <h3>${editKd ? "编辑关键日期 #" + editKd.id : "新增关键日期"}</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="${editKd ? "keydate_update" : "keydate_add"}">
+    ${editKd ? `<input type="hidden" name="id" value="${editKd.id}">` : ""}
+    <div class="row">
+      <div><label>日期 *</label><input name="date" type="date" required value="${esc(kdf.date || "")}"></div>
+      <div style="flex:2"><label>标题 *</label><input name="title" required maxlength="120" value="${esc(kdf.title || "")}" placeholder="如 护理项目申请截止"></div>
+    </div>
+    <button type="submit">${editKd ? "保存修改" : "添加关键日期"}</button>
+    ${editKd ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
+  </form>
+  ${keyDates.length ? `<div class="wrap"><table><tr><th>日期</th><th>标题</th><th></th><th></th></tr>${kdRows}</table></div>` : `<p class="mut">暂无关键日期。</p>`}
+  </div>`;
+  // —— 行动清单（v10，只读下发）——
+  const editActId = toInt(url.searchParams.get("edit_action"), 0);
+  const editAct = editActId ? actionRows.find((a) => a.id === editActId) : null;
+  const af = editAct || { title: "", detail: "", due_text: "", status: "todo", sort: actionRows.length + 1 };
+  const actRows = actionRows.map((a) => `<tr>
+    <td>${a.sort ?? ""}</td><td>${esc(a.title || "")}</td>
+    <td>${a.status === "done" ? '<span class="ok">已完成</span>' : '<span class="mut">待办</span>'}</td>
+    <td>${esc(a.due_text || "—")}</td><td>${esc((a.detail || "").slice(0, 50))}${(a.detail || "").length > 50 ? "…" : ""}</td>
+    <td><a href="/admin/client/${sid}?edit_action=${a.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条行动项？')">
+      <input type="hidden" name="action" value="action_delete"><input type="hidden" name="id" value="${a.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const actionCard = `
+  <div class="card"><h2>行动清单（学生端只读）</h2>
+  <p class="mut">完成状态由导师在此维护；学生端本批只展示，不回写。</p>
+  <h3>${editAct ? "编辑行动项 #" + editAct.id : "新增行动项"}</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="${editAct ? "action_update" : "action_add"}">
+    ${editAct ? `<input type="hidden" name="id" value="${editAct.id}">` : ""}
+    <div class="row">
+      <div style="flex:2"><label>标题 *</label><input name="title" required maxlength="120" value="${esc(af.title || "")}"></div>
+      <div><label>状态</label><select name="status">${opts(ACTION_STATUSES, af.status || "todo")}</select></div>
+      <div><label>期限文本（可空）</label><input name="due_text" maxlength="40" value="${esc(af.due_text || "")}" placeholder="如 本周内 / 2026-11 前"></div>
+      <div><label>排序</label><input name="sort" type="number" value="${esc(af.sort ?? 0)}"></div>
+    </div>
+    <label>详情</label><textarea name="detail" maxlength="2000">${esc(af.detail || "")}</textarea>
+    <button type="submit">${editAct ? "保存修改" : "添加行动项"}</button>
+    ${editAct ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
+  </form>
+  ${actionRows.length ? `<div class="wrap"><table><tr><th>排序</th><th>标题</th><th>状态</th><th>期限</th><th>详情</th><th></th><th></th></tr>${actRows}</table></div>` : `<p class="mut">暂无行动项。</p>`}
+  </div>`;
+  // —— 导师建议（v10）——
+  const editAdvId = toInt(url.searchParams.get("edit_advice"), 0);
+  const editAdv = editAdvId ? adviceRows.find((a) => a.id === editAdvId) : null;
+  const vf = editAdv || { title: "", body: "", sort: adviceRows.length + 1 };
+  const advRows = adviceRows.map((a) => `<tr>
+    <td>${esc(String(a.created_at || "").slice(0, 10))}</td><td>${esc(a.title || "")}</td>
+    <td>${esc((a.body || "").slice(0, 70))}${(a.body || "").length > 70 ? "…" : ""}</td>
+    <td><a href="/admin/client/${sid}?edit_advice=${a.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条建议？')">
+      <input type="hidden" name="action" value="advice_delete"><input type="hidden" name="id" value="${a.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const adviceCard = `
+  <div class="card"><h2>导师建议（方案正文）</h2>
+  <p class="mut">诊断结论 / 策略摘要写在这里（学生端「规划」页按时间倒序）；待办事项请写到行动清单，不要混。</p>
+  <h3>${editAdv ? "编辑建议 #" + editAdv.id : "新增建议"}</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="${editAdv ? "advice_update" : "advice_add"}">
+    ${editAdv ? `<input type="hidden" name="id" value="${editAdv.id}">` : ""}
+    <label>标题 *</label><input name="title" required maxlength="120" value="${esc(vf.title || "")}">
+    <label>正文</label><textarea name="body" maxlength="4000" style="min-height:120px">${esc(vf.body || "")}</textarea>
+    <div class="row"><div><label>排序（接口按时间倒序，排序仅后台维护用）</label><input name="sort" type="number" value="${esc(vf.sort ?? 0)}"></div></div>
+    <button type="submit">${editAdv ? "保存修改" : "添加建议"}</button>
+    ${editAdv ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
+  </form>
+  ${adviceRows.length ? `<div class="wrap"><table><tr><th>日期</th><th>标题</th><th>正文</th><th></th><th></th></tr>${advRows}</table></div>` : `<p class="mut">暂无建议。</p>`}
+  </div>`;
+  // —— 导师沟通（v10）——
+  const threadHtml = messageRows.length ? messageRows.map((m) => `
+    <div style="margin:8px 0;padding:9px 12px;border-radius:10px;${m.sender === "mentor" ? "background:#eef4f1" : "background:#f6f2ea"}">
+      <span class="mut">${m.sender === "mentor" ? "导师" : "学生"} · ${esc(String(m.created_at || "").slice(0, 16).replace("T", " "))}</span>
+      <div style="white-space:pre-wrap">${esc(m.body || "")}</div>
+    </div>`).join("") : `<p class="mut">暂无留言。</p>`;
+  const messageCard = `
+  <div class="card"><h2>导师沟通 ${unreadStudentMsgs ? `<span class="pill">${unreadStudentMsgs} 条未读</span>` : ""}</h2>
+  <p class="mut">学生端 APP「导师」页的留言线程；打开本页即把学生留言标为已读。在下方回复（以导师身份发送）。</p>
+  ${threadHtml}
+  <form method="post">
+    <input type="hidden" name="action" value="message_reply">
+    <label>回复学生</label><textarea name="body" required maxlength="2000" placeholder="回复会原样出现在学生的 APP 里"></textarea>
+    <button type="submit">发送回复</button>
+  </form>
+  </div>`;
+  return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery",
+    hero + goalCard + statusCard + examCard + courseCard + meetingCard +
+    milestoneCard + keyDateCard + actionCard + adviceCard + messageCard));
 }
 async function postClient(req, env, sidFromPath) {
   const db = env.DB;
@@ -2625,6 +3237,114 @@ async function postClient(req, env, sidFromPath) {
       .bind(toInt(fd.get("id"), 0), sid).run();
     return redirect(back);
   }
+  // —— v10 ——
+  if (action === "profile_save") {
+    // 导师寄语 + 愿景：寄语非空写入并刷新时间；留空 = 清空（学生端不渲染）
+    const mm = clampStr(fd.get("mentor_message"), 2000);
+    const vision = clampStr(fd.get("vision_text"), 2000) || null;
+    if (mm) {
+      await db.prepare("UPDATE students SET mentor_message = ?, mentor_message_at = ?, vision_text = ?, updated_at = ? WHERE id = ?")
+        .bind(mm, nowIso(), vision, nowIso(), sid).run();
+    } else {
+      await db.prepare("UPDATE students SET mentor_message = NULL, mentor_message_at = NULL, vision_text = ?, updated_at = ? WHERE id = ?")
+        .bind(vision, nowIso(), sid).run();
+    }
+    return redirect(back);
+  }
+  if (action === "milestone_add" || action === "milestone_update") {
+    const title = clampStr(fd.get("title"), 120);
+    if (!title) return redirect(back);
+    const dateText = clampStr(fd.get("date_text"), 40) || null;
+    const detail = clampStr(fd.get("detail"), 2000);
+    const kind = clampStr(fd.get("kind"), 20) || null;
+    const sort = toInt(fd.get("sort"), 0);
+    if (action === "milestone_update") {
+      await db.prepare(
+        `UPDATE student_milestones SET date_text=?, title=?, detail=?, kind=?, sort=?, updated_at=? WHERE id=? AND student_id=?`
+      ).bind(dateText, title, detail, kind, sort, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO student_milestones(student_id, date_text, title, detail, kind, sort, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, dateText, title, detail, kind, sort, nowIso(), nowIso()).run();
+    }
+    return redirect(back);
+  }
+  if (action === "milestone_delete") {
+    await db.prepare("DELETE FROM student_milestones WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "keydate_add" || action === "keydate_update") {
+    const title = clampStr(fd.get("title"), 120);
+    const date = clampStr(fd.get("date"), 10);
+    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return redirect(back);
+    if (action === "keydate_update") {
+      await db.prepare("UPDATE student_key_dates SET date=?, title=?, updated_at=? WHERE id=? AND student_id=?")
+        .bind(date, title, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    } else {
+      await db.prepare("INSERT INTO student_key_dates(student_id, date, title, created_at, updated_at) VALUES(?,?,?,?,?)")
+        .bind(sid, date, title, nowIso(), nowIso()).run();
+    }
+    return redirect(back);
+  }
+  if (action === "keydate_delete") {
+    await db.prepare("DELETE FROM student_key_dates WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "action_add" || action === "action_update") {
+    const title = clampStr(fd.get("title"), 120);
+    if (!title) return redirect(back);
+    const detail = clampStr(fd.get("detail"), 2000);
+    const dueText = clampStr(fd.get("due_text"), 40) || null;
+    const status = ACTION_STATUSES[fd.get("status")] ? String(fd.get("status")) : "todo";
+    const sort = toInt(fd.get("sort"), 0);
+    if (action === "action_update") {
+      await db.prepare(
+        `UPDATE student_actions SET title=?, detail=?, due_text=?, status=?, sort=?, updated_at=? WHERE id=? AND student_id=?`
+      ).bind(title, detail, dueText, status, sort, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO student_actions(student_id, title, detail, due_text, status, sort, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, title, detail, dueText, status, sort, nowIso(), nowIso()).run();
+    }
+    return redirect(back);
+  }
+  if (action === "action_delete") {
+    await db.prepare("DELETE FROM student_actions WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "advice_add" || action === "advice_update") {
+    const title = clampStr(fd.get("title"), 120);
+    if (!title) return redirect(back);
+    const advBody = clampStr(fd.get("body"), 4000);
+    const sort = toInt(fd.get("sort"), 0);
+    if (action === "advice_update") {
+      await db.prepare("UPDATE student_advice SET title=?, body=?, sort=?, updated_at=? WHERE id=? AND student_id=?")
+        .bind(title, advBody, sort, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    } else {
+      await db.prepare("INSERT INTO student_advice(student_id, title, body, sort, created_at, updated_at) VALUES(?,?,?,?,?,?)")
+        .bind(sid, title, advBody, sort, nowIso(), nowIso()).run();
+    }
+    return redirect(back);
+  }
+  if (action === "advice_delete") {
+    await db.prepare("DELETE FROM student_advice WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "message_reply") {
+    const text = clampStr(fd.get("body"), 2000);
+    if (!text) return redirect(back);
+    await db.prepare(
+      `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor)
+       VALUES(?, 'mentor', ?, ?, 0, 1)`
+    ).bind(sid, text, nowIso()).run();
+    return redirect(back);
+  }
   return redirect(back);
 }
 
@@ -2644,6 +3364,7 @@ async function handleAdmin(req, env, url) {
     if (p === "/admin/content") return postContent(req, env);
     if (p === "/admin/tasks") return postTasks(req, env);
     if (p === "/admin/staff") return postStaff(req, env);
+    if (p === "/admin/knowledge") return postKnowledge(req, env);
     return redirect("/admin");
   }
   if (p === "/admin" || p === "/admin/") return pageDashboard(env);
@@ -2656,6 +3377,7 @@ async function handleAdmin(req, env, url) {
   if (p === "/admin/content") return pageContent(env, url);
   if (p === "/admin/tasks") return pageTasks(env, url);
   if (p === "/admin/staff") return pageStaff(env, url);
+  if (p === "/admin/knowledge") return pageKnowledge(env, url);
   return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
 }
 
@@ -2693,4 +3415,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, slugify, signatureSuggestions, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT };

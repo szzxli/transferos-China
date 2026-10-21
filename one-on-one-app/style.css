@@ -205,3 +205,145 @@ main{max-width:760px;margin:0 auto;padding:14px 12px 34px}
 .state{text-align:center;padding:28px 16px}
 .foot{text-align:center;margin-top:20px}
 .foot a{color:var(--mut);font-size:13px}
+
+/* ===== v10：四页签 + 新模块 + 双语切换 + 手机硬指标 ===== */
+main{overflow-x:clip}
+.card{overflow-wrap:break-word}
+img,svg{max-width:100%}
+
+/* 语言切换（右上角，触控区 ≥44px） */
+.lang-toggle{
+  margin-left:auto;min-width:68px;min-height:44px;padding:0 14px;
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.35);
+  border-radius:99px;font-size:14px;cursor:pointer;font-family:inherit;
+}
+.lang-toggle span{opacity:.65}
+.lang-toggle span.on{opacity:1;color:var(--accent);font-weight:700}
+.lang-toggle .lang-sep{opacity:.4}
+
+/* 底部页签栏：固定 + iPhone safe-area；[hidden] 必须压过 display:flex */
+.tabbar{
+  position:fixed;left:0;right:0;bottom:0;z-index:30;background:#fff;
+  border-top:1px solid var(--line);box-shadow:0 -2px 10px rgba(22,69,58,.07);
+  display:flex;padding-bottom:env(safe-area-inset-bottom);
+}
+.tabbar[hidden]{display:none !important}
+.tab-btn{
+  flex:1;min-height:58px;background:none;border:0;cursor:pointer;font-family:inherit;
+  color:var(--mut);font-size:13px;position:relative;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  padding:7px 4px 9px;
+}
+.tab-btn .tab-ic{font-size:19px;line-height:1}
+.tab-btn.on{color:var(--brand);font-weight:700}
+.tab-btn .dot{
+  position:absolute;top:9px;left:calc(50% + 7px);width:9px;height:9px;
+  border-radius:50%;background:#d92d20;box-shadow:0 0 0 2px #fff;
+}
+#app{padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+.tabpage{min-height:42vh}
+.page-empty{text-align:center;color:var(--mut);padding:38px 12px;font-size:14px}
+.card-note{margin-left:auto;font-size:13px;color:var(--mut);font-weight:400}
+.sub-h{font-size:14px;margin:14px 0 2px;color:var(--mut)}
+.btn-ghost{min-height:44px}
+.sign-opt{min-height:44px}
+.foot a{display:inline-block;padding:10px 6px}
+
+/* 导师寄语 */
+.mentor-body{font-size:16px;line-height:1.75;white-space:pre-wrap;margin:0}
+#mentor-date{margin:8px 0 0;text-align:right}
+
+/* 倒计时 */
+.cd-item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 0;border-bottom:1px dashed var(--line)}
+.cd-item:last-child{border-bottom:none}
+.cd-title{font-weight:700}
+.cd-date{font-size:13px;color:var(--mut)}
+.cd-days{font-size:17px;font-weight:800;color:var(--brand);white-space:nowrap}
+.cd-days.over{color:var(--bad)}
+.cd-days.today{color:#b45309}
+
+/* 行动清单 */
+.act-item{display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)}
+.act-item:last-child{border-bottom:none}
+.act-check{
+  flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--brand);
+  color:var(--brand);display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;margin-top:2px;background:#fff;
+}
+.act-item.done .act-check{background:var(--brand);color:#fff}
+.act-item.done .act-title{text-decoration:line-through;color:var(--mut)}
+.act-body{flex:1;min-width:0}
+.act-title{font-weight:600}
+.act-detail{font-size:13.5px;color:var(--mut);white-space:pre-wrap}
+.act-due{
+  flex:none;font-size:12px;background:#fdf6e0;color:#8a6d1a;border:1px solid #ecd9a0;
+  border-radius:99px;padding:1px 9px;white-space:nowrap;margin-top:2px;
+}
+
+/* 成长时间线（窄屏天然纵向堆叠） */
+.tl{position:relative;margin:4px 0 0 8px;padding-left:22px;border-left:2px solid var(--line)}
+.tl-item{position:relative;padding:0 0 17px}
+.tl-item:last-child{padding-bottom:2px}
+.tl-dot{
+  position:absolute;left:-29px;top:5px;width:12px;height:12px;border-radius:50%;
+  background:var(--accent);box-shadow:0 0 0 2px var(--brand);
+}
+.tl-date{font-size:12.5px;color:var(--mut)}
+.tl-title{font-weight:700;font-size:15.5px}
+.tl-detail{font-size:14px;white-space:pre-wrap}
+
+/* 进步曲线 */
+.curve-flex{display:flex;gap:14px;align-items:center;margin:12px 0 4px;flex-wrap:wrap}
+.curve-ring-label{font-weight:700;color:var(--brand)}
+.chart{margin-top:4px}
+
+/* 愿景板 */
+.vision{background:linear-gradient(150deg,#fdf6e0 0%,#fff 70%)}
+.vision-text{font-size:18px;font-weight:700;color:var(--brand-2);line-height:1.6;white-space:pre-wrap;margin:0 0 8px}
+.vision-goal{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:14px}
+
+/* 导师建议 / 知识卡 */
+.advice-item,.know-item{padding:12px 0;border-bottom:1px dashed var(--line)}
+.advice-item:last-child,.know-item:last-child{border-bottom:none}
+.advice-top{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.advice-title{font-weight:700;font-size:15.5px}
+.advice-date{font-size:12.5px;color:var(--mut);white-space:nowrap}
+.advice-body,.know-body{font-size:14px;margin-top:4px;white-space:pre-wrap}
+.know-top{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.know-title{font-weight:700}
+
+/* 导师沟通 */
+.msg-row{margin:10px 0;display:flex;flex-direction:column}
+.msg-row.mine{align-items:flex-end}
+.msg-row.mentor{align-items:flex-start}
+.msg-meta{font-size:12px;color:var(--mut);margin-bottom:3px}
+.msg-bubble{
+  max-width:88%;padding:9px 13px;border-radius:14px;font-size:14.5px;
+  white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55;
+}
+.msg-row.mentor .msg-bubble{background:#eaf3ee;border-bottom-left-radius:4px}
+.msg-row.mine .msg-bubble{background:var(--brand);color:#fff;border-bottom-right-radius:4px}
+#msg-form{margin-top:14px;border-top:1px dashed var(--line);padding-top:12px}
+.msg-label{font-size:13.5px;font-weight:600;display:block;margin-bottom:6px}
+#msg-input{
+  width:100%;padding:11px 12px;font-size:16px;border:1px solid var(--line);
+  border-radius:11px;font-family:inherit;resize:vertical;min-height:52px;background:#fff;color:var(--ink);
+}
+.msg-bar{display:flex;align-items:center;justify-content:space-between;margin-top:9px;gap:10px}
+.btn-send{
+  min-width:96px;min-height:44px;padding:10px 22px;font-size:15px;font-weight:700;
+  background:var(--brand);color:#fff;border:0;border-radius:10px;cursor:pointer;font-family:inherit;
+}
+.btn-send:disabled{opacity:.5;cursor:default}
+
+/* 窄屏（≤480px，含 390px 验版）：纵向堆叠、不横向滚动 */
+@media (max-width:480px){
+  .stat-big{gap:14px}
+  .course{flex-wrap:wrap}
+  .snap{flex-direction:column;gap:1px}
+  .cd-days{font-size:15px}
+  .hero h1{font-size:21px}
+  .line-item{gap:9px}
+  .msg-bubble{max-width:92%}
+}

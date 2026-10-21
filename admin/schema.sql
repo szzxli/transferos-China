@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS students(
   id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, order_id INTEGER,
   name TEXT, package TEXT, stage TEXT DEFAULT 'diag',
   stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT,
-  client_key TEXT, slug TEXT, signature TEXT, signature_set_at TEXT);
+  client_key TEXT, slug TEXT, signature TEXT, signature_set_at TEXT,
+  vision_text TEXT, mentor_message TEXT, mentor_message_at TEXT);
 
 CREATE TABLE IF NOT EXISTS content_items(
   id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
@@ -124,6 +125,41 @@ CREATE TABLE IF NOT EXISTS student_goal_lines(
 -- v9：既有 students 表补专属签名列（学生在 APP 自选确认一次后固定；改签名走后台）：
 -- ALTER TABLE students ADD COLUMN signature TEXT;
 -- ALTER TABLE students ADD COLUMN signature_set_at TEXT;
+-- v10：既有 students 表补愿景与导师寄语列（Worker 也会自动补，此为手动备选）：
+-- ALTER TABLE students ADD COLUMN vision_text TEXT;
+-- ALTER TABLE students ADD COLUMN mentor_message TEXT;
+-- ALTER TABLE students ADD COLUMN mentor_message_at TEXT;
+
+-- ===== v10 新增表：一对一 APP 九模块（时间线/关键日期/行动清单/知识卡/导师建议/导师沟通）=====
+-- 成长时间线（date_text 为自由文本日期，如「2025 秋季」；确切日期未知时不编造）
+CREATE TABLE IF NOT EXISTS student_milestones(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+  date_text TEXT, title TEXT NOT NULL, detail TEXT, kind TEXT,
+  sort INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT);
+-- 关键日期（date 为 ISO 日期 YYYY-MM-DD，APP 端按本地日期算剩余天数）
+CREATE TABLE IF NOT EXISTS student_key_dates(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+  date TEXT NOT NULL, title TEXT NOT NULL, created_at TEXT, updated_at TEXT);
+-- 行动清单（status: todo 待办 / done 已完成；学生端只读）
+CREATE TABLE IF NOT EXISTS student_actions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+  title TEXT NOT NULL, detail TEXT, due_text TEXT,
+  status TEXT DEFAULT 'todo', sort INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT);
+-- 全局知识卡（与学生无关；按 tag 匹配学生的人生线类型/主题下发，tag:
+-- main / parallel / passive 或主题 exam / business / study；enabled=0 不下发）
+CREATE TABLE IF NOT EXISTS knowledge_items(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT,
+  tag TEXT, enabled INTEGER DEFAULT 1, created_at TEXT, updated_at TEXT);
+-- 导师建议（方案正文：诊断结论/考试策略摘要；与行动清单的待办分工不同）
+CREATE TABLE IF NOT EXISTS student_advice(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+  title TEXT NOT NULL, body TEXT, sort INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT);
+-- 导师沟通（双向留言；sender: student / mentor；read_by_student/read_by_mentor 为已读标记）
+CREATE TABLE IF NOT EXISTS student_messages(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+  sender TEXT NOT NULL, body TEXT NOT NULL,
+  read_by_student INTEGER DEFAULT 0, read_by_mentor INTEGER DEFAULT 0,
+  created_at TEXT);
 
 -- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）
 INSERT OR IGNORE INTO agents(code, name, region, kind, active, created_at) VALUES

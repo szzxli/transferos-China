@@ -18,27 +18,29 @@
     <span class="logo" aria-hidden="true">
       <svg viewBox="0 0 100 100" width="26" height="26"><rect width="100" height="100" rx="22" fill="#c9f06b"/><circle cx="50" cy="50" r="25" fill="none" stroke="#16453a" stroke-width="9"/><circle cx="50" cy="50" r="7" fill="#16453a"/></svg>
     </span>
-    <span class="topbar-title">一对一专属客户端</span>
-    <span class="topbar-badge">只读</span>
+    <span class="topbar-title" data-i18n="appTitle">一对一专属客户端</span>
+    <button type="button" class="lang-toggle" id="lang-toggle" aria-label="语言 / Language">
+      <span id="lang-zh" class="on">中</span><span class="lang-sep">/</span><span id="lang-en">EN</span>
+    </button>
   </div>
 </header>
 
 <main id="main">
   <!-- 门页：无参数且本地未存时显示 -->
   <section id="gate" class="card gate" hidden>
-    <h1>打开我的专属客户端</h1>
-    <p class="mut">输入导师发给你的专属名（或学生编号）与访问密钥。输入一次后，本设备会自动记住。</p>
+    <h1 data-i18n="gate.title">打开我的专属客户端</h1>
+    <p class="mut" data-i18n="gate.desc">输入导师发给你的专属名（或学生编号）与访问密钥。输入一次后，本设备会自动记住。</p>
     <form id="gate-form">
-      <label>专属名 / 学生编号
-        <input id="gate-s" autocomplete="off" placeholder="如 stu-01 或 12" required>
+      <label><span data-i18n="gate.labelS">专属名 / 学生编号</span>
+        <input id="gate-s" autocomplete="off" data-i18n-ph="gate.phS" placeholder="如 stu-01 或 12" required>
       </label>
-      <label>访问密钥
-        <input id="gate-k" autocomplete="off" placeholder="如 ck_…" required>
+      <label><span data-i18n="gate.labelK">访问密钥</span>
+        <input id="gate-k" autocomplete="off" data-i18n-ph="gate.phK" placeholder="如 ck_…" required>
       </label>
-      <button type="submit" class="btn-primary">进入</button>
+      <button type="submit" class="btn-primary" data-i18n="gate.enter">进入</button>
       <p id="gate-err" class="err" hidden></p>
     </form>
-    <p class="mut" style="margin-top:14px">小提示：进入后用浏览器菜单把本页「添加到主屏幕」，桌面上出现的就是你的专属APP，点图标即可打开。</p>
+    <p class="mut" style="margin-top:14px" data-i18n="gate.hint">小提示：进入后用浏览器菜单把本页「添加到主屏幕」，桌面上出现的就是你的专属APP，点图标即可打开。</p>
   </section>
 
   <!-- 加载 / 错误 -->
@@ -47,65 +49,151 @@
     <button id="state-retry" class="btn-ghost" hidden>重试</button>
   </section>
 
-  <!-- 内容区（由 app.js 渲染） -->
+  <!-- 内容区（由 app.js 渲染；四页签纯前端切换） -->
   <div id="app" hidden>
-    <section class="hero card">
-      <div class="hero-head">
-        <h1 id="stu-name">—</h1>
-        <span id="stu-system" class="pill" hidden></span>
-      </div>
-      <p id="stu-meta" class="mut"></p>
-      <p id="stu-exclusive" class="exclusive"></p>
-      <div id="main-line" class="mainline" hidden>
-        <div class="mainline-label">当前主线</div>
-        <div id="main-line-name" class="mainline-name"></div>
-        <div id="main-line-next" class="mainline-next"></div>
-      </div>
-    </section>
+    <!-- 页1 首页 -->
+    <div class="tabpage" id="page-home">
+      <section class="hero card">
+        <div class="hero-head">
+          <h1 id="stu-name">—</h1>
+          <span id="stu-system" class="pill" hidden></span>
+        </div>
+        <p id="stu-meta" class="mut"></p>
+        <p id="stu-exclusive" class="exclusive"></p>
+        <div id="main-line" class="mainline" hidden>
+          <div class="mainline-label" data-i18n="hero.mainLine">当前主线</div>
+          <div id="main-line-name" class="mainline-name"></div>
+          <div id="main-line-next" class="mainline-next"></div>
+        </div>
+      </section>
 
-    <section class="card" id="sec-daily">
-      <h2>每日一句</h2>
-      <p id="daily-date" class="mut" style="margin:0 0 8px"></p>
-      <p id="daily-quote" class="quote-zh"></p>
-      <p id="daily-quote-en" class="quote-en"></p>
-      <div id="daily-sign"></div>
-    </section>
+      <section class="card" id="sec-mentor" hidden>
+        <h2 data-i18n="card.mentor">导师寄语</h2>
+        <p id="mentor-body" class="mentor-body"></p>
+        <p id="mentor-date" class="mut"></p>
+      </section>
 
-    <section class="card" id="sec-goals">
-      <h2>我的目标</h2>
-      <div id="goal-lines"></div>
-      <div id="goal-detail"></div>
-    </section>
+      <section class="card" id="sec-daily">
+        <h2 data-i18n="card.daily">每日一句</h2>
+        <p id="daily-date" class="mut" style="margin:0 0 8px"></p>
+        <p id="daily-quote" class="quote-zh"></p>
+        <p id="daily-quote-en" class="quote-en"></p>
+        <div id="daily-sign"></div>
+      </section>
 
-    <section class="card" id="sec-status">
-      <h2>当前状态</h2>
-      <div id="status-latest"></div>
-      <div id="status-history"></div>
-    </section>
+      <section class="card" id="sec-countdown" hidden>
+        <h2 data-i18n="card.countdown">关键日期</h2>
+        <div id="countdown-list"></div>
+      </section>
 
-    <section class="card" id="sec-exams">
-      <h2>考试记录</h2>
-      <div id="exams"></div>
-    </section>
+      <section class="card" id="sec-actions" hidden>
+        <h2><span data-i18n="card.actions">行动清单</span><span id="actions-progress" class="card-note"></span></h2>
+        <div id="actions-list"></div>
+      </section>
+    </div>
 
-    <section class="card" id="sec-courses">
-      <h2>选课规划</h2>
-      <div id="course-progress"></div>
-      <div id="course-groups"></div>
-    </section>
+    <!-- 页2 成长 -->
+    <div class="tabpage" id="page-growth" hidden>
+      <section class="card" id="sec-timeline" hidden>
+        <h2 data-i18n="card.timeline">成长时间线</h2>
+        <div id="timeline"></div>
+      </section>
 
-    <section class="card" id="sec-meetings">
-      <h2>辅导会议</h2>
-      <div id="meetings"></div>
-    </section>
+      <section class="card" id="sec-status">
+        <h2 data-i18n="card.status">当前状态</h2>
+        <div id="status-latest"></div>
+        <div id="status-curve"></div>
+        <div id="status-history"></div>
+      </section>
+
+      <section class="card" id="sec-courses-done">
+        <h2 data-i18n="card.coursesDone">选课 · 已修与在修</h2>
+        <div id="courses-done-summary"></div>
+        <div id="courses-done-list"></div>
+      </section>
+
+      <section class="card" id="sec-exams">
+        <h2 data-i18n="card.exams">考试记录</h2>
+        <div id="exams"></div>
+      </section>
+
+      <section class="card" id="sec-meetings">
+        <h2 data-i18n="card.meetings">辅导会议</h2>
+        <div id="meetings"></div>
+      </section>
+
+      <p class="page-empty" id="empty-growth" hidden></p>
+    </div>
+
+    <!-- 页3 规划 -->
+    <div class="tabpage" id="page-plan" hidden>
+      <section class="card" id="sec-goals">
+        <h2 data-i18n="card.lines">人生线</h2>
+        <div id="goal-lines"></div>
+      </section>
+
+      <section class="card vision" id="sec-vision" hidden>
+        <h2 data-i18n="card.vision">愿景板</h2>
+        <p id="vision-text" class="vision-text"></p>
+        <div id="vision-goal"></div>
+      </section>
+
+      <section class="card" id="sec-goal-detail">
+        <h2 data-i18n="card.goalDetail">学业目标</h2>
+        <div id="goal-detail"></div>
+      </section>
+
+      <section class="card" id="sec-courses">
+        <h2 data-i18n="card.courses">选课规划</h2>
+        <div id="course-progress"></div>
+        <div id="course-groups"></div>
+      </section>
+
+      <section class="card" id="sec-advice" hidden>
+        <h2 data-i18n="card.advice">导师建议</h2>
+        <div id="advice-list"></div>
+      </section>
+
+      <p class="page-empty" id="empty-plan" hidden></p>
+    </div>
+
+    <!-- 页4 导师 -->
+    <div class="tabpage" id="page-mentor" hidden>
+      <section class="card" id="sec-knowledge" hidden>
+        <h2 data-i18n="card.knowledge">知识卡</h2>
+        <div id="knowledge-list"></div>
+      </section>
+
+      <section class="card" id="sec-messages">
+        <h2 data-i18n="card.messages">导师沟通</h2>
+        <div id="msg-thread"></div>
+        <form id="msg-form">
+          <label class="msg-label" for="msg-input" data-i18n="msg.label">给导师留言</label>
+          <textarea id="msg-input" rows="3" maxlength="500" data-i18n-ph="msg.ph" placeholder="写下你想对导师说的话…"></textarea>
+          <div class="msg-bar">
+            <span id="msg-count" class="mut">0 / 500</span>
+            <button type="submit" id="msg-send" class="btn-send" data-i18n="msg.send">发送</button>
+          </div>
+          <p id="msg-err" class="err" hidden></p>
+        </form>
+      </section>
+    </div>
 
     <footer class="foot">
-      <p class="mut">把本页「添加到主屏幕」后即为你的专属APP，点桌面图标即可随时打开。</p>
-      <p class="mut">本页为只读视图，数据由导师维护更新。如需修改任何信息，请直接联系导师。</p>
-      <p><a href="#" id="forget">清除本设备记住的编号与密钥</a></p>
+      <p class="mut" data-i18n="foot.line1">把本页「添加到主屏幕」后即为你的专属APP，点桌面图标即可随时打开。</p>
+      <p class="mut" data-i18n="foot.line2">数据由导师维护更新；有问题可以在「导师」页留言。</p>
+      <p><a href="#" id="forget" data-i18n="foot.forget">清除本设备记住的编号与密钥</a></p>
     </footer>
   </div>
 </main>
+
+<!-- 底部页签（移动端形态；safe-area 适配在 style.css） -->
+<nav class="tabbar" id="tabbar" hidden>
+  <button type="button" class="tab-btn on" data-tab="home"><span class="tab-ic" aria-hidden="true">⌂</span><span data-i18n="tab.home">首页</span></button>
+  <button type="button" class="tab-btn" data-tab="growth"><span class="tab-ic" aria-hidden="true">↗</span><span data-i18n="tab.growth">成长</span></button>
+  <button type="button" class="tab-btn" data-tab="plan"><span class="tab-ic" aria-hidden="true">◎</span><span data-i18n="tab.plan">规划</span></button>
+  <button type="button" class="tab-btn" data-tab="mentor"><span class="tab-ic" aria-hidden="true">✎</span><span data-i18n="tab.mentor">导师</span><i class="dot" id="tab-dot" hidden></i></button>
+</nav>
 
 <script src="app.js"></script>
 </body>
