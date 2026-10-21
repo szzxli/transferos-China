@@ -67,11 +67,12 @@ CREATE TABLE IF NOT EXISTS staff_reviews(
   verdict TEXT DEFAULT 'observe', comment TEXT, created_at TEXT);
 
 -- ===== v6 新增表：一对一专属客户端（按 student_id 关联 students）=====
--- 学生目标（每名学生至多一条，student_id 唯一，页面保存走 upsert）
+-- 学生目标（每名学生至多一条，student_id 唯一，页面保存走 upsert；
+-- school_system 为学校体系标签，如 UC / CC / CUNY / SUNY / 其他，纯数据字段）
 CREATE TABLE IF NOT EXISTS student_goals(
   id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER UNIQUE,
   target_school TEXT, target_term TEXT, goal_note TEXT, gpa_target TEXT,
-  created_at TEXT, updated_at TEXT);
+  school_system TEXT, created_at TEXT, updated_at TEXT);
 -- 状态快照（每学期结束记一条：当时 GPA 与学分进度）
 CREATE TABLE IF NOT EXISTS student_status(
   id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
@@ -89,6 +90,19 @@ CREATE TABLE IF NOT EXISTS student_meetings(
   id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
   meeting_date TEXT, topic TEXT, summary TEXT, action_items TEXT,
   next_date TEXT, created_at TEXT, updated_at TEXT);
+-- 考试记录（考试名/分数/达标线均为自由文本，格式由各项目要求决定；
+-- result: pass 达标 / fail 未达标 / pending 待考或待出分）
+CREATE TABLE IF NOT EXISTS student_exams(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+  exam_name TEXT, exam_date TEXT, score TEXT, pass_line TEXT,
+  result TEXT DEFAULT 'pending', note TEXT, created_at TEXT, updated_at TEXT);
+-- 目标人生线（一名学生多条线，按 priority 升序展示；
+-- line_type: main 主线 / parallel 并行线 / passive 被动等待线；
+-- status: active 进行中 / paused 暂停 / done 已完成 / dropped 已放弃）
+CREATE TABLE IF NOT EXISTS student_goal_lines(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+  name TEXT, line_type TEXT DEFAULT 'parallel', priority INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'active', next_step TEXT, created_at TEXT, updated_at TEXT);
 -- 注：既有数据库的 staff 新列（kind/emp_no/platform/job_function/persona/accountable）
 -- 与 tasks 新列（type）、leads 评级列（grade/score/grade_reason/graded_at）、
 -- content_items 状态列（status）

@@ -191,6 +191,11 @@ const CONTENT_STATUSES = { draft: "草稿", pending: "待审", published: "已�
 // v6：一对一专属客户端（长期一对一辅导学生）——选课类别与状态流转
 const COURSE_KINDS = { prereq: "必修先修", gened: "通识", elective: "选修" };
 const COURSE_STATUSES = { planned: "计划中", enrolled: "已选", ongoing: "进行中", done: "已完成", dropped: "已退" };
+// v6 通用模板：考试结果枚举（考试名/分数/达标线均为自由文本字段，由各学生数据集决定）
+const EXAM_RESULTS = { pass: "达标", fail: "未达标", pending: "待考/待出分" };
+// v6 通用模板：目标人生线——类型与状态（多条线 + 优先级排序，字段与逻辑不绑定任何个案）
+const LINE_TYPES = { main: "主线", parallel: "并行线", passive: "被动等待线" };
+const LINE_STATUSES = { active: "进行中", paused: "暂停", done: "已完成", dropped: "已放弃" };
 // groupCoursesByTerm: 按 term 分组（学期字符串降序，最新学期在前；组内保持传入顺序）
 function groupCoursesByTerm(courses) {
   const map = new Map();
@@ -275,7 +280,7 @@ const DDL = [
   `CREATE TABLE IF NOT EXISTS student_goals(
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER UNIQUE,
     target_school TEXT, target_term TEXT, goal_note TEXT, gpa_target TEXT,
-    created_at TEXT, updated_at TEXT)`,
+    school_system TEXT, created_at TEXT, updated_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS student_status(
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     snapshot_date TEXT, gpa REAL, credits_done INTEGER, credits_total INTEGER,
@@ -289,6 +294,14 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     meeting_date TEXT, topic TEXT, summary TEXT, action_items TEXT,
     next_date TEXT, created_at TEXT, updated_at TEXT)`,
+  `CREATE TABLE IF NOT EXISTS student_exams(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    exam_name TEXT, exam_date TEXT, score TEXT, pass_line TEXT,
+    result TEXT DEFAULT 'pending', note TEXT, created_at TEXT, updated_at TEXT)`,
+  `CREATE TABLE IF NOT EXISTS student_goal_lines(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    name TEXT, line_type TEXT DEFAULT 'parallel', priority INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'active', next_step TEXT, created_at TEXT, updated_at TEXT)`,
 ];
 // v3 迁移：给既有 staff 表补列（重复执行时列已存在会抛错，逐条捕获忽略，保证幂等）
 const STAFF_MIGRATIONS = [
@@ -313,6 +326,10 @@ const LEAD_MIGRATIONS = [
 const CONTENT_MIGRATIONS = [
   "ALTER TABLE content_items ADD COLUMN status TEXT DEFAULT 'published'",
 ];
+// v6 迁移：student_goals 补 school_system 列（学校体系标签，数据集字段），同样幂等
+const GOAL_MIGRATIONS = [
+  "ALTER TABLE student_goals ADD COLUMN school_system TEXT",
+];
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady || !db) return;
@@ -330,6 +347,9 @@ async function ensureSchema(db) {
     try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
   }
   for (const sql of CONTENT_MIGRATIONS) {
+    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+  }
+  for (const sql of GOAL_MIGRATIONS) {
     try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
   }
   schemaReady = true;
@@ -1026,6 +1046,8 @@ async function postDelivery(req, env) {
     await db.prepare("DELETE FROM student_status WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM student_courses WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM student_meetings WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_exams WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_goal_lines WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM students WHERE id=?").bind(delId).run();
     return redirect("/admin/delivery");
   }
@@ -1821,7 +1843,8 @@ async function pageClient(env, url, sid) {
   const nowMs = Date.now();
   const stageDays = daysInStage(student.stage_since, nowMs);
   const goal = await db.prepare("SELECT * FROM student_goals WHERE student_id=?").bind(sid).first();
-  const g = goal || { target_school: "", target_term: "", gpa_target: "", goal_note: "" };
+  const g = goal || { target_school: "", target_term: "", gpa_target: "", goal_note: "", school_system: "" };
+  const allStudents = (await db.prepare("SELECT id, name FROM students ORDER BY id DESC LIMIT 300").all()).results || [];
   const snaps = (await db.prepare(
     "SELECT * FROM student_status WHERE student_id=? ORDER BY snapshot_date DESC, id DESC LIMIT 100").bind(sid).all()).results || [];
   const latest = snaps[0] || null;
@@ -1831,14 +1854,25 @@ async function pageClient(env, url, sid) {
   const groups = groupCoursesByTerm(courses);
   const meetings = (await db.prepare(
     "SELECT * FROM student_meetings WHERE student_id=? ORDER BY meeting_date DESC, id DESC LIMIT 200").bind(sid).all()).results || [];
+  const exams = (await db.prepare(
+    "SELECT * FROM student_exams WHERE student_id=? ORDER BY exam_date DESC, id DESC LIMIT 200").bind(sid).all()).results || [];
+  const goalLines = (await db.prepare(
+    "SELECT * FROM student_goal_lines WHERE student_id=? ORDER BY priority ASC, id ASC LIMIT 100").bind(sid).all()).results || [];
 
   const bar = (done, total) => {
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
     return `<div class="pbar"><i style="width:${pct}%"></i></div>`;
   };
-  // —— 顶部总览 ——
+  // —— 顶部总览（数据集标识：学生姓名 + 学校体系标签 + 学生切换）——
+  const switcherOpts = allStudents.map((s) =>
+    `<option value="${s.id}"${s.id === sid ? " selected" : ""}>${esc(s.name)}</option>`).join("");
   const hero = `
-  <div class="card"><h2>${esc(student.name)} · 专属客户端</h2>
+  <div class="card"><h2>${esc(student.name)} · 专属客户端 ${g.school_system ? `<span class="pill">${esc(g.school_system)}</span>` : ""}</h2>
+  <div class="row" style="align-items:end">
+    <div><label>切换学生（数据集）</label>
+    <select onchange="if(this.value)location.href='/admin/client/'+this.value">${switcherOpts}</select></div>
+    <div><label>当前数据集</label><p style="margin:6px 0 10px">学生 #${sid}${g.school_system ? " · 体系：" + esc(g.school_system) : " · 体系未标注（在下方目标区填写）"}</p></div>
+  </div>
   <div class="grid">
     <div class="stat"><div class="l">目标学校 / 项目</div><div class="n" style="font-size:17px">${esc(g.target_school || "待定")}</div></div>
     <div class="stat"><div class="l">目标入学季</div><div class="n" style="font-size:17px">${esc(g.target_term || "待定")}</div></div>
@@ -1848,16 +1882,48 @@ async function pageClient(env, url, sid) {
     <div class="stat"><div class="l">交付阶段</div><div class="n" style="font-size:17px">${esc(DELIVERY_STAGES[student.stage] || student.stage || "—")}</div><div class="l">${stageDays === null ? "" : "已停留 " + stageDays + " 天"}${student.package ? " · " + esc(student.package) : ""}</div></div>
   </div>
   ${g.goal_note ? `<p style="white-space:pre-wrap">${esc(g.goal_note)}</p>` : ""}
+  ${goalLines.length ? `<p>当前主线（优先级 ${goalLines[0].priority}）：<strong>${esc(goalLines[0].name || "")}</strong>（${esc(LINE_TYPES[goalLines[0].line_type] || goalLines[0].line_type || "")} · ${esc(LINE_STATUSES[goalLines[0].status] || goalLines[0].status || "")}）${goalLines[0].next_step ? " · 下一步：" + esc(goalLines[0].next_step) : ""} <span class="mut">共 ${goalLines.length} 条线，详见下方目标区</span></p>` : ""}
   <p class="mut"><a href="/admin/delivery">← 返回交付页</a>${student.lead_id ? ` · <a href="/admin/user?id=${student.lead_id}">查看用户档案</a>` : ""}</p></div>`;
   // —— 目标 ——
+  // —— 目标（多条人生线 + 学业目标详情）——
+  const editLineId = toInt(url.searchParams.get("edit_line"), 0);
+  const editLine = editLineId ? goalLines.find((l) => l.id === editLineId) : null;
+  const lf = editLine || { name: "", line_type: "parallel", priority: goalLines.length + 1, status: "active", next_step: "" };
+  const lineRows = goalLines.map((l) => `<tr>
+    <td>${l.priority ?? ""}</td><td>${esc(l.name || "")}</td>
+    <td><span class="pill">${esc(LINE_TYPES[l.line_type] || l.line_type || "")}</span></td>
+    <td>${esc(LINE_STATUSES[l.status] || l.status || "")}</td>
+    <td>${esc(l.next_step || "—")}</td>
+    <td><a href="/admin/client/${sid}?edit_line=${l.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条目标线？')">
+      <input type="hidden" name="action" value="line_delete"><input type="hidden" name="id" value="${l.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const goalCard = `
-  <div class="card"><h2>目标</h2>
+  <div class="card"><h2>目标（人生线）</h2>
+  ${goalLines.length ? `<div class="wrap"><table><tr><th>优先级</th><th>名称</th><th>类型</th><th>状态</th><th>下一步</th><th></th><th></th></tr>${lineRows}</table></div>` : `<p class="mut">暂无目标线，用下方表单添加第一条。</p>`}
+  <h3>${editLine ? "编辑目标线 #" + editLine.id : "新增目标线"}</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="${editLine ? "line_update" : "line_add"}">
+    ${editLine ? `<input type="hidden" name="id" value="${editLine.id}">` : ""}
+    <div class="row">
+      <div style="flex:2"><label>名称 *</label><input name="name" required maxlength="80" value="${esc(lf.name || "")}" placeholder="这条线的名称"></div>
+      <div><label>类型</label><select name="line_type">${opts(LINE_TYPES, lf.line_type || "parallel")}</select></div>
+      <div><label>优先级（小的在前）</label><input name="priority" type="number" min="1" max="99" value="${esc(lf.priority ?? 1)}"></div>
+      <div><label>状态</label><select name="status">${opts(LINE_STATUSES, lf.status || "active")}</select></div>
+    </div>
+    <label>下一步</label><input name="next_step" maxlength="200" value="${esc(lf.next_step || "")}" placeholder="这条线眼下要推进的一步">
+    <button type="submit">${editLine ? "保存修改" : "添加目标线"}</button>
+    ${editLine ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
+  </form>
+  <h3>学业目标详情（学校 / 项目 / 入学季）</h3>
   <form method="post">
     <input type="hidden" name="action" value="goal_save">
     <div class="row">
-      <div><label>目标学校 / 项目</label><input name="target_school" maxlength="120" value="${esc(g.target_school || "")}" placeholder="如 SUNY 护理学院 BSN 项目"></div>
+      <div><label>目标学校 / 项目</label><input name="target_school" maxlength="120" value="${esc(g.target_school || "")}" placeholder="目标学校 + 目标项目名称"></div>
       <div><label>目标入学季</label><input name="target_term" maxlength="40" value="${esc(g.target_term || "")}" placeholder="如 2027-Fall"></div>
       <div><label>目标 GPA</label><input name="gpa_target" maxlength="10" value="${esc(g.gpa_target || "")}" placeholder="如 3.5"></div>
+      <div><label>学校体系</label><input name="school_system" maxlength="40" list="school-systems" value="${esc(g.school_system || "")}" placeholder="如 UC / CC / CUNY / SUNY">
+        <datalist id="school-systems"><option value="UC"><option value="CC"><option value="CUNY"><option value="SUNY"><option value="其他"></datalist></div>
     </div>
     <label>目标说明</label><textarea name="goal_note" maxlength="2000" placeholder="申请要求、关键门槛、长期规划要点">${esc(g.goal_note || "")}</textarea>
     <button type="submit">保存目标</button>
@@ -1919,7 +1985,7 @@ async function pageClient(env, url, sid) {
     <div class="row">
       <div><label>学期 *</label><input name="term" required maxlength="20" value="${esc(cf.term || "")}" placeholder="如 2026-Spring"></div>
       <div><label>课程代码</label><input name="course_code" maxlength="20" value="${esc(cf.course_code || "")}" placeholder="如 BIO 181"></div>
-      <div><label>课程名</label><input name="course_name" maxlength="80" value="${esc(cf.course_name || "")}" placeholder="如 解剖学 I"></div>
+      <div><label>课程名</label><input name="course_name" maxlength="80" value="${esc(cf.course_name || "")}" placeholder="如 普通生物学 I"></div>
       <div><label>学分</label><input name="credits" type="number" min="0" max="30" value="${esc(cf.credits ?? "")}"></div>
     </div>
     <div class="row">
@@ -1932,6 +1998,40 @@ async function pageClient(env, url, sid) {
     ${editCourse ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
   </form>
   ${courseGroupsHtml}
+  </div>`;
+  // —— 考试记录 ——
+  const editExamId = toInt(url.searchParams.get("edit_exam"), 0);
+  const editExam = editExamId ? exams.find((e) => e.id === editExamId) : null;
+  const ef = editExam || { exam_name: "", exam_date: todayStr(), score: "", pass_line: "", result: "pending", note: "" };
+  const examRows = exams.map((e) => `<tr>
+    <td>${esc(e.exam_name || "")}</td><td>${esc(e.exam_date || "")}</td>
+    <td>${esc(e.score || "—")}</td><td>${esc(e.pass_line || "—")}</td>
+    <td>${e.result === "pass" ? '<span class="ok">达标</span>' : e.result === "fail" ? '<span class="bad">未达标</span>' : '<span class="mut">待考/待出分</span>'}</td>
+    <td>${esc((e.note || "").slice(0, 40))}</td>
+    <td><a href="/admin/client/${sid}?edit_exam=${e.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条考试记录？')">
+      <input type="hidden" name="action" value="exam_delete"><input type="hidden" name="id" value="${e.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const examCard = `
+  <div class="card"><h2>考试记录</h2>
+  <h3>${editExam ? "编辑考试 #" + editExam.id : "新增考试记录"}</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="${editExam ? "exam_update" : "exam_add"}">
+    ${editExam ? `<input type="hidden" name="id" value="${editExam.id}">` : ""}
+    <div class="row">
+      <div><label>考试名称 *</label><input name="exam_name" required maxlength="80" value="${esc(ef.exam_name || "")}" placeholder="考试名称（由项目要求决定）"></div>
+      <div><label>考试日期</label><input name="exam_date" type="date" value="${esc(ef.exam_date || "")}"></div>
+      <div><label>结果</label><select name="result">${opts(EXAM_RESULTS, ef.result || "pending")}</select></div>
+    </div>
+    <div class="row">
+      <div><label>分数（可空）</label><input name="score" maxlength="20" value="${esc(ef.score || "")}" placeholder="如 82.5% / 900"></div>
+      <div><label>达标线（可空）</label><input name="pass_line" maxlength="20" value="${esc(ef.pass_line || "")}" placeholder="如 78% / 最低录取线"></div>
+      <div><label>备注</label><input name="note" maxlength="2000" value="${esc(ef.note || "")}"></div>
+    </div>
+    <button type="submit">${editExam ? "保存修改" : "添加考试记录"}</button>
+    ${editExam ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
+  </form>
+  ${exams.length ? `<div class="wrap"><table><tr><th>考试</th><th>日期</th><th>分数</th><th>达标线</th><th>结果</th><th>备注</th><th></th><th></th></tr>${examRows}</table></div>` : `<p class="mut">暂无考试记录。</p>`}
   </div>`;
   // —— 辅导会议 ——
   const editMeetingId = toInt(url.searchParams.get("edit_meeting"), 0);
@@ -1964,7 +2064,7 @@ async function pageClient(env, url, sid) {
   </form>
   ${meetings.length ? `<div class="wrap"><table><tr><th>日期</th><th>专题</th><th>纪要</th><th>待办</th><th>下次会议</th><th></th><th></th></tr>${meetingRows}</table></div>` : `<p class="mut">暂无会议记录。</p>`}
   </div>`;
-  return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery", hero + goalCard + statusCard + courseCard + meetingCard));
+  return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery", hero + goalCard + statusCard + examCard + courseCard + meetingCard));
 }
 async function postClient(req, env, sidFromPath) {
   const db = env.DB;
@@ -1976,12 +2076,13 @@ async function postClient(req, env, sidFromPath) {
   const back = "/admin/client/" + sid;
   if (action === "goal_save") {
     await db.prepare(
-      `INSERT INTO student_goals(student_id, target_school, target_term, goal_note, gpa_target, created_at, updated_at)
-       VALUES(?,?,?,?,?,?,?)
+      `INSERT INTO student_goals(student_id, target_school, target_term, goal_note, gpa_target, school_system, created_at, updated_at)
+       VALUES(?,?,?,?,?,?,?,?)
        ON CONFLICT(student_id) DO UPDATE SET target_school=excluded.target_school, target_term=excluded.target_term,
-         goal_note=excluded.goal_note, gpa_target=excluded.gpa_target, updated_at=excluded.updated_at`
+         goal_note=excluded.goal_note, gpa_target=excluded.gpa_target, school_system=excluded.school_system, updated_at=excluded.updated_at`
     ).bind(sid, clampStr(fd.get("target_school"), 120), clampStr(fd.get("target_term"), 40),
-      clampStr(fd.get("goal_note"), 2000), clampStr(fd.get("gpa_target"), 10), nowIso(), nowIso()).run();
+      clampStr(fd.get("goal_note"), 2000), clampStr(fd.get("gpa_target"), 10),
+      clampStr(fd.get("school_system"), 40) || null, nowIso(), nowIso()).run();
     return redirect(back);
   }
   if (action === "status_add") {
@@ -2053,6 +2154,56 @@ async function postClient(req, env, sidFromPath) {
       .bind(toInt(fd.get("id"), 0), sid).run();
     return redirect(back);
   }
+  if (action === "exam_add" || action === "exam_update") {
+    const examName = clampStr(fd.get("exam_name"), 80);
+    if (!examName) return redirect(back);
+    const examDate = clampStr(fd.get("exam_date"), 10) || todayStr();
+    const score = clampStr(fd.get("score"), 20) || null;
+    const passLine = clampStr(fd.get("pass_line"), 20) || null;
+    const result = EXAM_RESULTS[fd.get("result")] ? String(fd.get("result")) : "pending";
+    const note = clampStr(fd.get("note"), 2000);
+    if (action === "exam_update") {
+      await db.prepare(
+        `UPDATE student_exams SET exam_name=?, exam_date=?, score=?, pass_line=?, result=?, note=?, updated_at=? WHERE id=? AND student_id=?`
+      ).bind(examName, examDate, score, passLine, result, note, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO student_exams(student_id, exam_name, exam_date, score, pass_line, result, note, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?)`
+      ).bind(sid, examName, examDate, score, passLine, result, note, nowIso(), nowIso()).run();
+    }
+    return redirect(back);
+  }
+  if (action === "exam_delete") {
+    await db.prepare("DELETE FROM student_exams WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "line_add" || action === "line_update") {
+    const lineName = clampStr(fd.get("name"), 80);
+    if (!lineName) return redirect(back);
+    const lineType = LINE_TYPES[fd.get("line_type")] ? String(fd.get("line_type")) : "parallel";
+    const prioRaw = toInt(fd.get("priority"), 0);
+    const priority = prioRaw >= 1 ? Math.min(99, prioRaw) : 1;
+    const lineStatus = LINE_STATUSES[fd.get("status")] ? String(fd.get("status")) : "active";
+    const nextStep = clampStr(fd.get("next_step"), 200) || null;
+    if (action === "line_update") {
+      await db.prepare(
+        `UPDATE student_goal_lines SET name=?, line_type=?, priority=?, status=?, next_step=?, updated_at=? WHERE id=? AND student_id=?`
+      ).bind(lineName, lineType, priority, lineStatus, nextStep, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO student_goal_lines(student_id, name, line_type, priority, status, next_step, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, lineName, lineType, priority, lineStatus, nextStep, nowIso(), nowIso()).run();
+    }
+    return redirect(back);
+  }
+  if (action === "line_delete") {
+    await db.prepare("DELETE FROM student_goal_lines WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
   return redirect(back);
 }
 
@@ -2121,4 +2272,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES };
