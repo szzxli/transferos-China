@@ -69,6 +69,11 @@ function taskDueState(due, status, today) {
   if (due === today) return "today";
   return "upcoming";
 }
+// leadTaskMarker: A 级线索自动跟进任务的去重标记，写进任务 note，形如 [lead:12]。
+// 判定「该线索是否已有未完成的跟进任务」时按此标记匹配（方括号在 SQLite LIKE 中是普通字符，不会误伤 [lead:1] 与 [lead:12]）。
+function leadTaskMarker(leadId) { return "[lead:" + (parseInt(leadId, 10) || 0) + "]"; }
+// followupDueStr: 跟进任务截止日 = 处理日 +2 天（YYYY-MM-DD）
+function followupDueStr(nowMs) { return new Date((nowMs || Date.now()) + 2 * 864e5).toISOString().slice(0, 10); }
 
 // ===== 线索自动评分（确定性规则写死在本函数，AI 不参与打分）=====
 // 满分 100，五维计分：
@@ -181,6 +186,8 @@ function examConflict(staffKind, staffPlatform, reviewType, examinerPlatform) {
   return ep === String(staffPlatform || "").trim();
 }
 const CONTENT_TYPES = { video: "短视频", article: "文章", live: "直播", other: "其他" };
+// v5：内容状态流转（草稿 → 待审 → 已发布 → 归档）；存量条目与表单默认均为 published
+const CONTENT_STATUSES = { draft: "草稿", pending: "待审", published: "已发布", archived: "归档" };
 
 // ===== 数据库结构（与 schema.sql 保持一致）=====
 const DDL = [
@@ -211,7 +218,7 @@ const DDL = [
     stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS content_items(
     id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
-    pub_date TEXT, ref TEXT, type TEXT, created_at TEXT)`,
+    pub_date TEXT, ref TEXT, type TEXT, status TEXT DEFAULT 'published', created_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS content_metrics(
     id INTEGER PRIMARY KEY AUTOINCREMENT, item_id INTEGER, day TEXT,
     views INTEGER DEFAULT 0, consults INTEGER DEFAULT 0, leads INTEGER DEFAULT 0)`,
@@ -250,6 +257,10 @@ const LEAD_MIGRATIONS = [
   "ALTER TABLE leads ADD COLUMN grade_reason TEXT",
   "ALTER TABLE leads ADD COLUMN graded_at TEXT",
 ];
+// v5 迁移：content_items 补 status 列（存量行由列默认值 'published' 填充），同样幂等
+const CONTENT_MIGRATIONS = [
+  "ALTER TABLE content_items ADD COLUMN status TEXT DEFAULT 'published'",
+];
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady || !db) return;
@@ -264,6 +275,9 @@ async function ensureSchema(db) {
     try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
   }
   for (const sql of LEAD_MIGRATIONS) {
+    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+  }
+  for (const sql of CONTENT_MIGRATIONS) {
     try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
   }
   schemaReady = true;
@@ -392,6 +406,34 @@ async function handleApi(req, env, url) {
     ).first();
     const byGrade = await db.prepare(`SELECT grade, COUNT(*) AS n FROM leads WHERE grade IS NOT NULL GROUP BY grade`).all();
     const ungraded = await db.prepare(`SELECT COUNT(*) AS n FROM leads WHERE grade IS NULL`).first();
+    // weekly（v5）：近 7 天运营复盘口，供周日复盘直接取数成稿。
+    // 线索按 created_at >= 7 天前（与 new_leads_7d 同口径）；内容指标按 day 落在含今天在内的 7 个自然日内。
+    const since7Day = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
+    const newLeadsW = await db.prepare(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ?`).bind(since7).first();
+    const byGradeW = await db.prepare(
+      `SELECT grade, COUNT(*) AS n FROM leads WHERE created_at >= ? AND grade IS NOT NULL GROUP BY grade`).bind(since7).all();
+    const contentLeadsW = await db.prepare(
+      `SELECT COALESCE(SUM(leads),0) AS n FROM content_metrics WHERE day >= ?`).bind(since7Day).first();
+    const topContentW = await db.prepare(
+      `SELECT i.id AS id, i.title AS title, COALESCE(SUM(m.leads),0) AS leads, COALESCE(SUM(m.views),0) AS views
+       FROM content_metrics m JOIN content_items i ON i.id = m.item_id
+       WHERE m.day >= ? GROUP BY m.item_id ORDER BY leads DESC, views DESC LIMIT 1`).bind(since7Day).first();
+    const overdueTasksW = await db.prepare(
+      `SELECT COUNT(*) AS n FROM tasks WHERE status != 'done' AND due IS NOT NULL AND due != '' AND due < ?`).bind(todayStr()).first();
+    const studentRowsW = (await db.prepare(`SELECT stage, stage_since FROM students`).all()).results || [];
+    const overdueStudentsW = studentRowsW.filter(
+      (s) => ACTIVE_STAGES.includes(s.stage) && isOverdueStage(s.stage_since, Date.now(), STAGE_OVERDUE_DAYS)).length;
+    const weekly = {
+      new_leads: newLeadsW ? newLeadsW.n : 0,
+      leads_by_grade: (byGradeW.results || []).map((r) => ({ grade: r.grade, n: r.n })),
+      content_leads: contentLeadsW ? contentLeadsW.n : 0,
+      top_content: topContentW ? {
+        id: topContentW.id, title: topContentW.title, leads: topContentW.leads,
+        views: topContentW.views, conv_rate: convRate(topContentW.leads, topContentW.views),
+      } : null,
+      overdue_tasks: overdueTasksW ? overdueTasksW.n : 0,
+      overdue_students: overdueStudentsW,
+    };
     return jsonResp(req, {
       ok: true,
       leads_by_status: (byStatus.results || []).map((r) => ({ status: r.status, n: r.n })),
@@ -401,6 +443,7 @@ async function handleApi(req, env, url) {
       stale_leads: stale.results || [],
       visits_today: visitsToday ? visitsToday.n : 0,
       unsettled_commission_cents: unsettled ? unsettled.cents : 0,
+      weekly,
     });
   }
 
@@ -417,15 +460,136 @@ async function handleApi(req, env, url) {
       `SELECT * FROM leads WHERE grade IS NULL ORDER BY id ASC LIMIT 500`).all()).results || [];
     const by_grade = { A: 0, B: 0, C: 0 };
     const details = [];
+    let tasks_created = 0;
     for (const lead of rows) {
       const r = scoreLead(lead, validRefs);
       await db.prepare(
         `UPDATE leads SET grade = ?, score = ?, grade_reason = ?, graded_at = ? WHERE id = ?`
       ).bind(r.grade, r.score, r.reason, nowIso(), lead.id).run();
       by_grade[r.grade]++;
-      details.push({ id: lead.id, name: lead.name, grade: r.grade, score: r.score, reason: r.reason });
+      const detail = { id: lead.id, name: lead.name, grade: r.grade, score: r.score, reason: r.reason };
+      // 任务环联动（v5）：grade=A 且线索仍为 new 时，自动给「线索管家」建一条跟进任务（处理日 +2 天到期）。
+      // 去重口径：任务 note 中带 [lead:<线索id>] 标记；该线索已有未完成任务带此标记则不重复建。
+      // 已评级线索不会再次进入本循环（grade IS NULL 过滤），标记检查是第二道防线。
+      if (r.grade === "A" && lead.status === "new") {
+        const marker = leadTaskMarker(lead.id);
+        const dup = await db.prepare(
+          `SELECT id FROM tasks WHERE status != 'done' AND note LIKE ? LIMIT 1`
+        ).bind("%" + marker + "%").first();
+        if (!dup) {
+          const title = clampStr("跟进A级线索：" + (lead.name || "") + "（A级 " + r.score + "分）", 120);
+          const note = "A级线索自动跟进；评级理由：" + r.reason + " " + marker;
+          const tr = await db.prepare(
+            `INSERT INTO tasks(title, owner, due, status, note, created_at, updated_at, type)
+             VALUES(?, '线索管家', ?, 'todo', ?, ?, ?, 'task')`
+          ).bind(title, followupDueStr(Date.now()), note, nowIso(), nowIso()).run();
+          tasks_created++;
+          detail.task_id = tr.meta.last_row_id;
+        }
+      }
+      details.push(detail);
     }
-    return jsonResp(req, { ok: true, processed: rows.length, by_grade, details });
+    return jsonResp(req, { ok: true, processed: rows.length, by_grade, tasks_created, details });
+  }
+
+  // 内容写回入口（内容 bot 专用，Bearer LEAD_API_TOKEN）：批量导入内容条目，产出落 content_items 表。
+  // 请求体 { items: [{ title, platform, pub_date, ref, type, status }] }，单次上限 50 条。
+  // status 省略时默认 draft（bot 产出先入草稿，等创始人过审再发布）；type 省略默认 video；pub_date 省略为今天。
+  // 逐条返回 { index, ok, id|error }，单条校验失败不影响其他条。
+  if (p === "/api/admin/content/import") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    const token = String(req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (!env.LEAD_API_TOKEN || token !== env.LEAD_API_TOKEN) return jsonResp(req, { ok: false, error: "unauthorized" }, 401);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    const items = body && Array.isArray(body.items) ? body.items : null;
+    if (!items || !items.length) return jsonResp(req, { ok: false, error: "items required" }, 400);
+    if (items.length > 50) return jsonResp(req, { ok: false, error: "too many items (max 50)" }, 400);
+    await ensureSchema(db);
+    const results = [];
+    let imported = 0;
+    for (let idx = 0; idx < items.length; idx++) {
+      const it = items[idx] || {};
+      const title = clampStr(it.title, 120);
+      if (!title) { results.push({ index: idx, ok: false, error: "title required" }); continue; }
+      let ref = null;
+      const refRaw = clampStr(it.ref, 24);
+      if (refRaw) {
+        if (!validRef(refRaw)) { results.push({ index: idx, ok: false, error: "bad ref" }); continue; }
+        ref = refRaw;
+      }
+      const type = it.type === undefined || it.type === null || it.type === "" ? "video" : String(it.type);
+      if (!CONTENT_TYPES[type]) { results.push({ index: idx, ok: false, error: "bad type" }); continue; }
+      const status = it.status === undefined || it.status === null || it.status === "" ? "draft" : String(it.status);
+      if (!CONTENT_STATUSES[status]) { results.push({ index: idx, ok: false, error: "bad status" }); continue; }
+      const pubDate = it.pub_date === undefined || it.pub_date === null || it.pub_date === ""
+        ? todayStr() : clampStr(it.pub_date, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(pubDate)) { results.push({ index: idx, ok: false, error: "bad pub_date" }); continue; }
+      const platform = clampStr(it.platform, 40);
+      const r = await db.prepare(
+        `INSERT INTO content_items(title, platform, pub_date, ref, type, status, created_at) VALUES(?,?,?,?,?,?,?)`
+      ).bind(title, platform, pubDate, ref, type, status, nowIso()).run();
+      imported++;
+      results.push({ index: idx, ok: true, id: r.meta.last_row_id });
+    }
+    return jsonResp(req, { ok: true, imported, results });
+  }
+
+  // 内容指标写回入口（Bearer LEAD_API_TOKEN）：批量写入 content_metrics。
+  // 请求体 { metrics: [{ item_id, day, views, consults, leads }] }，单次上限 100 条。
+  // 每条追加一行（与后台手动录入口径一致，多行按条目汇总时求和）；day 省略为今天；数值须为 ≥0 的数。
+  if (p === "/api/admin/content/metrics") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    const token = String(req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (!env.LEAD_API_TOKEN || token !== env.LEAD_API_TOKEN) return jsonResp(req, { ok: false, error: "unauthorized" }, 401);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    const list = body && Array.isArray(body.metrics) ? body.metrics : null;
+    if (!list || !list.length) return jsonResp(req, { ok: false, error: "metrics required" }, 400);
+    if (list.length > 100) return jsonResp(req, { ok: false, error: "too many metrics (max 100)" }, 400);
+    await ensureSchema(db);
+    const idRows = (await db.prepare(`SELECT id FROM content_items`).all()).results || [];
+    const idSet = new Set(idRows.map((x) => x.id));
+    const metricNum = (v) => {
+      if (v === undefined || v === null || v === "") return 0;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : -1;
+    };
+    const results = [];
+    let inserted = 0;
+    for (let idx = 0; idx < list.length; idx++) {
+      const m = list[idx] || {};
+      const itemId = toInt(m.item_id, 0);
+      if (!itemId || !idSet.has(itemId)) { results.push({ index: idx, ok: false, error: "bad item_id" }); continue; }
+      const day = m.day === undefined || m.day === null || m.day === "" ? todayStr() : clampStr(m.day, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) { results.push({ index: idx, ok: false, error: "bad day" }); continue; }
+      const views = metricNum(m.views), consults = metricNum(m.consults), leadsN = metricNum(m.leads);
+      if (views < 0 || consults < 0 || leadsN < 0) { results.push({ index: idx, ok: false, error: "bad metric value" }); continue; }
+      const r = await db.prepare(
+        `INSERT INTO content_metrics(item_id, day, views, consults, leads) VALUES(?,?,?,?,?)`
+      ).bind(itemId, day, views, consults, leadsN).run();
+      inserted++;
+      results.push({ index: idx, ok: true, id: r.meta.last_row_id });
+    }
+    return jsonResp(req, { ok: true, inserted, results });
+  }
+
+  // 任务写回入口（bot 专用，Bearer LEAD_API_TOKEN）：按任务 id 标记完成，供 bot 干完活自己写回。
+  // 请求体 { id }；已完成的重复调用返回 already_done: true（幂等）；任务不存在返回 404。
+  if (p === "/api/admin/tasks/complete") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    const token = String(req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (!env.LEAD_API_TOKEN || token !== env.LEAD_API_TOKEN) return jsonResp(req, { ok: false, error: "unauthorized" }, 401);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    const id = toInt(body && body.id, 0);
+    if (!id) return jsonResp(req, { ok: false, error: "id required" }, 400);
+    await ensureSchema(db);
+    const task = await db.prepare(`SELECT id, status FROM tasks WHERE id = ?`).bind(id).first();
+    if (!task) return jsonResp(req, { ok: false, error: "task not found" }, 404);
+    if (task.status === "done") return jsonResp(req, { ok: true, id, status: "done", already_done: true });
+    await db.prepare(`UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ?`).bind(nowIso(), id).run();
+    return jsonResp(req, { ok: true, id, status: "done", already_done: false });
   }
 
   return jsonResp(req, { ok: false, error: "not found" }, 404);
@@ -1145,14 +1309,25 @@ async function contentEvalBody(env, url) {
   for (const k of Object.keys(agg)) {
     totals.views += agg[k].views; totals.consults += agg[k].consults; totals.leads += agg[k].leads;
   }
+  // 归因线索数：按内容 ref 关联 leads.ref 计数（与 visits 的 ref 归因口径一致）
+  const leadRefRows = (await db.prepare(
+    "SELECT ref, COUNT(*) c FROM leads WHERE ref IS NOT NULL AND ref != '' GROUP BY ref").all()).results || [];
+  const leadsByRef = {};
+  for (const r of leadRefRows) leadsByRef[r.ref] = r.c;
+  const totalRefLeads = items.reduce((a, i) => a + (i.ref ? (leadsByRef[i.ref] || 0) : 0), 0);
+  // 状态筛选（仅影响列表展示，编辑/指标录入仍用全量 items）
+  const fStatus = CONTENT_STATUSES[url.searchParams.get("status")] ? String(url.searchParams.get("status")) : "";
+  const displayItems = fStatus ? items.filter((i) => (i.status || "published") === fStatus) : items;
   const editId = toInt(url.searchParams.get("edit_item"), 0);
   const edit = editId ? items.find((i) => i.id === editId) : null;
-  const f = edit || { title: "", platform: "", pub_date: todayStr(), ref: "", type: "video" };
-  const itemRows = items.map((i) => {
+  const f = edit || { title: "", platform: "", pub_date: todayStr(), ref: "", type: "video", status: "published" };
+  const itemRows = displayItems.map((i) => {
     const a = agg[i.id] || { views: 0, consults: 0, leads: 0 };
+    const refLeads = i.ref ? (leadsByRef[i.ref] || 0) : 0;
     return `<tr><td>${esc(i.title)}</td><td>${esc(i.platform)}</td><td>${esc(i.pub_date || "")}</td>
     <td>${esc(i.ref || "")}</td><td>${esc(CONTENT_TYPES[i.type] || i.type || "")}</td>
-    <td>${a.views}</td><td>${a.consults}</td><td>${a.leads}</td><td>${convRate(a.leads, a.views)}%</td>
+    <td><span class="pill">${esc(CONTENT_STATUSES[i.status] || "已发布")}</span></td>
+    <td>${a.views}</td><td>${a.consults}</td><td>${a.leads}</td><td>${refLeads}</td><td>${convRate(a.leads, a.views)}%</td>
     <td><a href="/admin/content?tab=content&edit_item=${i.id}">编辑</a></td>
     <td><form method="post" style="margin:0" onsubmit="return confirm('删除该内容条目及其全部指标？')">
       <input type="hidden" name="action" value="item_delete"><input type="hidden" name="id" value="${i.id}">
@@ -1182,16 +1357,23 @@ async function contentEvalBody(env, url) {
       <div><label>发布日期</label><input name="pub_date" type="date" value="${esc(f.pub_date || "")}"></div>
       <div><label>归因码（ref）</label><input name="ref" maxlength="24" value="${esc(f.ref || "")}" placeholder="如 VDY01"></div>
       <div><label>类型</label><select name="type">${opts(CONTENT_TYPES, f.type)}</select></div>
+      <div><label>状态</label><select name="status">${opts(CONTENT_STATUSES, f.status || "published")}</select></div>
     </div>
     <button type="submit">${edit ? "保存修改" : "添加条目"}</button>
     ${edit ? `<a class="btn ghost" href="/admin/content?tab=content">取消编辑</a>` : ""}
   </form></div>
-  <div class="card"><h2>内容条目（${items.length}）与累计指标</h2><div class="wrap">
-  <table><tr><th>标题</th><th>平台</th><th>发布日期</th><th>ref</th><th>类型</th><th>播放/阅读</th><th>咨询</th><th>线索</th><th>线索转化率</th><th></th><th></th></tr>
-  ${itemRows || `<tr><td colspan="11" class="mut">暂无内容条目</td></tr>`}
-  ${items.length ? `<tr><th colspan="5">合计</th><th>${totals.views}</th><th>${totals.consults}</th><th>${totals.leads}</th><th>${convRate(totals.leads, totals.views)}%</th><th></th><th></th></tr>` : ""}
+  <div class="card"><h2>内容条目（${displayItems.length}${fStatus ? " / 全部 " + items.length : ""}）与累计指标</h2>
+  <form method="get"><input type="hidden" name="tab" value="content"><div class="row">
+    <div><label>按状态筛选</label><select name="status">
+      <option value="">全部状态</option>${opts(CONTENT_STATUSES, fStatus)}</select></div>
+    <div style="align-self:end"><button type="submit">筛选</button></div>
+  </div></form>
+  <div class="wrap">
+  <table><tr><th>标题</th><th>平台</th><th>发布日期</th><th>ref</th><th>类型</th><th>状态</th><th>播放/阅读</th><th>咨询</th><th>线索</th><th>归因线索</th><th>线索转化率</th><th></th><th></th></tr>
+  ${itemRows || `<tr><td colspan="13" class="mut">暂无内容条目</td></tr>`}
+  ${items.length ? `<tr><th colspan="6">合计（全部条目）</th><th>${totals.views}</th><th>${totals.consults}</th><th>${totals.leads}</th><th>${totalRefLeads}</th><th>${convRate(totals.leads, totals.views)}%</th><th></th><th></th></tr>` : ""}
   </table></div>
-  <p class="mut">线索转化率 = 累计线索 ÷ 累计播放/阅读。指标靠手动录入（下方表单），按天记一条。</p></div>
+  <p class="mut">线索转化率 = 累计线索 ÷ 累计播放/阅读；「归因线索」按条目 ref 关联实际线索数，与指标里的线索（手动/接口录入）口径不同。指标可手动录入（下方表单），也可由内容 bot 经接口批量写回，按天记一条。</p></div>
   <div class="card"><h2>录入指标</h2>
   ${items.length ? `<form method="post">
     <input type="hidden" name="action" value="metric_add">
@@ -1244,12 +1426,13 @@ async function postContent(req, env) {
     const refRaw = clampStr(fd.get("ref"), 24);
     const ref = validRef(refRaw) ? refRaw : null;
     const type = CONTENT_TYPES[fd.get("type")] ? String(fd.get("type")) : "video";
+    const status = CONTENT_STATUSES[fd.get("status")] ? String(fd.get("status")) : "published";
     if (action === "item_update") {
-      await db.prepare("UPDATE content_items SET title=?, platform=?, pub_date=?, ref=?, type=? WHERE id=?")
-        .bind(title, platform, pubDate, ref, type, toInt(fd.get("id"), 0)).run();
+      await db.prepare("UPDATE content_items SET title=?, platform=?, pub_date=?, ref=?, type=?, status=? WHERE id=?")
+        .bind(title, platform, pubDate, ref, type, status, toInt(fd.get("id"), 0)).run();
     } else {
-      await db.prepare("INSERT INTO content_items(title, platform, pub_date, ref, type, created_at) VALUES(?,?,?,?,?,?)")
-        .bind(title, platform, pubDate, ref, type, nowIso()).run();
+      await db.prepare("INSERT INTO content_items(title, platform, pub_date, ref, type, status, created_at) VALUES(?,?,?,?,?,?,?)")
+        .bind(title, platform, pubDate, ref, type, status, nowIso()).run();
     }
     return redirect(backContent);
   }
@@ -1628,4 +1811,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES };

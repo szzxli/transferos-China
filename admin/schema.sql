@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS students(
 
 CREATE TABLE IF NOT EXISTS content_items(
   id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
-  pub_date TEXT, ref TEXT, type TEXT, created_at TEXT);
+  pub_date TEXT, ref TEXT, type TEXT, status TEXT DEFAULT 'published', created_at TEXT);
 
 CREATE TABLE IF NOT EXISTS content_metrics(
   id INTEGER PRIMARY KEY AUTOINCREMENT, item_id INTEGER, day TEXT,
@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS staff_reviews(
   examiner TEXT, examiner_platform TEXT, score REAL,
   verdict TEXT DEFAULT 'observe', comment TEXT, created_at TEXT);
 -- 注：既有数据库的 staff 新列（kind/emp_no/platform/job_function/persona/accountable）
--- 与 tasks 新列（type）、leads 评级列（grade/score/grade_reason/graded_at）
+-- 与 tasks 新列（type）、leads 评级列（grade/score/grade_reason/graded_at）、
+-- content_items 状态列（status）
 -- 由 Worker 首次请求时自动 ALTER 补齐，本文件与程序内嵌结构
 -- 保持一致，新库直接用本文件即可。
 -- 如需在 D1 控制台手动给既有 leads 表补评级列（逐行去掉开头 -- 后一条一条粘贴执行）：
@@ -74,6 +75,8 @@ CREATE TABLE IF NOT EXISTS staff_reviews(
 -- ALTER TABLE leads ADD COLUMN score INTEGER;
 -- ALTER TABLE leads ADD COLUMN grade_reason TEXT;
 -- ALTER TABLE leads ADD COLUMN graded_at TEXT;
+-- 如需手动给既有 content_items 表补状态列（存量行自动填 published）：
+-- ALTER TABLE content_items ADD COLUMN status TEXT DEFAULT 'published';
 
 -- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）
 INSERT OR IGNORE INTO agents(code, name, region, kind, active, created_at) VALUES
