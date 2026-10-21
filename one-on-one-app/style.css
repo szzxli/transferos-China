@@ -67,6 +67,7 @@ main{max-width:760px;margin:0 auto;padding:14px 12px 34px}
 .hero-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .hero h1{font-size:24px;margin:0;font-weight:700}
 .hero .pill{background:rgba(201,240,107,.16);color:var(--accent);border-color:rgba(201,240,107,.4)}
+.exclusive{font-size:12.5px;letter-spacing:.06em;color:var(--accent);font-weight:600;margin:8px 0 0}
 .mainline{
   margin-top:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);
   border-radius:12px;padding:13px 14px;
@@ -162,6 +163,29 @@ main{max-width:760px;margin:0 auto;padding:14px 12px 34px}
 }
 .meeting-next{font-size:13px;color:var(--mut);margin-top:6px}
 .empty{color:var(--mut);font-size:14px;padding:6px 0}
+
+/* daily quote & signature */
+.quote-zh{
+  font-size:19px;font-weight:700;line-height:1.55;margin:0;color:var(--brand-2);
+  font-family:"Songti SC","STSong","Noto Serif CJK SC",serif;
+}
+.quote-en{font-size:12.5px;color:var(--mut);margin:5px 0 0;font-style:italic}
+.sign-line{
+  text-align:right;font-size:15.5px;font-weight:700;color:var(--brand);margin-top:12px;
+  font-family:"Songti SC","STSong","Noto Serif CJK SC",serif;
+}
+.sign-pick{margin-top:12px;border-top:1px dashed var(--line);padding-top:11px}
+.sign-opts{display:flex;flex-direction:column;gap:8px;margin:9px 0}
+.sign-opt{
+  text-align:left;padding:10px 13px;font-size:15px;background:#fbfbf7;color:var(--ink);
+  border:1px solid var(--line);border-radius:11px;cursor:pointer;font-family:inherit;
+}
+.sign-opt.sel{border-color:var(--brand);background:#eaf3ee;box-shadow:0 0 0 1px var(--brand)}
+.btn-sign{
+  padding:10px 20px;font-size:15px;font-weight:700;background:var(--brand);color:#fff;
+  border:0;border-radius:10px;cursor:pointer;
+}
+.btn-sign:disabled{opacity:.45;cursor:default}
 
 /* gate & state */
 .gate h1{font-size:20px;margin:2px 0 6px}
