@@ -46,13 +46,15 @@ CREATE TABLE IF NOT EXISTS content_metrics(
 
 CREATE TABLE IF NOT EXISTS tasks(
   id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, owner TEXT,
-  due TEXT, status TEXT DEFAULT 'todo', note TEXT, created_at TEXT, updated_at TEXT);
+  due TEXT, status TEXT DEFAULT 'todo', note TEXT, created_at TEXT, updated_at TEXT,
+  type TEXT DEFAULT 'task');
 
 CREATE TABLE IF NOT EXISTS staff(
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, role TEXT,
   contact TEXT, start_date TEXT, status TEXT DEFAULT 'active',
   note TEXT, created_at TEXT,
-  kind TEXT DEFAULT 'human', emp_no TEXT, platform TEXT, job_function TEXT);
+  kind TEXT DEFAULT 'human', emp_no TEXT, platform TEXT, job_function TEXT,
+  persona TEXT, accountable TEXT);
 
 -- ===== v3 新增表 =====
 -- 人员考核记录（入职测评/日常考核/年检）。
@@ -62,8 +64,9 @@ CREATE TABLE IF NOT EXISTS staff_reviews(
   review_type TEXT DEFAULT 'regular', review_date TEXT,
   examiner TEXT, examiner_platform TEXT, score REAL,
   verdict TEXT DEFAULT 'observe', comment TEXT, created_at TEXT);
--- 注：既有数据库的 staff 新列（kind/emp_no/platform/job_function）由 Worker
--- 首次请求时自动 ALTER 补齐，本文件与程序内嵌结构保持一致，新库直接用本文件即可。
+-- 注：既有数据库的 staff 新列（kind/emp_no/platform/job_function/persona/accountable）
+-- 与 tasks 新列（type）由 Worker 首次请求时自动 ALTER 补齐，本文件与程序内嵌结构
+-- 保持一致，新库直接用本文件即可。
 
 -- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）
 INSERT OR IGNORE INTO agents(code, name, region, kind, active, created_at) VALUES

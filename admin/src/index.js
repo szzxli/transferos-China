@@ -101,6 +101,7 @@ function validStage(code) {
   return typeof code === "string" && Object.prototype.hasOwnProperty.call(DELIVERY_STAGES, code);
 }
 const TASK_STATUSES = { todo: "待办", doing: "进行中", done: "已完成" };
+const TASK_TYPES = { task: "任务", proposal: "提案" };
 // v3：状态扩展为 试用/在职/停用待查/已离职或辞退；left 为 v2 旧值，仅作兼容显示
 const STAFF_STATUSES = { probation: "试用", active: "在职", suspended: "停用待查", offboarded: "已离职/辞退", left: "离职（旧）" };
 const STAFF_KINDS = { human: "真人", ai: "AI 员工" };
@@ -162,12 +163,14 @@ const DDL = [
     views INTEGER DEFAULT 0, consults INTEGER DEFAULT 0, leads INTEGER DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS tasks(
     id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, owner TEXT,
-    due TEXT, status TEXT DEFAULT 'todo', note TEXT, created_at TEXT, updated_at TEXT)`,
+    due TEXT, status TEXT DEFAULT 'todo', note TEXT, created_at TEXT, updated_at TEXT,
+    type TEXT DEFAULT 'task')`,
   `CREATE TABLE IF NOT EXISTS staff(
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, role TEXT,
     contact TEXT, start_date TEXT, status TEXT DEFAULT 'active',
     note TEXT, created_at TEXT,
-    kind TEXT DEFAULT 'human', emp_no TEXT, platform TEXT, job_function TEXT)`,
+    kind TEXT DEFAULT 'human', emp_no TEXT, platform TEXT, job_function TEXT,
+    persona TEXT, accountable TEXT)`,
   `CREATE TABLE IF NOT EXISTS staff_reviews(
     id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id INTEGER,
     review_type TEXT DEFAULT 'regular', review_date TEXT,
@@ -180,6 +183,11 @@ const STAFF_MIGRATIONS = [
   "ALTER TABLE staff ADD COLUMN emp_no TEXT",
   "ALTER TABLE staff ADD COLUMN platform TEXT",
   "ALTER TABLE staff ADD COLUMN job_function TEXT",
+  "ALTER TABLE staff ADD COLUMN persona TEXT",
+  "ALTER TABLE staff ADD COLUMN accountable TEXT",
+];
+const TASK_MIGRATIONS = [
+  "ALTER TABLE tasks ADD COLUMN type TEXT DEFAULT 'task'",
 ];
 let schemaReady = false;
 async function ensureSchema(db) {
@@ -189,6 +197,9 @@ async function ensureSchema(db) {
     catch (e) { throw new Error("ensureSchema DDL#" + i + ": " + (e && e.message ? e.message : String(e))); }
   }
   for (const sql of STAFF_MIGRATIONS) {
+    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+  }
+  for (const sql of TASK_MIGRATIONS) {
     try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
   }
   schemaReady = true;
@@ -442,6 +453,7 @@ async function pageDashboard(env) {
   const totalVisits = await one("SELECT COALESCE(SUM(count),0) n FROM visits");
   const topRefs = (await db.prepare("SELECT ref, SUM(count) c FROM visits GROUP BY ref ORDER BY c DESC LIMIT 10").all()).results || [];
   const unsettled = await one("SELECT COALESCE(SUM(commission),0) n FROM orders WHERE settle_status='unsettled'");
+  const pendingProposals = await one("SELECT COUNT(*) n FROM tasks WHERE type='proposal' AND status != 'done'");
   // 人员概览（v3：真人 + AI 员工）
   const staffRows = (await db.prepare("SELECT kind, status, COUNT(*) c FROM staff GROUP BY kind, status").all()).results || [];
   const staffCount = (kind, status) => staffRows.filter((r) => r.kind === kind && r.status === status).reduce((a, r) => a + r.c, 0);
@@ -498,6 +510,7 @@ async function pageDashboard(env) {
     <div class="stat"><div class="l">交付逾期（阶段超 ${STAGE_OVERDUE_DAYS} 天）</div><div class="n">${overdueStudents}</div></div>
     <div class="stat"><div class="l">本月内容线索</div><div class="n">${monthContentLeads}</div></div>
     <div class="stat"><div class="l">逾期任务</div><div class="n">${overdueTasks}</div></div>
+    <div class="stat"><div class="l">待处理提案</div><div class="n">${pendingProposals}</div></div>
     <div class="stat"><div class="l">未结算佣金</div><div class="n">${fmtYuan(unsettled)}</div></div>
   </div>
   <div class="card"><h2>人员概览</h2>
@@ -1178,16 +1191,18 @@ async function postContent(req, env) {
 async function pageTasks(env, url) {
   const db = env.DB;
   const today = todayStr();
+  const fType = TASK_TYPES[url.searchParams.get("type")] ? String(url.searchParams.get("type")) : "";
   const ownerStaff = (await db.prepare(
     "SELECT name, emp_no, kind, platform FROM staff WHERE status IN ('active','probation') ORDER BY kind DESC, id ASC LIMIT 300").all()).results || [];
   const ownerListHtml = ownerStaff.map((s) =>
     `<option value="${esc(s.name)}">${esc(s.emp_no || "")} ${esc(STAFF_KINDS[s.kind] || "真人")}${s.platform ? " · " + esc(s.platform) : ""}</option>`).join("");
   const rows = (await db.prepare(
-    `SELECT * FROM tasks ORDER BY (status='done') ASC,
-     CASE WHEN due IS NULL OR due='' THEN 1 ELSE 0 END, due ASC, id DESC LIMIT 300`).all()).results || [];
+    `SELECT * FROM tasks${fType ? " WHERE type = ?" : ""} ORDER BY (status='done') ASC,
+     CASE WHEN due IS NULL OR due='' THEN 1 ELSE 0 END, due ASC, id DESC LIMIT 300`)
+    .bind(...(fType ? [fType] : [])).all()).results || [];
   const editId = toInt(url.searchParams.get("edit"), 0);
-  const edit = editId ? rows.find((t) => t.id === editId) : null;
-  const f = edit || { title: "", owner: "", due: "", status: "todo", note: "" };
+  const edit = editId ? await db.prepare("SELECT * FROM tasks WHERE id=?").bind(editId).first() : null;
+  const f = edit || { title: "", type: "task", owner: "", due: "", status: "todo", note: "" };
   const rowHtml = rows.map((t) => {
     const st = taskDueState(t.due, t.status, today);
     const badge = t.status === "done" ? '<span class="mut">已完成</span>'
@@ -1195,7 +1210,7 @@ async function pageTasks(env, url) {
       : st === "today" ? '<span class="warn">今天到期</span>'
       : esc(TASK_STATUSES[t.status] || t.status);
     return `<tr>
-    <td>${t.id}</td><td>${esc(t.title)}</td><td>${esc(t.owner || "")}</td>
+    <td>${t.id}</td><td>${esc(t.title)}${t.type === "proposal" ? ' <span class="pill">提案</span>' : ""}</td><td>${esc(t.owner || "")}</td>
     <td>${esc(t.due || "—")}</td><td>${badge}</td><td>${esc((t.note || "").slice(0, 40))}</td>
     <td><a href="/admin/tasks?edit=${t.id}">编辑</a></td>
     <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条任务？')">
@@ -1203,12 +1218,19 @@ async function pageTasks(env, url) {
       <button class="small danger" type="submit">删除</button></form></td></tr>`;
   }).join("");
   const body = `
+  <div class="card"><h2>类型筛选</h2>
+  <form method="get"><div class="row">
+    <div><label>类型</label><select name="type">
+      <option value=""${!fType ? " selected" : ""}>全部</option>${opts(TASK_TYPES, fType)}</select></div>
+    <div style="align-self:end"><button type="submit">筛选</button></div>
+  </div></form></div>
   <div class="card"><h2>${edit ? "编辑任务 #" + edit.id : "新增任务"}</h2>
   <form method="post">
     <input type="hidden" name="action" value="${edit ? "update" : "add"}">
     ${edit ? `<input type="hidden" name="id" value="${edit.id}">` : ""}
     <label>任务标题 *</label><input name="title" required maxlength="120" value="${esc(f.title)}">
     <div class="row">
+      <div><label>类型</label><select name="type">${opts(TASK_TYPES, f.type || "task")}</select></div>
       <div><label>负责人</label><input name="owner" maxlength="40" list="staff-owners" value="${esc(f.owner || "")}" placeholder="可从在职员工中选，也可手填">
       <datalist id="staff-owners">${ownerListHtml}</datalist></div>
       <div><label>截止日期</label><input name="due" type="date" value="${esc(f.due || "")}"></div>
@@ -1218,9 +1240,9 @@ async function pageTasks(env, url) {
     <button type="submit">${edit ? "保存修改" : "添加任务"}</button>
     ${edit ? `<a class="btn ghost" href="/admin/tasks">取消编辑</a>` : ""}
   </form></div>
-  <div class="card"><h2>任务列表（${rows.length}）</h2><div class="wrap">
+  <div class="card"><h2>${fType ? TASK_TYPES[fType] + "列表" : "任务列表"}（${rows.length}）</h2><div class="wrap">
   <table><tr><th>ID</th><th>任务</th><th>负责人</th><th>截止</th><th>状态</th><th>备注</th><th></th><th></th></tr>
-  ${rowHtml || `<tr><td colspan="8" class="mut">暂无任务</td></tr>`}</table></div></div>`;
+  ${rowHtml || `<tr><td colspan="8" class="mut">暂无${fType ? TASK_TYPES[fType] : "任务"}</td></tr>`}</table></div></div>`;
   return htmlResp(layout("任务", "/admin/tasks", body));
 }
 async function postTasks(req, env) {
@@ -1233,16 +1255,17 @@ async function postTasks(req, env) {
   }
   const title = clampStr(fd.get("title"), 120);
   if (!title) return redirect("/admin/tasks");
+  const type = TASK_TYPES[fd.get("type")] ? String(fd.get("type")) : "task";
   const owner = clampStr(fd.get("owner"), 40);
   const due = clampStr(fd.get("due"), 10);
   const status = TASK_STATUSES[fd.get("status")] ? String(fd.get("status")) : "todo";
   const note = clampStr(fd.get("note"), 2000);
   if (action === "update") {
-    await db.prepare("UPDATE tasks SET title=?, owner=?, due=?, status=?, note=?, updated_at=? WHERE id=?")
-      .bind(title, owner, due, status, note, nowIso(), toInt(fd.get("id"), 0)).run();
+    await db.prepare("UPDATE tasks SET title=?, type=?, owner=?, due=?, status=?, note=?, updated_at=? WHERE id=?")
+      .bind(title, type, owner, due, status, note, nowIso(), toInt(fd.get("id"), 0)).run();
   } else {
-    await db.prepare("INSERT INTO tasks(title, owner, due, status, note, created_at, updated_at) VALUES(?,?,?,?,?,?,?)")
-      .bind(title, owner, due, status, note, nowIso(), nowIso()).run();
+    await db.prepare("INSERT INTO tasks(title, type, owner, due, status, note, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)")
+      .bind(title, type, owner, due, status, note, nowIso(), nowIso()).run();
   }
   return redirect("/admin/tasks");
 }
@@ -1284,7 +1307,7 @@ async function pageStaff(env, url) {
     .map((r) => r.platform);
   const editId = toInt(sp.get("edit"), 0);
   const edit = editId ? await db.prepare("SELECT * FROM staff WHERE id=?").bind(editId).first() : null;
-  const f = edit || { name: "", kind: "human", emp_no: "", platform: "", job_function: "", role: "", contact: "", start_date: "", status: "active", note: "" };
+  const f = edit || { name: "", kind: "human", emp_no: "", platform: "", job_function: "", persona: "", accountable: "", role: "", contact: "", start_date: "", status: "active", note: "" };
   // 考核区（选中某员工时展开）
   const reviewsId = toInt(sp.get("reviews"), 0);
   const rStaff = reviewsId ? await db.prepare("SELECT * FROM staff WHERE id=?").bind(reviewsId).first() : null;
@@ -1331,6 +1354,7 @@ async function pageStaff(env, url) {
     <td>${esc(s.name)} ${s.kind === "ai" ? '<span class="warn">AI</span>' : '<span class="mut">真人</span>'}</td>
     <td>${esc(s.platform || "—")}</td>
     <td>${esc(s.job_function || s.role || "")}</td>
+    <td>${s.kind === "ai" && s.accountable ? esc(s.accountable) : "—"}</td>
     <td>${esc(s.contact || "")}</td>
     <td>${esc(s.start_date || "—")}</td>
     <td>${staffStatusHtml(s.status)}</td>
@@ -1348,13 +1372,17 @@ async function pageStaff(env, url) {
     ${edit ? `<input type="hidden" name="id" value="${edit.id}">` : ""}
     <div class="row">
       <div><label>姓名 *</label><input name="name" required maxlength="40" value="${esc(f.name)}"></div>
-      <div><label>类型</label><select name="kind">${opts(STAFF_KINDS, f.kind || "human")}</select></div>
+      <div><label>类型</label><select name="kind" onchange="document.getElementById('ai-staff-fields').style.display=this.value==='ai'?'flex':'none'">${opts(STAFF_KINDS, f.kind || "human")}</select></div>
       <div><label>工号（留空自动生成）</label><input name="emp_no" maxlength="24" value="${esc(f.emp_no || "")}" placeholder="AI: BOT-CS-001 · 真人: EMP-001"></div>
     </div>
     <div class="row">
       <div><label>所属体系（AI 员工填，如 Claude / Manus / Grok / 自研；真人可空）</label><input name="platform" maxlength="40" value="${esc(f.platform || "")}"></div>
       <div><label>职能</label><input name="job_function" maxlength="40" value="${esc(f.job_function || "")}" placeholder="如 客服 / 内容 / 线索管家"></div>
       <div><label>角色</label><input name="role" maxlength="40" value="${esc(f.role || "")}" placeholder="如 运营 / 客服 / 交付"></div>
+    </div>
+    <div class="row" id="ai-staff-fields" style="display:${f.kind === "ai" ? "flex" : "none"}">
+      <div><label>责任人（AI 员工）</label><input name="accountable" maxlength="40" value="${esc(f.accountable || "")}" placeholder="对外出错时出面担责的真人姓名"></div>
+      <div style="flex:2"><label>对外人设（名字 / 口吻）</label><textarea name="persona" maxlength="1000" style="min-height:48px" placeholder="如 小转；亲切耐心，先给结论，不承诺录取">${esc(f.persona || "")}</textarea></div>
     </div>
     <div class="row">
       <div><label>联系方式</label><input name="contact" maxlength="80" value="${esc(f.contact || "")}"></div>
@@ -1374,8 +1402,8 @@ async function pageStaff(env, url) {
     <div><label>&nbsp;</label><button type="submit">筛选</button></div>
   </form>
   <div class="wrap">
-  <table><tr><th>工号</th><th>姓名</th><th>体系</th><th>职能</th><th>联系方式</th><th>入职日期</th><th>状态</th><th>备注</th><th></th><th></th><th></th></tr>
-  ${rowHtml || `<tr><td colspan="11" class="mut">暂无人员档案</td></tr>`}</table></div></div>`;
+  <table><tr><th>工号</th><th>姓名</th><th>体系</th><th>职能</th><th>责任人</th><th>联系方式</th><th>入职日期</th><th>状态</th><th>备注</th><th></th><th></th><th></th></tr>
+  ${rowHtml || `<tr><td colspan="12" class="mut">暂无人员档案</td></tr>`}</table></div></div>`;
   return htmlResp(layout("人员", "/admin/staff", body));
 }
 async function postStaff(req, env) {
@@ -1429,16 +1457,18 @@ async function postStaff(req, env) {
   const startDate = clampStr(fd.get("start_date"), 10);
   const status = STAFF_STATUSES[fd.get("status")] ? String(fd.get("status")) : "active";
   const note = clampStr(fd.get("note"), 2000);
+  const persona = kind === "ai" ? clampStr(fd.get("persona"), 1000) || null : null;
+  const accountable = kind === "ai" ? clampStr(fd.get("accountable"), 40) || null : null;
   if (action === "update") {
     const id = toInt(fd.get("id"), 0);
     const existing = id ? await db.prepare("SELECT emp_no FROM staff WHERE id=?").bind(id).first() : null;
     if (!empNo) empNo = (existing && existing.emp_no) || (await nextEmpNo(db, kind, jobFunction));
-    await db.prepare("UPDATE staff SET name=?, kind=?, emp_no=?, platform=?, job_function=?, role=?, contact=?, start_date=?, status=?, note=? WHERE id=?")
-      .bind(name, kind, empNo, platform, jobFunction, role, contact, startDate, status, note, id).run();
+    await db.prepare("UPDATE staff SET name=?, kind=?, emp_no=?, platform=?, job_function=?, role=?, contact=?, start_date=?, status=?, note=?, persona=?, accountable=? WHERE id=?")
+      .bind(name, kind, empNo, platform, jobFunction, role, contact, startDate, status, note, persona, accountable, id).run();
   } else {
     if (!empNo) empNo = await nextEmpNo(db, kind, jobFunction);
-    await db.prepare("INSERT INTO staff(name, kind, emp_no, platform, job_function, role, contact, start_date, status, note, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
-      .bind(name, kind, empNo, platform, jobFunction, role, contact, startDate, status, note, nowIso()).run();
+    await db.prepare("INSERT INTO staff(name, kind, emp_no, platform, job_function, role, contact, start_date, status, note, persona, accountable, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(name, kind, empNo, platform, jobFunction, role, contact, startDate, status, note, persona, accountable, nowIso()).run();
   }
   return redirect("/admin/staff");
 }
