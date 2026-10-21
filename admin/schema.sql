@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS students(
   id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, order_id INTEGER,
   name TEXT, package TEXT, stage TEXT DEFAULT 'diag',
-  stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT);
+  stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT,
+  client_key TEXT);
 
 CREATE TABLE IF NOT EXISTS content_items(
   id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
@@ -115,6 +116,8 @@ CREATE TABLE IF NOT EXISTS student_goal_lines(
 -- ALTER TABLE leads ADD COLUMN graded_at TEXT;
 -- 如需手动给既有 content_items 表补状态列（存量行自动填 published）：
 -- ALTER TABLE content_items ADD COLUMN status TEXT DEFAULT 'published';
+-- v7：既有 students 表补学生端 APP 访问密钥列（Worker 也会自动补，此为手动备选）：
+-- ALTER TABLE students ADD COLUMN client_key TEXT;
 
 -- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）
 INSERT OR IGNORE INTO agents(code, name, region, kind, active, created_at) VALUES

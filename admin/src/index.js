@@ -228,6 +228,20 @@ function courseProgress(courses) {
     byKind,
   };
 }
+// genClientKey: 学生端 APP 只读访问密钥（ck_ + 24 位十六进制，96 位熵）
+function genClientKey() {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return "ck_" + [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+// ensureClientKey: 学生尚无密钥时生成并落库，返回当前密钥
+async function ensureClientKey(db, student) {
+  if (!student) return null;
+  if (student.client_key) return student.client_key;
+  const key = genClientKey();
+  await db.prepare("UPDATE students SET client_key = ? WHERE id = ?").bind(key, student.id).run();
+  return key;
+}
 
 // ===== 数据库结构（与 schema.sql 保持一致）=====
 const DDL = [
@@ -255,7 +269,8 @@ const DDL = [
   `CREATE TABLE IF NOT EXISTS students(
     id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, order_id INTEGER,
     name TEXT, package TEXT, stage TEXT DEFAULT 'diag',
-    stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT)`,
+    stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT,
+    client_key TEXT)`,
   `CREATE TABLE IF NOT EXISTS content_items(
     id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
     pub_date TEXT, ref TEXT, type TEXT, status TEXT DEFAULT 'published', created_at TEXT)`,
@@ -330,6 +345,10 @@ const CONTENT_MIGRATIONS = [
 const GOAL_MIGRATIONS = [
   "ALTER TABLE student_goals ADD COLUMN school_system TEXT",
 ];
+// v7 迁移：students 补 client_key 列（学生端 APP 只读访问密钥），同样幂等
+const STUDENT_MIGRATIONS = [
+  "ALTER TABLE students ADD COLUMN client_key TEXT",
+];
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady || !db) return;
@@ -350,6 +369,9 @@ async function ensureSchema(db) {
     try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
   }
   for (const sql of GOAL_MIGRATIONS) {
+    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+  }
+  for (const sql of STUDENT_MIGRATIONS) {
     try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
   }
   schemaReady = true;
@@ -662,6 +684,252 @@ async function handleApi(req, env, url) {
     if (task.status === "done") return jsonResp(req, { ok: true, id, status: "done", already_done: true });
     await db.prepare(`UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ?`).bind(nowIso(), id).run();
     return jsonResp(req, { ok: true, id, status: "done", already_done: false });
+  }
+
+  // 学生端只读接口（v7，一对一专属客户端 APP 专用）：
+  // GET /api/client/<学生id>?key=<访问密钥>。密钥为 students.client_key（每名学生一个随机密钥），
+  // 无 key / key 不对 / 学生不存在一律 404，不暴露学生存在性。只读，不接受任何写入。
+  // 返回六块数据，选课分组与汇总复用 groupCoursesByTerm / courseProgress，与后台客户端页同口径。
+  const clientApiMatch = p.match(/^\/api\/client\/(\d+)$/);
+  if (clientApiMatch) {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    await ensureSchema(db);
+    const sid = parseInt(clientApiMatch[1], 10);
+    const student = await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(sid).first();
+    const key = url.searchParams.get("key") || "";
+    if (!student || !student.client_key || !timingSafeEq(key, String(student.client_key))) {
+      return jsonResp(req, { ok: false, error: "not found" }, 404);
+    }
+    const goal = await db.prepare(`SELECT * FROM student_goals WHERE student_id = ?`).bind(sid).first();
+    const goalLines = (await db.prepare(
+      `SELECT * FROM student_goal_lines WHERE student_id = ? ORDER BY priority ASC, id ASC LIMIT 100`).bind(sid).all()).results || [];
+    const snaps = (await db.prepare(
+      `SELECT * FROM student_status WHERE student_id = ? ORDER BY snapshot_date DESC, id DESC LIMIT 100`).bind(sid).all()).results || [];
+    const exams = (await db.prepare(
+      `SELECT * FROM student_exams WHERE student_id = ? ORDER BY exam_date DESC, id DESC LIMIT 200`).bind(sid).all()).results || [];
+    const courses = (await db.prepare(
+      `SELECT * FROM student_courses WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(sid).all()).results || [];
+    const meetings = (await db.prepare(
+      `SELECT * FROM student_meetings WHERE student_id = ? ORDER BY meeting_date DESC, id DESC LIMIT 200`).bind(sid).all()).results || [];
+    const lineOut = (l) => ({
+      id: l.id, name: l.name || "", line_type: l.line_type || "",
+      line_type_label: LINE_TYPES[l.line_type] || l.line_type || "",
+      priority: l.priority, status: l.status || "",
+      status_label: LINE_STATUSES[l.status] || l.status || "",
+      next_step: l.next_step || "",
+    });
+    const snapOut = (s) => ({
+      id: s.id, snapshot_date: s.snapshot_date || "", gpa: s.gpa,
+      credits_done: s.credits_done, credits_total: s.credits_total, note: s.note || "",
+    });
+    return jsonResp(req, {
+      ok: true,
+      student: {
+        id: student.id, name: student.name || "", package: student.package || "",
+        stage: student.stage || "", stage_label: DELIVERY_STAGES[student.stage] || student.stage || "",
+        note: student.note || "",
+      },
+      school_system: goal ? (goal.school_system || "") : "",
+      goal: goal ? {
+        target_school: goal.target_school || "", target_term: goal.target_term || "",
+        gpa_target: goal.gpa_target || "", goal_note: goal.goal_note || "",
+      } : null,
+      goal_lines: goalLines.map(lineOut),
+      main_line: goalLines.length ? lineOut(goalLines[0]) : null,
+      status: { latest: snaps.length ? snapOut(snaps[0]) : null, history: snaps.map(snapOut) },
+      exams: exams.map((e) => ({
+        id: e.id, exam_name: e.exam_name || "", exam_date: e.exam_date || "",
+        score: e.score || "", pass_line: e.pass_line || "", result: e.result || "",
+        result_label: EXAM_RESULTS[e.result] || e.result || "", note: e.note || "",
+      })),
+      courses: {
+        progress: courseProgress(courses),
+        groups: groupCoursesByTerm(courses),
+        list: courses.map((c) => ({
+          id: c.id, term: c.term || "", course_code: c.course_code || "",
+          course_name: c.course_name || "", credits: c.credits,
+          kind: c.kind || "", kind_label: COURSE_KINDS[c.kind] || c.kind || "",
+          status: c.status || "", status_label: COURSE_STATUSES[c.status] || c.status || "",
+          grade: c.grade || "", note: c.note || "",
+        })),
+      },
+      meetings: meetings.map((m) => ({
+        id: m.id, meeting_date: m.meeting_date || "", topic: m.topic || "",
+        summary: m.summary || "", action_items: m.action_items || "", next_date: m.next_date || "",
+      })),
+    });
+  }
+
+  // 学生一次性导入入口（v7，Bearer LEAD_API_TOKEN）：创建学生并批量写入专属客户端六块数据。
+  // 请求体 { student:{name, package?, stage?, note?}, goal?, goal_lines?, status?, exams?, courses?, meetings? }。
+  // 幂等口径：同名学生（trim 后精确匹配）已存在时不写任何数据，直接返回 { existed:true, student_id, client_key }。
+  // 全部字段先校验后落库，任一条不合法整单 400，不留半截数据。
+  if (p === "/api/admin/students/import") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    const token = String(req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (!env.LEAD_API_TOKEN || token !== env.LEAD_API_TOKEN) return jsonResp(req, { ok: false, error: "unauthorized" }, 401);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    const stu = (body && body.student) || {};
+    const name = clampStr(stu.name, 60);
+    if (!name) return jsonResp(req, { ok: false, error: "student.name required" }, 400);
+    await ensureSchema(db);
+    const existing = await db.prepare(
+      `SELECT id, client_key FROM students WHERE name = ? ORDER BY id ASC LIMIT 1`).bind(name).first();
+    if (existing) {
+      const key = await ensureClientKey(db, existing);
+      return jsonResp(req, { ok: true, existed: true, student_id: existing.id, client_key: key });
+    }
+    // —— 校验并归一化（先全量校验，任一不合法整单拒绝）——
+    const bad = (msg) => jsonResp(req, { ok: false, error: msg }, 400);
+    const numOrNull = (v) => {
+      if (v === undefined || v === null || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : undefined; // undefined = 不合法
+    };
+    const intOrNull = (v) => {
+      if (v === undefined || v === null || v === "") return null;
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    const goalIn = body.goal && typeof body.goal === "object" ? {
+      target_school: clampStr(body.goal.target_school, 120),
+      target_term: clampStr(body.goal.target_term, 40),
+      goal_note: clampStr(body.goal.goal_note, 2000),
+      gpa_target: clampStr(body.goal.gpa_target, 10) || null,
+      school_system: clampStr(body.goal.school_system, 40) || null,
+    } : null;
+    const linesIn = [];
+    const linesRaw = Array.isArray(body.goal_lines) ? body.goal_lines : [];
+    if (linesRaw.length > 20) return bad("too many goal_lines (max 20)");
+    for (let i = 0; i < linesRaw.length; i++) {
+      const l = linesRaw[i] || {};
+      const lname = clampStr(l.name, 80);
+      if (!lname) return bad("goal_lines[" + i + "].name required");
+      const ltype = l.line_type === undefined || l.line_type === null || l.line_type === "" ? "parallel" : String(l.line_type);
+      if (!LINE_TYPES[ltype]) return bad("goal_lines[" + i + "] bad line_type");
+      const lstatus = l.status === undefined || l.status === null || l.status === "" ? "active" : String(l.status);
+      if (!LINE_STATUSES[lstatus]) return bad("goal_lines[" + i + "] bad status");
+      let prio = parseInt(l.priority, 10);
+      if (!Number.isFinite(prio) || prio < 1) prio = 1;
+      if (prio > 99) prio = 99;
+      linesIn.push({ name: lname, line_type: ltype, priority: prio, status: lstatus, next_step: clampStr(l.next_step, 200) || null });
+    }
+    const statusIn = [];
+    const statusRaw = Array.isArray(body.status) ? body.status : [];
+    if (statusRaw.length > 50) return bad("too many status (max 50)");
+    for (let i = 0; i < statusRaw.length; i++) {
+      const s = statusRaw[i] || {};
+      const gpa = numOrNull(s.gpa);
+      if (gpa === undefined) return bad("status[" + i + "] bad gpa");
+      const cd = intOrNull(s.credits_done), ct = intOrNull(s.credits_total);
+      if (cd === undefined || ct === undefined) return bad("status[" + i + "] bad credits");
+      statusIn.push({
+        snapshot_date: clampStr(s.snapshot_date, 10) || todayStr(), gpa,
+        credits_done: cd, credits_total: ct, note: clampStr(s.note, 2000),
+      });
+    }
+    const examsIn = [];
+    const examsRaw = Array.isArray(body.exams) ? body.exams : [];
+    if (examsRaw.length > 100) return bad("too many exams (max 100)");
+    for (let i = 0; i < examsRaw.length; i++) {
+      const e = examsRaw[i] || {};
+      const ename = clampStr(e.exam_name, 80);
+      if (!ename) return bad("exams[" + i + "].exam_name required");
+      const result = e.result === undefined || e.result === null || e.result === "" ? "pending" : String(e.result);
+      if (!EXAM_RESULTS[result]) return bad("exams[" + i + "] bad result");
+      examsIn.push({
+        exam_name: ename, exam_date: clampStr(e.exam_date, 10) || null,
+        score: clampStr(e.score, 20) || null, pass_line: clampStr(e.pass_line, 20) || null,
+        result, note: clampStr(e.note, 2000),
+      });
+    }
+    const coursesIn = [];
+    const coursesRaw = Array.isArray(body.courses) ? body.courses : [];
+    if (coursesRaw.length > 500) return bad("too many courses (max 500)");
+    for (let i = 0; i < coursesRaw.length; i++) {
+      const c = coursesRaw[i] || {};
+      const term = clampStr(c.term, 20);
+      const code = clampStr(c.course_code, 20);
+      const cname = clampStr(c.course_name, 80);
+      if (!term || (!code && !cname)) return bad("courses[" + i + "] term + (course_code|course_name) required");
+      const kind = c.kind === undefined || c.kind === null || c.kind === "" ? "prereq" : String(c.kind);
+      if (!COURSE_KINDS[kind]) return bad("courses[" + i + "] bad kind");
+      const cstatus = c.status === undefined || c.status === null || c.status === "" ? "planned" : String(c.status);
+      if (!COURSE_STATUSES[cstatus]) return bad("courses[" + i + "] bad status");
+      const credits = intOrNull(c.credits);
+      if (credits === undefined) return bad("courses[" + i + "] bad credits");
+      coursesIn.push({
+        term, course_code: code, course_name: cname, credits,
+        kind, status: cstatus, grade: clampStr(c.grade, 10) || null, note: clampStr(c.note, 2000),
+      });
+    }
+    const meetingsIn = [];
+    const meetingsRaw = Array.isArray(body.meetings) ? body.meetings : [];
+    if (meetingsRaw.length > 200) return bad("too many meetings (max 200)");
+    for (let i = 0; i < meetingsRaw.length; i++) {
+      const m = meetingsRaw[i] || {};
+      const topic = clampStr(m.topic, 120);
+      if (!topic) return bad("meetings[" + i + "].topic required");
+      meetingsIn.push({
+        meeting_date: clampStr(m.meeting_date, 10) || todayStr(), topic,
+        summary: clampStr(m.summary, 4000), action_items: clampStr(m.action_items, 4000),
+        next_date: clampStr(m.next_date, 10) || null,
+      });
+    }
+    // —— 落库 ——
+    const now = nowIso();
+    const clientKey = genClientKey();
+    const stage = stu.stage && validStage(String(stu.stage)) ? String(stu.stage) : "diag";
+    const sr = await db.prepare(
+      `INSERT INTO students(lead_id, order_id, name, package, stage, stage_since, note, created_at, updated_at, client_key)
+       VALUES(NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(name, clampStr(stu.package, 60) || null, stage, now,
+      clampStr(stu.note, 2000), now, now, clientKey).run();
+    const sid = sr.meta.last_row_id;
+    if (goalIn) {
+      await db.prepare(
+        `INSERT INTO student_goals(student_id, target_school, target_term, goal_note, gpa_target, school_system, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, goalIn.target_school, goalIn.target_term, goalIn.goal_note, goalIn.gpa_target, goalIn.school_system, now, now).run();
+    }
+    for (const l of linesIn) {
+      await db.prepare(
+        `INSERT INTO student_goal_lines(student_id, name, line_type, priority, status, next_step, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, l.name, l.line_type, l.priority, l.status, l.next_step, now, now).run();
+    }
+    for (const s of statusIn) {
+      await db.prepare(
+        `INSERT INTO student_status(student_id, snapshot_date, gpa, credits_done, credits_total, note, created_at)
+         VALUES(?,?,?,?,?,?,?)`
+      ).bind(sid, s.snapshot_date, s.gpa, s.credits_done, s.credits_total, s.note, now).run();
+    }
+    for (const e of examsIn) {
+      await db.prepare(
+        `INSERT INTO student_exams(student_id, exam_name, exam_date, score, pass_line, result, note, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?)`
+      ).bind(sid, e.exam_name, e.exam_date, e.score, e.pass_line, e.result, e.note, now, now).run();
+    }
+    for (const c of coursesIn) {
+      await db.prepare(
+        `INSERT INTO student_courses(student_id, term, course_code, course_name, credits, kind, status, grade, note, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(sid, c.term, c.course_code, c.course_name, c.credits, c.kind, c.status, c.grade, c.note, now, now).run();
+    }
+    for (const m of meetingsIn) {
+      await db.prepare(
+        `INSERT INTO student_meetings(student_id, meeting_date, topic, summary, action_items, next_date, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, m.meeting_date, m.topic, m.summary, m.action_items, m.next_date, now, now).run();
+    }
+    return jsonResp(req, {
+      ok: true, existed: false, student_id: sid, client_key: clientKey,
+      counts: {
+        goal: goalIn ? 1 : 0, goal_lines: linesIn.length, status: statusIn.length,
+        exams: examsIn.length, courses: coursesIn.length, meetings: meetingsIn.length,
+      },
+    });
   }
 
   return jsonResp(req, { ok: false, error: "not found" }, 404);
@@ -1883,7 +2151,17 @@ async function pageClient(env, url, sid) {
   </div>
   ${g.goal_note ? `<p style="white-space:pre-wrap">${esc(g.goal_note)}</p>` : ""}
   ${goalLines.length ? `<p>当前主线（优先级 ${goalLines[0].priority}）：<strong>${esc(goalLines[0].name || "")}</strong>（${esc(LINE_TYPES[goalLines[0].line_type] || goalLines[0].line_type || "")} · ${esc(LINE_STATUSES[goalLines[0].status] || goalLines[0].status || "")}）${goalLines[0].next_step ? " · 下一步：" + esc(goalLines[0].next_step) : ""} <span class="mut">共 ${goalLines.length} 条线，详见下方目标区</span></p>` : ""}
-  <p class="mut"><a href="/admin/delivery">← 返回交付页</a>${student.lead_id ? ` · <a href="/admin/user?id=${student.lead_id}">查看用户档案</a>` : ""}</p></div>`;
+  <p class="mut"><a href="/admin/delivery">← 返回交付页</a>${student.lead_id ? ` · <a href="/admin/user?id=${student.lead_id}">查看用户档案</a>` : ""}</p>
+  <div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px">
+    <p style="margin:4px 0"><strong>学生端 APP（只读）</strong> <span class="mut">学生用专属链接打开自己的客户端，只能看不能改；编辑仍在本页。</span></p>
+    ${student.client_key
+      ? `<p class="mut" style="margin:4px 0">访问密钥：<code>${esc(student.client_key)}</code><br>专属链接：<code>https://zhuanuc.com/one-on-one-app/?s=${sid}&amp;k=${esc(student.client_key)}</code></p>`
+      : `<p class="mut" style="margin:4px 0">尚未生成访问密钥，生成后把专属链接发给学生即可。</p>`}
+    <form method="post" style="margin:6px 0 0" onsubmit="return confirm('${student.client_key ? "重置后旧链接立即失效，确定重置访问密钥？" : "确定生成访问密钥？"}')">
+      <input type="hidden" name="action" value="key_rotate">
+      <button class="small ghost" type="submit">${student.client_key ? "重置密钥" : "生成访问密钥"}</button>
+    </form>
+  </div></div>`;
   // —— 目标 ——
   // —— 目标（多条人生线 + 学业目标详情）——
   const editLineId = toInt(url.searchParams.get("edit_line"), 0);
@@ -2074,6 +2352,12 @@ async function postClient(req, env, sidFromPath) {
   const student = sid ? await db.prepare("SELECT id FROM students WHERE id=?").bind(sid).first() : null;
   if (!student) return redirect("/admin/delivery");
   const back = "/admin/client/" + sid;
+  if (action === "key_rotate") {
+    // v7：生成/重置学生端 APP 访问密钥（旧密钥立即失效）
+    await db.prepare("UPDATE students SET client_key = ?, updated_at = ? WHERE id = ?")
+      .bind(genClientKey(), nowIso(), sid).run();
+    return redirect(back);
+  }
   if (action === "goal_save") {
     await db.prepare(
       `INSERT INTO student_goals(student_id, target_school, target_term, goal_note, gpa_target, school_system, created_at, updated_at)
@@ -2272,4 +2556,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES };
