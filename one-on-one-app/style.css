@@ -347,3 +347,18 @@ img,svg{max-width:100%}
   .line-item{gap:9px}
   .msg-bubble{max-width:92%}
 }
+
+/* ===== v11：家长端（parent.html）===== */
+/* 托举原则横幅：固定文案卡，暖色底与普通卡片区分 */
+.pu-banner{background:linear-gradient(150deg,#fdf6e0 0%,#fff 78%);border-color:#ecd9a0}
+.pu-banner h2{border-bottom-color:#b45309}
+.pu-banner h2::before{background:#f5c542;box-shadow:0 0 0 2px #b45309}
+/* 更新正文内的「当前重点 / 下一步」小节 */
+.pu-sec-label{font-size:12px;letter-spacing:.12em;color:var(--brand);font-weight:700;margin-top:13px}
+.pu-sec-text{font-size:14.5px;white-space:pre-wrap;margin-top:2px}
+/* 首页未读留言入口：整行可点，触控高度 ≥48px */
+.unread-banner{
+  width:100%;text-align:left;margin:0 0 14px;padding:12px 14px;min-height:48px;
+  background:#fdeeee;border:1px solid #f0bcbc;color:#8c1d1d;border-radius:12px;
+  font-size:14.5px;font-weight:600;cursor:pointer;font-family:inherit;
+}

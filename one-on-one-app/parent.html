@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>家长更新 · TransferOS</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="家长更新">
+<meta name="theme-color" content="#16453a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-in">
+    <span class="logo" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0f332b"/><path d="M18 20h28v7H36v20h-8V27H18z" fill="#c9f06b"/></svg></span>
+    <span class="topbar-title" data-i18n="app.title">家长更新</span>
+    <button id="lang-toggle" class="lang-toggle" type="button" aria-label="Language / 语言"><span id="lang-zh" class="on">中</span><span class="lang-sep">|</span><span id="lang-en">EN</span></button>
+  </div>
+</header>
+<main>
+  <!-- 首次打开 / 链接无效时手动输入 -->
+  <section id="gate" class="card gate" hidden>
+    <h1 data-i18n="gate.title">输入家长专属信息</h1>
+    <p class="mut" data-i18n="gate.desc">链接里已带好专属名与密钥时会自动进入；也可以手动填写。</p>
+    <form id="gate-form">
+      <label><span data-i18n="gate.s">专属名 / 编号</span>
+        <input id="gate-s" type="text" autocomplete="off" autocapitalize="none" data-i18n-ph="gate.sph" placeholder="如 richa"></label>
+      <label><span data-i18n="gate.k">家长密钥</span>
+        <input id="gate-k" type="text" autocomplete="off" autocapitalize="none" data-i18n-ph="gate.kph" placeholder="如 pk_…"></label>
+      <p id="gate-err" class="err" hidden></p>
+      <button class="btn-primary" type="submit" data-i18n="gate.btn">进入家长端</button>
+    </form>
+  </section>
+
+  <!-- 加载 / 出错状态 -->
+  <section id="state" class="card state" hidden>
+    <p id="state-text" data-i18n="state.loading">正在加载…</p>
+    <button id="state-retry" class="btn-ghost" type="button" hidden data-i18n="state.retry">重试</button>
+  </section>
+
+  <div id="app" hidden>
+    <!-- 页1 首页 -->
+    <div class="tabpage" id="page-home">
+      <section class="card hero">
+        <div class="hero-head">
+          <h1 id="p-name"></h1>
+          <span class="pill" id="p-stage"></span>
+          <span class="pill" id="p-package" hidden></span>
+        </div>
+        <p class="exclusive" data-i18n="hero.exclusive">家长专属 · 进展更新</p>
+      </section>
+      <button id="home-unread" class="unread-banner" type="button" hidden></button>
+      <section class="card" id="card-latest">
+        <h2><span data-i18n="latest.title">最新进展</span><span class="card-note" id="latest-date"></span></h2>
+        <div id="latest-body"></div>
+      </section>
+    </div>
+
+    <!-- 页2 进展 -->
+    <div class="tabpage" id="page-progress" hidden>
+      <section class="card">
+        <h2 data-i18n="progress.stageTitle">当前服务阶段</h2>
+        <p style="margin:0"><span class="pill" id="stage-chip"></span></p>
+        <p class="mut" style="margin:10px 0 0" data-i18n="progress.stageDesc">服务按阶段推进。导师会在每个阶段把孩子的进展整理成更新发到这里；您在这里看到的，都是导师确认过的最新情况。</p>
+      </section>
+      <section class="card">
+        <h2 data-i18n="progress.title">进展时间线</h2>
+        <div id="updates-list"></div>
+      </section>
+    </div>
+
+    <!-- 页3 托举 -->
+    <div class="tabpage" id="page-support" hidden>
+      <section class="card pu-banner">
+        <h2 data-i18n="support.principleTitle">如何托举</h2>
+        <p style="margin:0" data-i18n="support.principle">导师会把需要家庭配合的事项写在这里；不在这里追问成绩与考试细节，给孩子保留稳定的空间。</p>
+      </section>
+      <section class="card">
+        <h2 data-i18n="support.title">需要家庭配合的事项</h2>
+        <div id="support-list"></div>
+      </section>
+    </div>
+
+    <!-- 页4 导师 -->
+    <div class="tabpage" id="page-mentor" hidden>
+      <section class="card">
+        <h2 data-i18n="mentor.title">与导师沟通</h2>
+        <p class="mut" style="margin:0 0 4px" data-i18n="mentor.note">这里的沟通只在家长与导师之间，不会转成对学生的监视或追问。孩子在学习上的具体细节，导师会在进展更新里以合适的方式同步。</p>
+        <div id="msg-thread"></div>
+        <form id="msg-form">
+          <label class="msg-label" for="msg-input" data-i18n="msg.label">给导师留言</label>
+          <textarea id="msg-input" rows="3" maxlength="600" data-i18n-ph="msg.ph" placeholder="写下您想问导师的问题…"></textarea>
+          <p id="msg-err" class="err" hidden></p>
+          <div class="msg-bar">
+            <span class="mut" id="msg-count">0 / 500</span>
+            <button class="btn-send" id="msg-send" type="submit" data-i18n="msg.send">发送</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <p class="foot"><span class="mut" data-i18n="foot.note">本页内容由导师专门为家长整理，只在家长与导师之间。</span><br>
+      <a href="#" id="forget" data-i18n="foot.forget">忘记已保存的链接信息</a></p>
+  </div>
+</main>
+
+<nav class="tabbar" id="tabbar" hidden>
+  <button class="tab-btn on" type="button" data-tab="home"><span class="tab-ic">🏠</span><span data-i18n="tab.home">首页</span></button>
+  <button class="tab-btn" type="button" data-tab="progress"><span class="tab-ic">📈</span><span data-i18n="tab.progress">进展</span></button>
+  <button class="tab-btn" type="button" data-tab="support"><span class="tab-ic">🤲</span><span data-i18n="tab.support">托举</span></button>
+  <button class="tab-btn" type="button" data-tab="mentor"><span class="tab-ic">💬</span><span data-i18n="tab.mentor">导师</span><span class="dot" id="tab-dot" hidden></span></button>
+</nav>
+
+<script src="parent.js"></script>
+</body>
+</html>

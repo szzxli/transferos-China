@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS students(
   name TEXT, package TEXT, stage TEXT DEFAULT 'diag',
   stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT,
   client_key TEXT, slug TEXT, signature TEXT, signature_set_at TEXT,
-  vision_text TEXT, mentor_message TEXT, mentor_message_at TEXT);
+  vision_text TEXT, mentor_message TEXT, mentor_message_at TEXT,
+  parent_key TEXT);
 
 CREATE TABLE IF NOT EXISTS content_items(
   id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
@@ -159,6 +160,29 @@ CREATE TABLE IF NOT EXISTS student_messages(
   id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
   sender TEXT NOT NULL, body TEXT NOT NULL,
   read_by_student INTEGER DEFAULT 0, read_by_mentor INTEGER DEFAULT 0,
+  created_at TEXT);
+
+-- ===== v11 新增表：家长更新（与学生原始数据完全隔离，只存导师为家长整理的内容）=====
+-- 设计红线：三表不设 diary / journal / mood / emotion 等学生私密原文列——按机制定版，
+-- 学生日记、想法与情绪困惑只保存在学生本机、永不进服务器；家长端只承接经学生确认、
+-- 再由导师整理过的解决方案与规划结果。
+-- 家长密钥在 students.parent_key（与 client_key 独立，交叉访问一律 404）：
+-- ALTER TABLE students ADD COLUMN parent_key TEXT;
+-- 家长进展更新（导师录入、家长可见；update_date 为 YYYY-MM-DD 文本）
+CREATE TABLE IF NOT EXISTS parent_updates(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+  update_date TEXT, title TEXT, body TEXT, current_focus TEXT, next_step TEXT,
+  created_at TEXT, updated_at TEXT);
+-- 如何托举（需要家庭配合的具体事项；status: active 进行中 / done 已完成 / archived 已归档）
+CREATE TABLE IF NOT EXISTS parent_support_actions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+  title TEXT, detail TEXT, category TEXT, due_text TEXT,
+  status TEXT DEFAULT 'active', sort INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT);
+-- 家长↔导师留言（与 student_messages 完全独立；sender: parent / mentor）
+CREATE TABLE IF NOT EXISTS parent_messages(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+  sender TEXT NOT NULL, body TEXT NOT NULL,
+  read_by_parent INTEGER DEFAULT 0, read_by_mentor INTEGER DEFAULT 0,
   created_at TEXT);
 
 -- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）

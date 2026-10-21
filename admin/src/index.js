@@ -205,6 +205,14 @@ const MESSAGE_RATE_LIMIT = 3;       // 同一学生 60 秒内最多 3 条，超�
 const MESSAGE_RATE_WINDOW_MS = 60 * 1000;
 const KNOWLEDGE_LIMIT = 10;         // 客户端接口单次最多下发 10 条知识卡
 
+// ===== v11 新增：家长更新（家长端独立入口；家长是买单人，但学生原始数据默认不向家长开放）=====
+// 数据边界（硬规则）：家长只能看到导师专为家长整理、如实且保留学生尊严的内容——
+// 家长更新（parent_updates）、如何托举事项（parent_support_actions）、家长↔导师留言（parent_messages）。
+// 严禁下发：考试原始记录、成绩/GPA、课程明细、学生留言、状态快照原文、学生目标/人生线原文、
+// 学生 client_key、学生签名。家长密钥与学生密钥分列存储、互不通用（交叉访问一律 404）。
+const PARENT_MESSAGE_SENDERS = { parent: "家长", mentor: "导师" };
+const SUPPORT_ACTION_STATUSES = { active: "进行中", done: "已完成", archived: "已归档" };
+
 /* 知识卡匹配（纯函数）：知识条目的 tag 命中学生主题集合即下发。
  * 主题集合 = 人生线类型集合（main/parallel/passive）
  *   + 有考试记录 → exam、study；有学业目标 → study；
@@ -262,6 +270,21 @@ async function ensureClientKey(db, student) {
   if (student.client_key) return student.client_key;
   const key = genClientKey();
   await db.prepare("UPDATE students SET client_key = ? WHERE id = ?").bind(key, student.id).run();
+  return key;
+}
+// genParentKey: 家长端访问密钥（pk_ + 24 位十六进制，96 位熵），与学生端 client_key 独立
+function genParentKey() {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return "pk_" + [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+// ensureParentKey: 学生尚无家长密钥时生成并落库，返回当前密钥
+async function ensureParentKey(db, student) {
+  if (!student) return null;
+  if (student.parent_key) return student.parent_key;
+  const key = genParentKey();
+  await db.prepare("UPDATE students SET parent_key = ? WHERE id = ?").bind(key, student.id).run();
+  student.parent_key = key;
   return key;
 }
 // slugify: 学生专属名（对外定位符）生成规则——取学生英文名 / pinyin，小写，
@@ -391,6 +414,63 @@ function normClientExtras(body) {
   return out;
 }
 
+/* v11 家长数据校验（导入与补录共用）：body 的 parent_updates / parent_support_actions /
+ * parent_messages 三段，任一条不合法返回 { error } 整单拒绝；合法返回归一化数组。
+ * 内容口径：这里只搬运导师为家长整理好的文本，服务端不做任何从学生原始数据的自动摘录。 */
+function normParentExtras(body) {
+  const out = { parentUpdates: [], parentSupport: [], parentMessages: [] };
+  const intOr = (v, dflt) => {
+    if (v === undefined || v === null || v === "") return dflt;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const puRaw = Array.isArray(body.parent_updates) ? body.parent_updates : [];
+  if (puRaw.length > 100) return { error: "too many parent_updates (max 100)" };
+  for (let i = 0; i < puRaw.length; i++) {
+    const u = puRaw[i] || {};
+    const title = clampStr(u.title, 120);
+    if (!title) return { error: "parent_updates[" + i + "].title required" };
+    let updateDate = clampStr(u.update_date, 10);
+    if (updateDate && (!/^\d{4}-\d{2}-\d{2}$/.test(updateDate) || Number.isNaN(Date.parse(updateDate)))) {
+      return { error: "parent_updates[" + i + "].update_date must be YYYY-MM-DD" };
+    }
+    if (!updateDate) updateDate = todayStr();
+    out.parentUpdates.push({
+      update_date: updateDate, title,
+      body: clampStr(u.body, 4000),
+      current_focus: clampStr(u.current_focus, 2000),
+      next_step: clampStr(u.next_step, 2000),
+    });
+  }
+  const psRaw = Array.isArray(body.parent_support_actions) ? body.parent_support_actions : [];
+  if (psRaw.length > 100) return { error: "too many parent_support_actions (max 100)" };
+  for (let i = 0; i < psRaw.length; i++) {
+    const a = psRaw[i] || {};
+    const title = clampStr(a.title, 120);
+    if (!title) return { error: "parent_support_actions[" + i + "].title required" };
+    const status = a.status === undefined || a.status === null || a.status === "" ? "active" : String(a.status);
+    if (!SUPPORT_ACTION_STATUSES[status]) return { error: "parent_support_actions[" + i + "] bad status" };
+    const sort = intOr(a.sort, 0);
+    if (sort === undefined) return { error: "parent_support_actions[" + i + "] bad sort" };
+    out.parentSupport.push({
+      title, detail: clampStr(a.detail, 2000),
+      category: clampStr(a.category, 40) || null, due_text: clampStr(a.due_text, 40) || null,
+      status, sort,
+    });
+  }
+  const pmRaw = Array.isArray(body.parent_messages) ? body.parent_messages : [];
+  if (pmRaw.length > 50) return { error: "too many parent_messages (max 50)" };
+  for (let i = 0; i < pmRaw.length; i++) {
+    const m = pmRaw[i] || {};
+    const sender = m.sender === undefined || m.sender === null || m.sender === "" ? "mentor" : String(m.sender);
+    if (!PARENT_MESSAGE_SENDERS[sender]) return { error: "parent_messages[" + i + "] bad sender" };
+    const text = clampStr(m.body, MESSAGE_MAX_LEN);
+    if (!text) return { error: "parent_messages[" + i + "].body required" };
+    out.parentMessages.push({ sender, body: text });
+  }
+  return out;
+}
+
 const DDL = [
   `CREATE TABLE IF NOT EXISTS agents(
     code TEXT PRIMARY KEY, name TEXT, region TEXT,
@@ -418,7 +498,8 @@ const DDL = [
     name TEXT, package TEXT, stage TEXT DEFAULT 'diag',
     stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT,
     client_key TEXT, slug TEXT, signature TEXT, signature_set_at TEXT,
-    vision_text TEXT, mentor_message TEXT, mentor_message_at TEXT)`,
+    vision_text TEXT, mentor_message TEXT, mentor_message_at TEXT,
+    parent_key TEXT)`,
   `CREATE TABLE IF NOT EXISTS content_items(
     id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
     pub_date TEXT, ref TEXT, type TEXT, status TEXT DEFAULT 'published', created_at TEXT)`,
@@ -493,6 +574,22 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     sender TEXT DEFAULT 'student', body TEXT, created_at TEXT,
     read_by_student INTEGER DEFAULT 0, read_by_mentor INTEGER DEFAULT 0)`,
+  // ===== v11 新增表：家长更新（仅导师整理给家长看的内容，与学生原始数据完全隔离）=====
+  // 家长进展更新（导师录入、家长可见；update_date 为更新日期文本 YYYY-MM-DD）
+  `CREATE TABLE IF NOT EXISTS parent_updates(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    update_date TEXT, title TEXT, body TEXT, current_focus TEXT, next_step TEXT,
+    created_at TEXT, updated_at TEXT)`,
+  // 如何托举（需要家庭配合的具体事项；status: active 进行中 / done 已完成 / archived 已归档）
+  `CREATE TABLE IF NOT EXISTS parent_support_actions(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    title TEXT, detail TEXT, category TEXT, due_text TEXT,
+    status TEXT DEFAULT 'active', sort INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT)`,
+  // 家长↔导师留言（与 student_messages 完全独立；sender: parent / mentor）
+  `CREATE TABLE IF NOT EXISTS parent_messages(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    sender TEXT DEFAULT 'parent', body TEXT, created_at TEXT,
+    read_by_parent INTEGER DEFAULT 0, read_by_mentor INTEGER DEFAULT 0)`,
 ];
 // v10 迁移：students 补愿景（vision_text）与导师寄语（mentor_message / mentor_message_at）列，幂等
 
@@ -535,6 +632,8 @@ const STUDENT_MIGRATIONS = [
   "ALTER TABLE students ADD COLUMN vision_text TEXT",
   "ALTER TABLE students ADD COLUMN mentor_message TEXT",
   "ALTER TABLE students ADD COLUMN mentor_message_at TEXT",
+  // v11 迁移：students 补 parent_key 列（家长端独立密钥，与 client_key 分列），同样幂等
+  "ALTER TABLE students ADD COLUMN parent_key TEXT",
 ];
 let schemaReady = false;
 async function ensureSchema(db) {
@@ -1073,6 +1172,110 @@ async function handleApi(req, env, url) {
     });
   }
 
+  // 家长端留言（v11，家长端唯一写接口）：POST /api/parent/message
+  // 请求体 { s: <学生id 或 slug>, key: <家长密钥>, body: <留言正文> }。鉴权口径与学生端留言一致，
+  // 但校验的是 students.parent_key：家长密钥与学生 client_key 互不通用，交叉使用一律 404。
+  // 正文 trim 后须非空且 ≤500 字，非法 400；防刷：同一学生 60 秒内家长留言 ≥3 条返回 429。
+  // 落库 sender='parent'，家长侧已读、导师侧未读。与 student_messages 完全独立，互不可见。
+  if (p === "/api/parent/message") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const locator = String((body && body.s) || "").trim();
+    const student = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : (locator ? await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(locator).first() : null);
+    const key = String((body && body.key) || "");
+    if (!student || !student.parent_key || !timingSafeEq(key, String(student.parent_key))) {
+      return jsonResp(req, { ok: false, error: "not found" }, 404);
+    }
+    const text = String((body && body.body) || "").trim();
+    if (!text) return jsonResp(req, { ok: false, error: "message required" }, 400);
+    if ([...text].length > MESSAGE_MAX_LEN) {
+      return jsonResp(req, { ok: false, error: "message too long (max " + MESSAGE_MAX_LEN + ")" }, 400);
+    }
+    const since = new Date(Date.now() - MESSAGE_RATE_WINDOW_MS).toISOString();
+    const recent = await db.prepare(
+      `SELECT COUNT(*) AS n FROM parent_messages WHERE student_id = ? AND sender = 'parent' AND created_at >= ?`
+    ).bind(student.id, since).first();
+    if (recent && recent.n >= MESSAGE_RATE_LIMIT) {
+      return jsonResp(req, { ok: false, error: "too frequent, retry in a minute" }, 429);
+    }
+    const ts = nowIso();
+    const r = await db.prepare(
+      `INSERT INTO parent_messages(student_id, sender, body, created_at, read_by_parent, read_by_mentor)
+       VALUES(?, 'parent', ?, ?, 1, 0)`
+    ).bind(student.id, text, ts).run();
+    return jsonResp(req, {
+      ok: true,
+      message: { id: r.meta.last_row_id, sender: "parent", body: text, created_at: ts },
+    });
+  }
+
+  // 家长端只读接口（v11）：GET /api/parent/<学生id 或 slug>?key=<家长密钥>。
+  // 密钥为 students.parent_key（每名学生一个随机家长密钥），与学生端 client_key 独立：
+  // 无 key / key 不对 / 学生不存在 / 拿学生密钥来查——一律 404，不暴露学生存在性。
+  // 【数据边界·硬规则】只返回家长安全字段：学生姓名/slug、服务阶段与其中文名、套餐名（有才返回）、
+  // 导师整理的家长更新、如何托举事项、家长↔导师留言、本次读取前的导师未读数。
+  // 严禁返回 GPA、考试、课程、会议、学生目标原文、人生线与下一步、状态快照、学生留言、
+  // client_key、学生签名等任何学生端原始数据——本接口根本不查询那些表。
+  // 也不预留 diary / journal / mood / emotion 等学生私密原文字段：按机制定版，学生日记、
+  // 想法与情绪困惑只保存在学生本机、永不进服务器；家长端打通的只能是经学生确认、再由
+  // 导师整理过的「解决方案与规划结果」（parent_updates 按 阶段进展 / 当前解决策略 / 下一步 呈现）。
+  const parentApiMatch = p.match(/^\/api\/parent\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
+  if (parentApiMatch) {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    await ensureSchema(db);
+    const locator = parentApiMatch[1];
+    const student = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(locator).first();
+    const key = url.searchParams.get("key") || "";
+    if (!student || !student.parent_key || !timingSafeEq(key, String(student.parent_key))) {
+      return jsonResp(req, { ok: false, error: "not found" }, 404);
+    }
+    const psid = student.id;
+    const updateRows = (await db.prepare(
+      `SELECT * FROM parent_updates WHERE student_id = ? ORDER BY update_date DESC, id DESC LIMIT 200`).bind(psid).all()).results || [];
+    const supportRows = (await db.prepare(
+      `SELECT * FROM parent_support_actions WHERE student_id = ?
+       ORDER BY CASE WHEN status = 'active' THEN 0 WHEN status = 'done' THEN 1 ELSE 2 END, sort ASC, id ASC LIMIT 200`).bind(psid).all()).results || [];
+    const pMsgRows = (await db.prepare(
+      `SELECT * FROM parent_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(psid).all()).results || [];
+    // 未读计数在标记已读之前计算：unread_mentor_parent 反映「打开家长页时有几条导师留言未读」，前端据此亮红点
+    const unreadMentorParent = pMsgRows.filter((m) => m.sender === "mentor" && !m.read_by_parent).length;
+    if (unreadMentorParent) {
+      await db.prepare(
+        `UPDATE parent_messages SET read_by_parent = 1 WHERE student_id = ? AND sender = 'mentor' AND read_by_parent = 0`
+      ).bind(psid).run();
+    }
+    const studentOut = {
+      name: student.name || "", slug: student.slug || "",
+      stage: student.stage || "", stage_label: DELIVERY_STAGES[student.stage] || student.stage || "",
+    };
+    if (student.package) studentOut.package = student.package;
+    return jsonResp(req, {
+      ok: true,
+      student: studentOut,
+      updates: updateRows.map((u) => ({
+        id: u.id, update_date: u.update_date || "", title: u.title || "",
+        body: u.body || "", current_focus: u.current_focus || "", next_step: u.next_step || "",
+        created_at: u.created_at || "",
+      })),
+      support_actions: supportRows.map((a) => ({
+        id: a.id, title: a.title || "", detail: a.detail || "", category: a.category || "",
+        due_text: a.due_text || "", status: a.status || "",
+        status_label: SUPPORT_ACTION_STATUSES[a.status] || a.status || "", sort: a.sort,
+      })),
+      messages: pMsgRows.map((m) => ({
+        id: m.id, sender: m.sender || "", sender_label: PARENT_MESSAGE_SENDERS[m.sender] || m.sender || "",
+        body: m.body || "", created_at: m.created_at || "",
+      })),
+      unread_mentor_parent: unreadMentorParent,
+    });
+  }
+
   // 学生一次性导入入口（v7，Bearer LEAD_API_TOKEN）：创建学生并批量写入专属客户端六块数据。
   // 请求体 { student:{name, package?, stage?, note?}, goal?, goal_lines?, status?, exams?, courses?, meetings? }。
   // 幂等口径：同名学生（trim 后精确匹配）已存在时不写任何数据，直接返回 { existed:true, student_id, client_key }。
@@ -1092,7 +1295,8 @@ async function handleApi(req, env, url) {
     if (existing) {
       const key = await ensureClientKey(db, existing);
       const slug = await ensureStudentSlug(db, existing);
-      return jsonResp(req, { ok: true, existed: true, student_id: existing.id, client_key: key, slug });
+      const pkey = await ensureParentKey(db, existing);
+      return jsonResp(req, { ok: true, existed: true, student_id: existing.id, client_key: key, parent_key: pkey, slug });
     }
     // —— 校验并归一化（先全量校验，任一不合法整单拒绝）——
     const bad = (msg) => jsonResp(req, { ok: false, error: msg }, 400);
@@ -1202,14 +1406,15 @@ async function handleApi(req, env, url) {
     // —— 落库 ——
     const now = nowIso();
     const clientKey = genClientKey();
+    const parentKey = genParentKey();
     const slug = await uniqueSlug(db, slugBase || slugify(name), 0);
     const stage = stu.stage && validStage(String(stu.stage)) ? String(stu.stage) : "diag";
     const sr = await db.prepare(
-      `INSERT INTO students(lead_id, order_id, name, package, stage, stage_since, note, created_at, updated_at, client_key, slug, vision_text)
-       VALUES(NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO students(lead_id, order_id, name, package, stage, stage_since, note, created_at, updated_at, client_key, slug, vision_text, parent_key)
+       VALUES(NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(name, clampStr(stu.package, 60) || null, stage, now,
       clampStr(stu.note, 2000), now, now, clientKey, slug,
-      clampStr(stu.vision_text, 2000) || null).run();
+      clampStr(stu.vision_text, 2000) || null, parentKey).run();
     const sid = sr.meta.last_row_id;
     if (goalIn) {
       await db.prepare(
@@ -1272,7 +1477,7 @@ async function handleApi(req, env, url) {
       ).bind(sid, a.title, a.body, a.sort, now, now).run();
     }
     return jsonResp(req, {
-      ok: true, existed: false, student_id: sid, client_key: clientKey, slug,
+      ok: true, existed: false, student_id: sid, client_key: clientKey, parent_key: parentKey, slug,
       counts: {
         goal: goalIn ? 1 : 0, goal_lines: linesIn.length, status: statusIn.length,
         exams: examsIn.length, courses: coursesIn.length, meetings: meetingsIn.length,
@@ -1287,6 +1492,8 @@ async function handleApi(req, env, url) {
   // { student:{id?|slug?|name?}（三选一定位）, student_patch:{vision_text?, mentor_message?},
   //   goal_line_renames:[{from,to}], milestones?/key_dates?/actions?/advice?（同导入校验，按标题去重）,
   //   messages?:[{sender?,body}]（按 sender+body 去重）, knowledge?:[{title,body,tag,enabled?}]（全局库，按标题去重） }
+  // v11 起另支持家长三段：parent_updates? / parent_support_actions?（按标题去重）、
+  // parent_messages?:[{sender?,body}]（按 sender+body 去重）；响应顺带回传 parent_key（缺失时自动生成）。
   // 已存在的条目跳过并计数，不覆盖、不重复写。
   if (p === "/api/admin/students/enrich") {
     if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
@@ -1305,12 +1512,17 @@ async function handleApi(req, env, url) {
     const bad = (msg) => jsonResp(req, { ok: false, error: msg }, 400);
     const extras = normClientExtras(body || {});
     if (extras.error) return bad(extras.error);
+    const pExtras = normParentExtras(body || {});
+    if (pExtras.error) return bad(pExtras.error);
     const now = nowIso();
     const counts = {
       patched: 0, renamed: 0,
       milestones: { inserted: 0, skipped: 0 }, key_dates: { inserted: 0, skipped: 0 },
       actions: { inserted: 0, skipped: 0 }, advice: { inserted: 0, skipped: 0 },
       messages: { inserted: 0, skipped: 0 }, knowledge: { inserted: 0, skipped: 0 },
+      parent_updates: { inserted: 0, skipped: 0 },
+      parent_support_actions: { inserted: 0, skipped: 0 },
+      parent_messages: { inserted: 0, skipped: 0 },
     };
     // —— 学生字段补丁（愿景 / 导师寄语；寄语不许在此替导师编话，只搬运调用方给的文本）——
     const patch = (body && body.student_patch) || {};
@@ -1423,7 +1635,39 @@ async function handleApi(req, env, url) {
       ).bind(title, itemBody, tag, enabled, now, now).run();
       counts.knowledge.inserted++;
     }
-    return jsonResp(req, { ok: true, student_id: sid, counts });
+    // —— 家长三段（v11，按标题去重；留言按 sender+body 去重）——
+    // 内容口径：只搬运调用方给的、导师为家长整理好的文本，绝不从学生原始数据自动摘录。
+    for (const u of pExtras.parentUpdates) {
+      const dup = await db.prepare(`SELECT id FROM parent_updates WHERE student_id = ? AND title = ?`).bind(sid, u.title).first();
+      if (dup) { counts.parent_updates.skipped++; continue; }
+      await db.prepare(
+        `INSERT INTO parent_updates(student_id, update_date, title, body, current_focus, next_step, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, u.update_date, u.title, u.body, u.current_focus, u.next_step, now, now).run();
+      counts.parent_updates.inserted++;
+    }
+    for (const a of pExtras.parentSupport) {
+      const dup = await db.prepare(`SELECT id FROM parent_support_actions WHERE student_id = ? AND title = ?`).bind(sid, a.title).first();
+      if (dup) { counts.parent_support_actions.skipped++; continue; }
+      await db.prepare(
+        `INSERT INTO parent_support_actions(student_id, title, detail, category, due_text, status, sort, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?)`
+      ).bind(sid, a.title, a.detail, a.category, a.due_text, a.status, a.sort, now, now).run();
+      counts.parent_support_actions.inserted++;
+    }
+    for (const m of pExtras.parentMessages) {
+      const dup = await db.prepare(
+        `SELECT id FROM parent_messages WHERE student_id = ? AND sender = ? AND body = ?`).bind(sid, m.sender, m.body).first();
+      if (dup) { counts.parent_messages.skipped++; continue; }
+      await db.prepare(
+        `INSERT INTO parent_messages(student_id, sender, body, created_at, read_by_parent, read_by_mentor)
+         VALUES(?,?,?,?,?,?)`
+      ).bind(sid, m.sender, m.body, now, m.sender === "mentor" ? 0 : 1, m.sender === "mentor" ? 1 : 0).run();
+      counts.parent_messages.inserted++;
+    }
+    // 家长密钥：存量学生首次补录时顺带生成并回传（后台重置走客户端页 parent_key_rotate）
+    const parentKey = await ensureParentKey(db, student);
+    return jsonResp(req, { ok: true, student_id: sid, parent_key: parentKey, counts });
   }
 
   return jsonResp(req, { ok: false, error: "not found" }, 404);
@@ -1815,6 +2059,9 @@ async function postDelivery(req, env) {
     await db.prepare("DELETE FROM student_actions WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM student_advice WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM student_messages WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM parent_updates WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM parent_support_actions WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM parent_messages WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM students WHERE id=?").bind(delId).run();
     return redirect("/admin/delivery");
   }
@@ -2707,6 +2954,19 @@ async function pageClient(env, url, sid) {
       "UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0"
     ).bind(sid).run();
   }
+  // —— v11 家长端查询 ——
+  const parentUpdates = (await db.prepare(
+    "SELECT * FROM parent_updates WHERE student_id=? ORDER BY update_date DESC, id DESC LIMIT 200").bind(sid).all()).results || [];
+  const parentSupport = (await db.prepare(
+    "SELECT * FROM parent_support_actions WHERE student_id=? ORDER BY sort ASC, id ASC LIMIT 200").bind(sid).all()).results || [];
+  const parentMsgs = (await db.prepare(
+    "SELECT * FROM parent_messages WHERE student_id=? ORDER BY id ASC LIMIT 500").bind(sid).all()).results || [];
+  const unreadParentMsgs = parentMsgs.filter((m) => m.sender === "parent" && !m.read_by_mentor).length;
+  if (unreadParentMsgs) {
+    await db.prepare(
+      "UPDATE parent_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0"
+    ).bind(sid).run();
+  }
 
   const bar = (done, total) => {
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -3077,9 +3337,94 @@ async function pageClient(env, url, sid) {
     <button type="submit">发送回复</button>
   </form>
   </div>`;
+  // —— 家长端（v11）——
+  // 边界提示写在卡头：家长看到的只能是导师在此整理的内容，学生原始记录（考试/成绩/课程/留言）不进家长端。
+  const editPuId = toInt(url.searchParams.get("edit_pupdate"), 0);
+  const editPu = editPuId ? parentUpdates.find((u) => u.id === editPuId) : null;
+  const puf = editPu || { update_date: todayStr(), title: "", body: "", current_focus: "", next_step: "" };
+  const puRows = parentUpdates.map((u) => `<tr>
+    <td>${esc(u.update_date || "")}</td><td>${esc(u.title || "")}</td>
+    <td>${esc((u.current_focus || "").slice(0, 40))}${(u.current_focus || "").length > 40 ? "…" : ""}</td>
+    <td>${esc((u.next_step || "").slice(0, 40))}${(u.next_step || "").length > 40 ? "…" : ""}</td>
+    <td><a href="/admin/client/${sid}?edit_pupdate=${u.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条家长更新？')">
+      <input type="hidden" name="action" value="parent_update_delete"><input type="hidden" name="id" value="${u.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const editPsId = toInt(url.searchParams.get("edit_psupport"), 0);
+  const editPs = editPsId ? parentSupport.find((a) => a.id === editPsId) : null;
+  const psf = editPs || { title: "", detail: "", category: "", due_text: "", status: "active", sort: parentSupport.length + 1 };
+  const psRows = parentSupport.map((a) => `<tr>
+    <td>${a.sort ?? ""}</td><td>${esc(a.title || "")}</td>
+    <td>${a.status === "done" ? '<span class="ok">已完成</span>' : a.status === "archived" ? '<span class="mut">已归档</span>' : '<span class="warn">进行中</span>'}</td>
+    <td>${esc(a.category || "—")}</td><td>${esc(a.due_text || "—")}</td>
+    <td>${esc((a.detail || "").slice(0, 40))}${(a.detail || "").length > 40 ? "…" : ""}</td>
+    <td><a href="/admin/client/${sid}?edit_psupport=${a.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条托举事项？')">
+      <input type="hidden" name="action" value="parent_support_delete"><input type="hidden" name="id" value="${a.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const parentThreadHtml = parentMsgs.length ? parentMsgs.map((m) => `
+    <div style="margin:8px 0;padding:9px 12px;border-radius:10px;${m.sender === "mentor" ? "background:#eef4f1" : "background:#f6f2ea"}">
+      <span class="mut">${m.sender === "mentor" ? "导师" : "家长"} · ${esc(String(m.created_at || "").slice(0, 16).replace("T", " "))}</span>
+      <div style="white-space:pre-wrap">${esc(m.body || "")}</div>
+    </div>`).join("") : `<p class="mut">暂无留言。</p>`;
+  const parentCard = `
+  <div class="card"><h2>家长端（家长更新）</h2>
+  <p class="mut">家长是实际买单人，但只能看到导师在这里专门整理、如实且保留学生尊严的更新。<strong>学生原始记录（考试、成绩、课程、状态快照、学生留言、签名）不会进入家长端</strong>，请勿把原始明细粘贴到家长更新里。</p>
+  <div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px">
+    <p style="margin:4px 0"><strong>家长专属链接</strong> <span class="mut">家长用这个链接看进展更新、如何托举事项，并与导师单独沟通；与学生端链接完全独立。</span></p>
+    ${student.parent_key
+      ? `<p class="mut" style="margin:4px 0">家长密钥：<code>${esc(student.parent_key)}</code><br>专属链接（推荐，用专属名）：<code>https://zhuanuc.com/one-on-one-app/parent.html?s=${esc(student.slug || "")}&amp;p=${esc(student.parent_key)}</code><br>备用链接（用编号）：<code>https://zhuanuc.com/one-on-one-app/parent.html?s=${sid}&amp;p=${esc(student.parent_key)}</code></p>`
+      : `<p class="mut" style="margin:4px 0">尚未生成家长密钥，生成后把专属链接发给家长即可。专属名：<code>${esc(student.slug || "")}</code></p>`}
+    <form method="post" style="margin:6px 0 0" onsubmit="return confirm('${student.parent_key ? "重置后旧家长链接立即失效，确定重置家长密钥？" : "确定生成家长密钥？"}')">
+      <input type="hidden" name="action" value="parent_key_rotate">
+      <button class="small ghost" type="submit">${student.parent_key ? "重置家长密钥" : "生成家长密钥"}</button>
+    </form>
+  </div>
+  <h3>${editPu ? "编辑家长更新 #" + editPu.id : "新增家长更新"}</h3>
+  <p class="mut">固定说明：只填写可向家长公开的方案与进展，不录入学生日记、情绪原文或私密困惑。家长更新按「阶段进展 / 当前解决策略 / 下一步」呈现，只能来自经学生确认、再由导师整理过的解决方案与规划结果；学生的日记、想法与情绪原文只保存在学生本机，永不进入服务器与家长端。</p>
+  <form method="post">
+    <input type="hidden" name="action" value="${editPu ? "parent_update_update" : "parent_update_add"}">
+    ${editPu ? `<input type="hidden" name="id" value="${editPu.id}">` : ""}
+    <div class="row">
+      <div><label>更新日期</label><input name="update_date" type="date" value="${esc(puf.update_date || "")}"></div>
+      <div style="flex:2"><label>标题 *</label><input name="title" required maxlength="120" value="${esc(puf.title || "")}" placeholder="如 评估诊断阶段进展"></div>
+    </div>
+    <label>阶段进展（给家长看的整理版正文）</label><textarea name="body" maxlength="4000" style="min-height:110px">${esc(puf.body || "")}</textarea>
+    <label>当前解决策略</label><textarea name="current_focus" maxlength="2000">${esc(puf.current_focus || "")}</textarea>
+    <label>下一步</label><textarea name="next_step" maxlength="2000">${esc(puf.next_step || "")}</textarea>
+    <button type="submit">${editPu ? "保存修改" : "添加家长更新"}</button>
+    ${editPu ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
+  </form>
+  ${parentUpdates.length ? `<div class="wrap"><table><tr><th>日期</th><th>标题</th><th>当前解决策略</th><th>下一步</th><th></th><th></th></tr>${puRows}</table></div>` : `<p class="mut">暂无家长更新。</p>`}
+  <h3>${editPs ? "编辑托举事项 #" + editPs.id : "新增如何托举事项"}</h3>
+  <p class="mut">只写家长可以实际执行的托举事项（如补充材料、保留稳定节奏）；不要在这里写向家长追问成绩或考试细节的内容。</p>
+  <form method="post">
+    <input type="hidden" name="action" value="${editPs ? "parent_support_update" : "parent_support_add"}">
+    ${editPs ? `<input type="hidden" name="id" value="${editPs.id}">` : ""}
+    <div class="row">
+      <div style="flex:2"><label>标题 *</label><input name="title" required maxlength="120" value="${esc(psf.title || "")}"></div>
+      <div><label>状态</label><select name="status">${opts(SUPPORT_ACTION_STATUSES, psf.status || "active")}</select></div>
+      <div><label>分类（可空）</label><input name="category" maxlength="40" value="${esc(psf.category || "")}" placeholder="如 材料 / 节奏"></div>
+      <div><label>期限文本（可空）</label><input name="due_text" maxlength="40" value="${esc(psf.due_text || "")}" placeholder="如 本周内"></div>
+      <div><label>排序</label><input name="sort" type="number" value="${esc(psf.sort ?? 0)}"></div>
+    </div>
+    <label>说明</label><textarea name="detail" maxlength="2000">${esc(psf.detail || "")}</textarea>
+    <button type="submit">${editPs ? "保存修改" : "添加托举事项"}</button>
+    ${editPs ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
+  </form>
+  ${parentSupport.length ? `<div class="wrap"><table><tr><th>排序</th><th>标题</th><th>状态</th><th>分类</th><th>期限</th><th>说明</th><th></th><th></th></tr>${psRows}</table></div>` : `<p class="mut">暂无托举事项。</p>`}
+  <h3>家长沟通 ${unreadParentMsgs ? `<span class="pill">${unreadParentMsgs} 条未读</span>` : ""}</h3>
+  <p class="mut">家长与导师的独立线程，学生看不到；打开本页即把家长留言标为已读。在下方以导师身份回复。</p>
+  ${parentThreadHtml}
+  <form method="post">
+    <input type="hidden" name="action" value="parent_message_reply">
+    <label>回复家长</label><textarea name="body" required maxlength="2000" placeholder="回复会原样出现在家长端"></textarea>
+    <button type="submit">发送回复</button>
+  </form>
+  </div>`;
   return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery",
     hero + goalCard + statusCard + examCard + courseCard + meetingCard +
-    milestoneCard + keyDateCard + actionCard + adviceCard + messageCard));
+    milestoneCard + keyDateCard + actionCard + adviceCard + messageCard + parentCard));
 }
 async function postClient(req, env, sidFromPath) {
   const db = env.DB;
@@ -3345,6 +3690,72 @@ async function postClient(req, env, sidFromPath) {
     ).bind(sid, text, nowIso()).run();
     return redirect(back);
   }
+  // —— v11 家长端 ——
+  if (action === "parent_key_rotate") {
+    // 生成/重置家长密钥（旧家长链接立即失效；学生端 client_key 不受影响）
+    await db.prepare("UPDATE students SET parent_key = ?, updated_at = ? WHERE id = ?")
+      .bind(genParentKey(), nowIso(), sid).run();
+    return redirect(back);
+  }
+  if (action === "parent_update_add" || action === "parent_update_update") {
+    const title = clampStr(fd.get("title"), 120);
+    if (!title) return redirect(back);
+    const uDate = clampStr(fd.get("update_date"), 10);
+    const updDate = /^\d{4}-\d{2}-\d{2}$/.test(uDate) ? uDate : todayStr();
+    const uBody = clampStr(fd.get("body"), 4000);
+    const focus = clampStr(fd.get("current_focus"), 2000);
+    const nextStep = clampStr(fd.get("next_step"), 2000);
+    if (action === "parent_update_update") {
+      await db.prepare(
+        `UPDATE parent_updates SET update_date=?, title=?, body=?, current_focus=?, next_step=?, updated_at=? WHERE id=? AND student_id=?`
+      ).bind(updDate, title, uBody, focus, nextStep, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO parent_updates(student_id, update_date, title, body, current_focus, next_step, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, updDate, title, uBody, focus, nextStep, nowIso(), nowIso()).run();
+    }
+    return redirect(back);
+  }
+  if (action === "parent_update_delete") {
+    await db.prepare("DELETE FROM parent_updates WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "parent_support_add" || action === "parent_support_update") {
+    const title = clampStr(fd.get("title"), 120);
+    if (!title) return redirect(back);
+    const detail = clampStr(fd.get("detail"), 2000);
+    const category = clampStr(fd.get("category"), 40) || null;
+    const dueText = clampStr(fd.get("due_text"), 40) || null;
+    const status = SUPPORT_ACTION_STATUSES[fd.get("status")] ? String(fd.get("status")) : "active";
+    const sort = toInt(fd.get("sort"), 0);
+    if (action === "parent_support_update") {
+      await db.prepare(
+        `UPDATE parent_support_actions SET title=?, detail=?, category=?, due_text=?, status=?, sort=?, updated_at=? WHERE id=? AND student_id=?`
+      ).bind(title, detail, category, dueText, status, sort, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO parent_support_actions(student_id, title, detail, category, due_text, status, sort, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?)`
+      ).bind(sid, title, detail, category, dueText, status, sort, nowIso(), nowIso()).run();
+    }
+    return redirect(back);
+  }
+  if (action === "parent_support_delete") {
+    await db.prepare("DELETE FROM parent_support_actions WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "parent_message_reply") {
+    const text = clampStr(fd.get("body"), 2000);
+    if (!text) return redirect(back);
+    await db.prepare(
+      `INSERT INTO parent_messages(student_id, sender, body, created_at, read_by_parent, read_by_mentor)
+       VALUES(?, 'mentor', ?, ?, 0, 1)`
+    ).bind(sid, text, nowIso()).run();
+    return redirect(back);
+  }
   return redirect(back);
 }
 
@@ -3415,4 +3826,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT };
