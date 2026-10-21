@@ -274,7 +274,10 @@ async function ensureStudentSlug(db, student) {
 // 6 个中性通用模板（不写死任何学生），起点按学生 id 轮换，能填槽的才入选，去重后取前 3，每条 ≤30 字。
 const SIGNATURE_ADJECTIVES = ["勇敢", "真实", "坚定", "发光", "自在", "向上"];
 function signatureGoalShort(targetSchool) {
-  const first = String(targetSchool || "").split(/[／/、,，;；]/)[0].trim();
+  let first = String(targetSchool || "").split(/[／/、,，;；]/)[0].trim();
+  // 剥掉目标字段开头常见的状态前缀（如「未定版：」「待定：」），短称只留目标本体
+  const pm = first.match(/^(未定版|未定|待定|暂定|候选|计划中)[：:]\s*(.+)$/);
+  if (pm) first = pm[2].trim();
   return [...first].length > 12 ? [...first].slice(0, 12).join("") : first;
 }
 function signatureSuggestions(student, goal, goalLines, exams) {
