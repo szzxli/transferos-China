@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS agents(
 CREATE TABLE IF NOT EXISTS leads(
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, wechat TEXT, phone TEXT,
   source TEXT, ref TEXT, eval_summary TEXT, status TEXT DEFAULT 'new',
-  note TEXT, created_at TEXT, updated_at TEXT);
+  note TEXT, created_at TEXT, updated_at TEXT,
+  grade TEXT, score INTEGER, grade_reason TEXT, graded_at TEXT);
 
 CREATE TABLE IF NOT EXISTS visits(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ref TEXT, page TEXT, day TEXT,
@@ -65,8 +66,14 @@ CREATE TABLE IF NOT EXISTS staff_reviews(
   examiner TEXT, examiner_platform TEXT, score REAL,
   verdict TEXT DEFAULT 'observe', comment TEXT, created_at TEXT);
 -- 注：既有数据库的 staff 新列（kind/emp_no/platform/job_function/persona/accountable）
--- 与 tasks 新列（type）由 Worker 首次请求时自动 ALTER 补齐，本文件与程序内嵌结构
+-- 与 tasks 新列（type）、leads 评级列（grade/score/grade_reason/graded_at）
+-- 由 Worker 首次请求时自动 ALTER 补齐，本文件与程序内嵌结构
 -- 保持一致，新库直接用本文件即可。
+-- 如需在 D1 控制台手动给既有 leads 表补评级列（逐行去掉开头 -- 后一条一条粘贴执行）：
+-- ALTER TABLE leads ADD COLUMN grade TEXT;
+-- ALTER TABLE leads ADD COLUMN score INTEGER;
+-- ALTER TABLE leads ADD COLUMN grade_reason TEXT;
+-- ALTER TABLE leads ADD COLUMN graded_at TEXT;
 
 -- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）
 INSERT OR IGNORE INTO agents(code, name, region, kind, active, created_at) VALUES

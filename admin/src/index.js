@@ -70,6 +70,59 @@ function taskDueState(due, status, today) {
   return "upcoming";
 }
 
+// ===== 线索自动评分（确定性规则写死在本函数，AI 不参与打分）=====
+// 满分 100，五维计分：
+//   渠道归因 20：ref 命中启用中的代理/渠道码 +20；有 ref 但未登记 +5；无 ref +0
+//   联系方式 25：微信+电话都有 +25；只有一个 +15；都没有 +0
+//   评估摘要 15：eval_summary ≥100 字 +15；≥40 字 +10；有内容 +5；空 +0
+//   意向明确 15：eval_summary/note 命中学校或专业关键词 +15
+//   咨询关键词 25：命中费用类 +8、TAG/保录 +8、签证类 +9（可叠加，正好封顶 25）
+// 评级：A ≥ 70；B 45–69；C < 45。reason 为一句可读理由（得分点或主要缺项）。
+const LEAD_INTENT_WORDS = ["加州大学", "UCI", "UCD", "UCSB", "UCSC", "UCR", "UCM",
+  "De Anza", "Foothill", "社区学院", "专业", "计算机", "商科", "工程", "数据科学"];
+const LEAD_KW_GROUPS = [
+  { words: ["费用", "价格", "多少钱", "学费"], pts: 8, label: "问费用" },
+  { words: ["TAG", "保录"], pts: 8, label: "问TAG" },
+  { words: ["签证", "面签", "F-1"], pts: 9, label: "问签证" },
+];
+function scoreLead(lead, validRefs) {
+  const refs = validRefs instanceof Set ? validRefs : new Set(validRefs || []);
+  const ref = String(lead.ref || "").trim();
+  const wechat = String(lead.wechat || "").trim();
+  const phone = String(lead.phone || "").trim();
+  const evalText = String(lead.eval_summary || "");
+  const text = evalText + "\n" + String(lead.note || "");
+  let score = 0;
+  const hits = [];
+  const refValid = !!ref && refs.has(ref);
+  if (refValid) { score += 20; hits.push("渠道码有效"); }
+  else if (ref) { score += 5; hits.push("有来源码（未登记）"); }
+  const contactN = (wechat ? 1 : 0) + (phone ? 1 : 0);
+  if (contactN === 2) { score += 25; hits.push("联系方式齐全"); }
+  else if (contactN === 1) { score += 15; hits.push("有单一联系方式"); }
+  const evalLen = evalText.trim().length;
+  if (evalLen >= 100) { score += 15; hits.push("评估信息充分"); }
+  else if (evalLen >= 40) { score += 10; hits.push("评估信息较充分"); }
+  else if (evalLen > 0) { score += 5; }
+  if (LEAD_INTENT_WORDS.some((w) => text.includes(w))) { score += 15; hits.push("意向学校/专业明确"); }
+  for (const g of LEAD_KW_GROUPS) {
+    if (g.words.some((w) => text.includes(w))) { score += g.pts; hits.push(g.label); }
+  }
+  if (score > 100) score = 100;
+  const grade = score >= 70 ? "A" : score >= 45 ? "B" : "C";
+  let reason;
+  if (grade === "C") {
+    const gaps = [];
+    if (!refValid) gaps.push("无有效渠道码");
+    if (contactN === 0) gaps.push("缺联系方式");
+    if (evalLen === 0) gaps.push("无评估摘要");
+    reason = gaps.length ? "信息不完整：" + gaps.join("、") : (hits.join("、") || "基础信息已填写");
+  } else {
+    reason = hits.join("、") || "基础信息已填写";
+  }
+  return { grade, score, reason };
+}
+
 // ===== 常量 =====
 const LEAD_SOURCES = { assess: "评估页", track: "规划页", apply: "转学页", miniapp: "小程序", manual: "手动录入" };
 const LEAD_STATUSES = { new: "新线索", contacted: "已联系", diagnosed: "已诊断", sold: "已成交", lost: "已流失" };
@@ -137,7 +190,8 @@ const DDL = [
   `CREATE TABLE IF NOT EXISTS leads(
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, wechat TEXT, phone TEXT,
     source TEXT, ref TEXT, eval_summary TEXT, status TEXT DEFAULT 'new',
-    note TEXT, created_at TEXT, updated_at TEXT)`,
+    note TEXT, created_at TEXT, updated_at TEXT,
+    grade TEXT, score INTEGER, grade_reason TEXT, graded_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS visits(
     id INTEGER PRIMARY KEY AUTOINCREMENT, ref TEXT, page TEXT, day TEXT,
     count INTEGER DEFAULT 0, UNIQUE(ref, page, day))`,
@@ -189,6 +243,13 @@ const STAFF_MIGRATIONS = [
 const TASK_MIGRATIONS = [
   "ALTER TABLE tasks ADD COLUMN type TEXT DEFAULT 'task'",
 ];
+// v4 迁移：leads 补自动评级列（grade/score/grade_reason/graded_at），同样幂等
+const LEAD_MIGRATIONS = [
+  "ALTER TABLE leads ADD COLUMN grade TEXT",
+  "ALTER TABLE leads ADD COLUMN score INTEGER",
+  "ALTER TABLE leads ADD COLUMN grade_reason TEXT",
+  "ALTER TABLE leads ADD COLUMN graded_at TEXT",
+];
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady || !db) return;
@@ -200,6 +261,9 @@ async function ensureSchema(db) {
     try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
   }
   for (const sql of TASK_MIGRATIONS) {
+    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+  }
+  for (const sql of LEAD_MIGRATIONS) {
     try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
   }
   schemaReady = true;
@@ -326,14 +390,42 @@ async function handleApi(req, env, url) {
     const unsettled = await db.prepare(
       `SELECT COALESCE(SUM(commission),0) AS cents FROM orders WHERE settle_status = 'unsettled'`
     ).first();
+    const byGrade = await db.prepare(`SELECT grade, COUNT(*) AS n FROM leads WHERE grade IS NOT NULL GROUP BY grade`).all();
+    const ungraded = await db.prepare(`SELECT COUNT(*) AS n FROM leads WHERE grade IS NULL`).first();
     return jsonResp(req, {
       ok: true,
       leads_by_status: (byStatus.results || []).map((r) => ({ status: r.status, n: r.n })),
+      leads_by_grade: (byGrade.results || []).map((r) => ({ grade: r.grade, n: r.n })),
+      leads_ungraded: ungraded ? ungraded.n : 0,
       new_leads_7d: newLeads.results || [],
       stale_leads: stale.results || [],
       visits_today: visitsToday ? visitsToday.n : 0,
       unsettled_commission_cents: unsettled ? unsettled.cents : 0,
     });
+  }
+
+  // 线索自动评级处理入口（线索管家专用，Bearer LEAD_API_TOKEN）：
+  // 一次处理全部未评级线索（grade IS NULL），评分规则见 scoreLead，结果写回 leads 表。
+  if (p === "/api/admin/leads/process") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    const token = String(req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (!env.LEAD_API_TOKEN || token !== env.LEAD_API_TOKEN) return jsonResp(req, { ok: false, error: "unauthorized" }, 401);
+    await ensureSchema(db);
+    const agentRows = await db.prepare(`SELECT code FROM agents WHERE active = 1`).all();
+    const validRefs = new Set((agentRows.results || []).map((a) => a.code));
+    const rows = (await db.prepare(
+      `SELECT * FROM leads WHERE grade IS NULL ORDER BY id ASC LIMIT 500`).all()).results || [];
+    const by_grade = { A: 0, B: 0, C: 0 };
+    const details = [];
+    for (const lead of rows) {
+      const r = scoreLead(lead, validRefs);
+      await db.prepare(
+        `UPDATE leads SET grade = ?, score = ?, grade_reason = ?, graded_at = ? WHERE id = ?`
+      ).bind(r.grade, r.score, r.reason, nowIso(), lead.id).run();
+      by_grade[r.grade]++;
+      details.push({ id: lead.id, name: lead.name, grade: r.grade, score: r.score, reason: r.reason });
+    }
+    return jsonResp(req, { ok: true, processed: rows.length, by_grade, details });
   }
 
   return jsonResp(req, { ok: false, error: "not found" }, 404);
@@ -552,6 +644,7 @@ async function pageLeads(req, env, url) {
     <td>${l.id}</td><td>${esc(l.name)}</td><td>${esc(l.wechat)}</td><td>${esc(l.phone)}</td>
     <td>${esc(LEAD_SOURCES[l.source] || l.source || "")}</td><td>${esc(l.ref || "")}</td>
     <td>${esc(LEAD_STATUSES[l.status] || l.status)}</td>
+    <td>${l.grade ? `<span class="pill">${esc(l.grade)} 级 · ${l.score} 分</span>${l.grade_reason ? `<div class="mut">${esc(l.grade_reason)}</div>` : ""}` : '<span class="mut">未评级</span>'}</td>
     <td class="mut">${esc((l.created_at || "").slice(0, 10))}</td>
     <td><a href="/admin/user?id=${l.id}">档案</a> · <a href="/admin/leads?edit=${l.id}">编辑</a></td>
     <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条线索？')">
@@ -586,8 +679,8 @@ async function pageLeads(req, env, url) {
     ${edit ? `<a class="btn ghost" href="/admin/leads">取消编辑</a>` : ""}
   </form></div>
   <div class="card"><h2>线索列表（${rows.length}）</h2><div class="wrap">
-  <table><tr><th>ID</th><th>姓名</th><th>微信</th><th>电话</th><th>来源</th><th>ref</th><th>状态</th><th>日期</th><th></th><th></th></tr>
-  ${rowHtml || `<tr><td colspan="10" class="mut">暂无线索</td></tr>`}</table></div></div>`;
+  <table><tr><th>ID</th><th>姓名</th><th>微信</th><th>电话</th><th>来源</th><th>ref</th><th>状态</th><th>评级</th><th>日期</th><th></th><th></th></tr>
+  ${rowHtml || `<tr><td colspan="11" class="mut">暂无线索</td></tr>`}</table></div></div>`;
   return htmlResp(layout("线索", "/admin/leads", body));
 }
 async function postLeads(req, env) {
@@ -1535,4 +1628,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS };
