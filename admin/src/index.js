@@ -268,6 +268,40 @@ async function ensureStudentSlug(db, student) {
   await db.prepare("UPDATE students SET slug = ? WHERE id = ?").bind(slug, student.id).run();
   return slug;
 }
+// signatureSuggestions: 专属签名候选生成（纯函数，可单测）。素材全部取学生自己的数据——
+// 第一优先级人生线名、学业目标项目（取第一段短称）、学生姓名；愿景形容词按数据特征
+// 确定性选取（有考试未达标 → 「不放弃」；有主线在推进 → 「勇敢」；否则按学生 id 在中性词库轮换）。
+// 6 个中性通用模板（不写死任何学生），起点按学生 id 轮换，能填槽的才入选，去重后取前 3，每条 ≤30 字。
+const SIGNATURE_ADJECTIVES = ["勇敢", "真实", "坚定", "发光", "自在", "向上"];
+function signatureGoalShort(targetSchool) {
+  const first = String(targetSchool || "").split(/[／/、,，;；]/)[0].trim();
+  return [...first].length > 12 ? [...first].slice(0, 12).join("") : first;
+}
+function signatureSuggestions(student, goal, goalLines, exams) {
+  const name = String((student && student.name) || "").trim();
+  const lines = goalLines || [];
+  const main = lines.length ? lines[0] : null;
+  const mainName = main ? String(main.name || "").trim() : "";
+  const goalShort = signatureGoalShort(goal && goal.target_school);
+  const idNum = Number(student && student.id) || 0;
+  const hasFail = (exams || []).some((e) => e && e.result === "fail");
+  const adj = hasFail ? "不放弃" : (mainName ? "勇敢" : SIGNATURE_ADJECTIVES[idNum % SIGNATURE_ADJECTIVES.length]);
+  const templates = [
+    () => (mainName && name ? mainName + "路上的" + name : ""),
+    () => (goalShort ? "向着" + goalShort + "走的人" : ""),
+    () => "一个" + adj + "的自己",
+    () => (mainName && name ? name + " · " + mainName + "进行时" : ""),
+    () => (name && goalShort ? name + "，向" + goalShort + "出发" : ""),
+    () => (name ? adj + "的" + name : ""),
+  ];
+  const out = [];
+  const start = templates.length ? idNum % templates.length : 0;
+  for (let i = 0; i < templates.length && out.length < 3; i++) {
+    const s = templates[(start + i) % templates.length]();
+    if (s && [...s].length <= 30 && !out.includes(s)) out.push(s);
+  }
+  return out;
+}
 
 // ===== 数据库结构（与 schema.sql 保持一致）=====
 const DDL = [
@@ -296,7 +330,7 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, order_id INTEGER,
     name TEXT, package TEXT, stage TEXT DEFAULT 'diag',
     stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT,
-    client_key TEXT, slug TEXT)`,
+    client_key TEXT, slug TEXT, signature TEXT, signature_set_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS content_items(
     id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
     pub_date TEXT, ref TEXT, type TEXT, status TEXT DEFAULT 'published', created_at TEXT)`,
@@ -373,10 +407,13 @@ const GOAL_MIGRATIONS = [
 ];
 // v7 迁移：students 补 client_key 列（学生端 APP 只读访问密钥），同样幂等
 // v8 迁移：students 补 slug 列（学生专属名，对外定位符）+ 唯一索引（NULL 不互斥，存量行安全），同样幂等
+// v9 迁移：students 补 signature / signature_set_at 列（专属签名，学生本人在 APP 确认一次后固定），同样幂等
 const STUDENT_MIGRATIONS = [
   "ALTER TABLE students ADD COLUMN client_key TEXT",
   "ALTER TABLE students ADD COLUMN slug TEXT",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_students_slug ON students(slug)",
+  "ALTER TABLE students ADD COLUMN signature TEXT",
+  "ALTER TABLE students ADD COLUMN signature_set_at TEXT",
 ];
 let schemaReady = false;
 async function ensureSchema(db) {
@@ -715,9 +752,39 @@ async function handleApi(req, env, url) {
     return jsonResp(req, { ok: true, id, status: "done", already_done: false });
   }
 
+  // 学生端专属签名设置（v9，一对一 APP 唯一写接口）：POST /api/client/signature
+  // 请求体 { s: <学生id 或 slug>, key: <访问密钥>, signature: <签名> }。校验口径与只读接口一致：
+  // 学生不存在 / 无 key / key 不对一律 404，不暴露学生存在性。仅当 signature 为空时可设置，
+  // 已设置再调用返回 409（改签名只能由导师在后台改）；签名 trim 后须非空且 ≤30 字，非法整单 400。
+  if (p === "/api/client/signature") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const locator = String((body && body.s) || "").trim();
+    const student = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : (locator ? await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(locator).first() : null);
+    const key = String((body && body.key) || "");
+    if (!student || !student.client_key || !timingSafeEq(key, String(student.client_key))) {
+      return jsonResp(req, { ok: false, error: "not found" }, 404);
+    }
+    const sig = String((body && body.signature) || "").trim();
+    if (!sig) return jsonResp(req, { ok: false, error: "signature required" }, 400);
+    if ([...sig].length > 30) return jsonResp(req, { ok: false, error: "signature too long (max 30)" }, 400);
+    if (student.signature && String(student.signature).trim() !== "") {
+      return jsonResp(req, { ok: false, error: "signature already set", signature: student.signature }, 409);
+    }
+    const ts = nowIso();
+    await db.prepare(
+      `UPDATE students SET signature = ?, signature_set_at = ?, updated_at = ? WHERE id = ? AND (signature IS NULL OR signature = '')`
+    ).bind(sig, ts, ts, student.id).run();
+    return jsonResp(req, { ok: true, signature: sig, signature_set_at: ts });
+  }
+
   // 学生端只读接口（v7，一对一专属客户端 APP 专用；v8 起定位符同时支持 slug）：
   // GET /api/client/<学生id 或 slug>?key=<访问密钥>。密钥为 students.client_key（每名学生一个随机密钥），
-  // 无 key / key 不对 / 学生不存在一律 404，不暴露学生存在性。只读，不接受任何写入。
+  // 无 key / key 不对 / 学生不存在一律 404，不暴露学生存在性。写入仅限上方 v9 签名接口，其余只读。
   // 返回六块数据，选课分组与汇总复用 groupCoursesByTerm / courseProgress，与后台客户端页同口径。
   const clientApiMatch = p.match(/^\/api\/client\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
   if (clientApiMatch) {
@@ -761,6 +828,9 @@ async function handleApi(req, env, url) {
         stage: student.stage || "", stage_label: DELIVERY_STAGES[student.stage] || student.stage || "",
         note: student.note || "",
       },
+      signature: student.signature || "",
+      signature_set_at: student.signature_set_at || "",
+      signature_suggestions: student.signature ? [] : signatureSuggestions(student, goal, goalLines, exams),
       school_system: goal ? (goal.school_system || "") : "",
       goal: goal ? {
         target_school: goal.target_school || "", target_term: goal.target_term || "",
@@ -2202,6 +2272,17 @@ async function pageClient(env, url, sid) {
       <input type="hidden" name="action" value="key_rotate">
       <button class="small ghost" type="submit">${student.client_key ? "重置密钥" : "生成访问密钥"}</button>
     </form>
+    <div style="border-top:1px dashed #eee;margin-top:10px;padding-top:8px">
+      <p style="margin:4px 0"><strong>专属签名</strong> <span class="mut">学生在 APP 的「每日一句」里自选确认一次后固定；导师可在此改或清空（清空后学生可重新选）。</span></p>
+      ${student.signature
+        ? `<p class="mut" style="margin:4px 0">当前签名：<strong>${esc(student.signature)}</strong>${student.signature_set_at ? `（确认于 ${esc(String(student.signature_set_at).slice(0, 10))}）` : ""}</p>`
+        : `<p class="mut" style="margin:4px 0">尚未设置——学生在 APP 打开「每日一句」时会看到按其目标生成的 3 个候选，自选其一确认。</p>`}
+      <form method="post" style="margin:6px 0 0">
+        <input type="hidden" name="action" value="signature_save">
+        <input name="signature" maxlength="30" value="${esc(student.signature || "")}" placeholder="输入签名（≤30 字），留空保存 = 清空" style="min-width:260px">
+        <button class="small" type="submit">保存签名</button>
+      </form>
+    </div>
   </div></div>`;
   // —— 目标 ——
   // —— 目标（多条人生线 + 学业目标详情）——
@@ -2397,6 +2478,18 @@ async function postClient(req, env, sidFromPath) {
     // v7：生成/重置学生端 APP 访问密钥（旧密钥立即失效）
     await db.prepare("UPDATE students SET client_key = ?, updated_at = ? WHERE id = ?")
       .bind(genClientKey(), nowIso(), sid).run();
+    return redirect(back);
+  }
+  if (action === "signature_save") {
+    // v9：导师维护专属签名——非空 = 设置/修改（同步记录时间），留空 = 清空（学生可在 APP 重新自选确认）
+    const sig = clampStr(fd.get("signature"), 30);
+    if (sig) {
+      await db.prepare("UPDATE students SET signature = ?, signature_set_at = ?, updated_at = ? WHERE id = ?")
+        .bind(sig, nowIso(), nowIso(), sid).run();
+    } else {
+      await db.prepare("UPDATE students SET signature = NULL, signature_set_at = NULL, updated_at = ? WHERE id = ?")
+        .bind(nowIso(), sid).run();
+    }
     return redirect(back);
   }
   if (action === "goal_save") {
@@ -2597,4 +2690,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, slugify, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, slugify, signatureSuggestions, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES };

@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS students(
   id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, order_id INTEGER,
   name TEXT, package TEXT, stage TEXT DEFAULT 'diag',
   stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT,
-  client_key TEXT, slug TEXT);
+  client_key TEXT, slug TEXT, signature TEXT, signature_set_at TEXT);
 
 CREATE TABLE IF NOT EXISTS content_items(
   id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
@@ -121,6 +121,9 @@ CREATE TABLE IF NOT EXISTS student_goal_lines(
 -- v8：既有 students 表补学生专属名列 + 唯一索引（Worker 也会自动补，此为手动备选）：
 -- ALTER TABLE students ADD COLUMN slug TEXT;
 -- CREATE UNIQUE INDEX idx_students_slug ON students(slug);
+-- v9：既有 students 表补专属签名列（学生在 APP 自选确认一次后固定；改签名走后台）：
+-- ALTER TABLE students ADD COLUMN signature TEXT;
+-- ALTER TABLE students ADD COLUMN signature_set_at TEXT;
 
 -- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）
 INSERT OR IGNORE INTO agents(code, name, region, kind, active, created_at) VALUES
