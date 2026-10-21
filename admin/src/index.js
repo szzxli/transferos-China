@@ -188,6 +188,41 @@ function examConflict(staffKind, staffPlatform, reviewType, examinerPlatform) {
 const CONTENT_TYPES = { video: "短视频", article: "文章", live: "直播", other: "其他" };
 // v5：内容状态流转（草稿 → 待审 → 已发布 → 归档）；存量条目与表单默认均为 published
 const CONTENT_STATUSES = { draft: "草稿", pending: "待审", published: "已发布", archived: "归档" };
+// v6：一对一专属客户端（长期一对一辅导学生）——选课类别与状态流转
+const COURSE_KINDS = { prereq: "必修先修", gened: "通识", elective: "选修" };
+const COURSE_STATUSES = { planned: "计划中", enrolled: "已选", ongoing: "进行中", done: "已完成", dropped: "已退" };
+// groupCoursesByTerm: 按 term 分组（学期字符串降序，最新学期在前；组内保持传入顺序）
+function groupCoursesByTerm(courses) {
+  const map = new Map();
+  for (const c of courses || []) {
+    const t = String(c.term || "未定学期");
+    if (!map.has(t)) map.set(t, []);
+    map.get(t).push(c);
+  }
+  return [...map.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
+    .map(([term, list]) => ({ term, courses: list }));
+}
+// courseProgress: 选课汇总——已完成学分（status=done 的 credits 合计）、已完成先修课数/先修总数、按 kind 的门数与学分进度
+function courseProgress(courses) {
+  const list = courses || [];
+  const isDone = (c) => c.status === "done";
+  const kindOf = (c) => c.kind || "prereq";
+  const sumCredits = (arr) => arr.reduce((a, c) => a + (Number(c.credits) || 0), 0);
+  const byKind = {};
+  for (const k of Object.keys(COURSE_KINDS)) {
+    const ks = list.filter((c) => kindOf(c) === k);
+    const kd = ks.filter(isDone);
+    byKind[k] = { total: ks.length, done: kd.length, credits: sumCredits(ks), creditsDone: sumCredits(kd) };
+  }
+  const pre = list.filter((c) => kindOf(c) === "prereq");
+  return {
+    total: list.length, doneCount: list.filter(isDone).length,
+    creditsDone: sumCredits(list.filter(isDone)), creditsTotal: sumCredits(list),
+    prereqTotal: pre.length, prereqDone: pre.filter(isDone).length,
+    byKind,
+  };
+}
 
 // ===== 数据库结构（与 schema.sql 保持一致）=====
 const DDL = [
@@ -237,6 +272,23 @@ const DDL = [
     review_type TEXT DEFAULT 'regular', review_date TEXT,
     examiner TEXT, examiner_platform TEXT, score REAL,
     verdict TEXT DEFAULT 'observe', comment TEXT, created_at TEXT)`,
+  `CREATE TABLE IF NOT EXISTS student_goals(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER UNIQUE,
+    target_school TEXT, target_term TEXT, goal_note TEXT, gpa_target TEXT,
+    created_at TEXT, updated_at TEXT)`,
+  `CREATE TABLE IF NOT EXISTS student_status(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    snapshot_date TEXT, gpa REAL, credits_done INTEGER, credits_total INTEGER,
+    note TEXT, created_at TEXT)`,
+  `CREATE TABLE IF NOT EXISTS student_courses(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    term TEXT, course_code TEXT, course_name TEXT, credits INTEGER,
+    kind TEXT DEFAULT 'prereq', status TEXT DEFAULT 'planned', grade TEXT,
+    note TEXT, created_at TEXT, updated_at TEXT)`,
+  `CREATE TABLE IF NOT EXISTS student_meetings(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    meeting_date TEXT, topic TEXT, summary TEXT, action_items TEXT,
+    next_date TEXT, created_at TEXT, updated_at TEXT)`,
 ];
 // v3 迁移：给既有 staff 表补列（重复执行时列已存在会抛错，逐条捕获忽略，保证幂等）
 const STAFF_MIGRATIONS = [
@@ -628,6 +680,8 @@ button.small{padding:5px 12px;font-size:13px}
 .subtabs a.on{background:#7c3aed;color:#fff;font-weight:600}
 .login{max-width:360px;margin:60px auto}
 h2{font-size:17px;margin:4px 0 12px}h3{font-size:15px;margin:14px 0 8px}
+.pbar{background:#ececf1;border-radius:99px;height:10px;overflow:hidden;margin:4px 0 10px}
+.pbar>i{display:block;height:100%;background:#7c3aed;border-radius:99px}
 `;
 function layout(title, active, body) {
   const tabs = [
@@ -923,7 +977,7 @@ async function pageDelivery(env, url) {
       <select name="stage" style="margin:0;width:auto">${opts(DELIVERY_STAGES, s.stage)}</select>
       <button class="small" type="submit">推进</button></form></td>
     <td>${esc((s.note || "").slice(0, 40))}</td>
-    <td><a href="/admin/delivery?edit=${s.id}">编辑</a></td>
+    <td><a href="/admin/delivery?edit=${s.id}">编辑</a> · <a href="/admin/client/${s.id}">专属客户端</a></td>
     <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条学生档案？')">
       <input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="${s.id}">
       <button class="small danger" type="submit">删除</button></form></td></tr>`;
@@ -966,7 +1020,13 @@ async function postDelivery(req, env) {
     return s === "" ? null : toInt(s, 0);
   };
   if (action === "delete") {
-    await db.prepare("DELETE FROM students WHERE id=?").bind(toInt(fd.get("id"), 0)).run();
+    const delId = toInt(fd.get("id"), 0);
+    // 级联清理该学生在专属客户端模块的四张表，避免留下孤儿数据
+    await db.prepare("DELETE FROM student_goals WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_status WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_courses WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_meetings WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM students WHERE id=?").bind(delId).run();
     return redirect("/admin/delivery");
   }
   if (action === "stage") {
@@ -1039,7 +1099,7 @@ async function pageUser(env, url) {
     return `<tr><td>${esc(s.name)}</td><td>${esc(s.package)}</td>
     <td><span class="pill">${esc(DELIVERY_STAGES[s.stage] || s.stage)}</span></td>
     <td class="${overdue ? "bad" : "mut"}">${overdue ? "⚠ " : ""}${days === null ? "—" : `已停留 ${days} 天`}</td>
-    <td><a href="/admin/delivery?edit=${s.id}">去交付页</a></td></tr>`;
+    <td><a href="/admin/delivery?edit=${s.id}">去交付页</a> · <a href="/admin/client/${s.id}">专属客户端</a></td></tr>`;
   }).join("") : `<tr><td colspan="5" class="mut">暂无学生档案</td></tr>`;
   const body = `
   <div class="card"><h2>用户档案：${esc(lead.name)}（线索 #${lead.id}）</h2>
@@ -1749,13 +1809,262 @@ async function postStaff(req, env) {
   return redirect("/admin/staff");
 }
 
+// ===== 学生专属客户端（一对一工作台 v6：目标 / 状态快照 / 选课规划 / 辅导会议）=====
+// 直达页 /admin/client/<学生id>，仍走后台登录鉴权；数据只落本模块四张表，与交付阶段不联动。
+async function pageClient(env, url, sid) {
+  const db = env.DB;
+  const student = sid ? await db.prepare("SELECT * FROM students WHERE id=?").bind(sid).first() : null;
+  if (!student) {
+    return htmlResp(layout("专属客户端", "/admin/delivery",
+      `<div class="card"><h2>学生专属客户端</h2><p class="mut">未找到该学生（学生 #${sid} 不存在）。<a href="/admin/delivery">返回交付页</a></p></div>`));
+  }
+  const nowMs = Date.now();
+  const stageDays = daysInStage(student.stage_since, nowMs);
+  const goal = await db.prepare("SELECT * FROM student_goals WHERE student_id=?").bind(sid).first();
+  const g = goal || { target_school: "", target_term: "", gpa_target: "", goal_note: "" };
+  const snaps = (await db.prepare(
+    "SELECT * FROM student_status WHERE student_id=? ORDER BY snapshot_date DESC, id DESC LIMIT 100").bind(sid).all()).results || [];
+  const latest = snaps[0] || null;
+  const courses = (await db.prepare(
+    "SELECT * FROM student_courses WHERE student_id=? ORDER BY id ASC LIMIT 500").bind(sid).all()).results || [];
+  const prog = courseProgress(courses);
+  const groups = groupCoursesByTerm(courses);
+  const meetings = (await db.prepare(
+    "SELECT * FROM student_meetings WHERE student_id=? ORDER BY meeting_date DESC, id DESC LIMIT 200").bind(sid).all()).results || [];
+
+  const bar = (done, total) => {
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    return `<div class="pbar"><i style="width:${pct}%"></i></div>`;
+  };
+  // —— 顶部总览 ——
+  const hero = `
+  <div class="card"><h2>${esc(student.name)} · 专属客户端</h2>
+  <div class="grid">
+    <div class="stat"><div class="l">目标学校 / 项目</div><div class="n" style="font-size:17px">${esc(g.target_school || "待定")}</div></div>
+    <div class="stat"><div class="l">目标入学季</div><div class="n" style="font-size:17px">${esc(g.target_term || "待定")}</div></div>
+    <div class="stat"><div class="l">目标 GPA</div><div class="n" style="font-size:17px">${esc(g.gpa_target || "—")}</div></div>
+    <div class="stat"><div class="l">最新 GPA（${latest ? esc(latest.snapshot_date || "") : "暂无快照"}）</div><div class="n" style="font-size:17px">${latest && latest.gpa !== null && latest.gpa !== undefined ? latest.gpa : "—"}</div></div>
+    <div class="stat"><div class="l">学分进度（最新快照）</div><div class="n" style="font-size:17px">${latest ? `${latest.credits_done ?? "—"} / ${latest.credits_total ?? "—"}` : "—"}</div></div>
+    <div class="stat"><div class="l">交付阶段</div><div class="n" style="font-size:17px">${esc(DELIVERY_STAGES[student.stage] || student.stage || "—")}</div><div class="l">${stageDays === null ? "" : "已停留 " + stageDays + " 天"}${student.package ? " · " + esc(student.package) : ""}</div></div>
+  </div>
+  ${g.goal_note ? `<p style="white-space:pre-wrap">${esc(g.goal_note)}</p>` : ""}
+  <p class="mut"><a href="/admin/delivery">← 返回交付页</a>${student.lead_id ? ` · <a href="/admin/user?id=${student.lead_id}">查看用户档案</a>` : ""}</p></div>`;
+  // —— 目标 ——
+  const goalCard = `
+  <div class="card"><h2>目标</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="goal_save">
+    <div class="row">
+      <div><label>目标学校 / 项目</label><input name="target_school" maxlength="120" value="${esc(g.target_school || "")}" placeholder="如 SUNY 护理学院 BSN 项目"></div>
+      <div><label>目标入学季</label><input name="target_term" maxlength="40" value="${esc(g.target_term || "")}" placeholder="如 2027-Fall"></div>
+      <div><label>目标 GPA</label><input name="gpa_target" maxlength="10" value="${esc(g.gpa_target || "")}" placeholder="如 3.5"></div>
+    </div>
+    <label>目标说明</label><textarea name="goal_note" maxlength="2000" placeholder="申请要求、关键门槛、长期规划要点">${esc(g.goal_note || "")}</textarea>
+    <button type="submit">保存目标</button>
+  </form></div>`;
+  // —— 状态快照 ——
+  const snapRows = snaps.map((s) => `<tr>
+    <td>${esc(s.snapshot_date || "")}</td>
+    <td>${s.gpa === null || s.gpa === undefined ? "—" : s.gpa}</td>
+    <td>${s.credits_done ?? "—"} / ${s.credits_total ?? "—"}</td>
+    <td>${esc(s.note || "")}</td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条状态快照？')">
+      <input type="hidden" name="action" value="status_delete"><input type="hidden" name="id" value="${s.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const statusCard = `
+  <div class="card"><h2>状态快照</h2>
+  ${latest ? `<p>最新（${esc(latest.snapshot_date || "")}）：GPA <strong>${latest.gpa === null || latest.gpa === undefined ? "—" : latest.gpa}</strong> · 已修学分 <strong>${latest.credits_done ?? "—"} / ${latest.credits_total ?? "—"}</strong>${latest.note ? " · " + esc(latest.note) : ""}</p>` : `<p class="mut">暂无快照，每学期结束记一条。</p>`}
+  <form method="post">
+    <input type="hidden" name="action" value="status_add">
+    <div class="row">
+      <div><label>快照日期</label><input name="snapshot_date" type="date" value="${todayStr()}"></div>
+      <div><label>GPA</label><input name="gpa" type="number" step="0.01" min="0" max="4.5" placeholder="如 3.42"></div>
+      <div><label>已修学分</label><input name="credits_done" type="number" min="0"></div>
+      <div><label>总学分要求</label><input name="credits_total" type="number" min="0"></div>
+    </div>
+    <label>备注</label><input name="note" maxlength="2000" placeholder="如 本学期先修课全部 A，科学 GPA 3.6">
+    <button type="submit">新增快照</button>
+  </form>
+  ${snaps.length ? `<h3>历史快照</h3><div class="wrap"><table><tr><th>日期</th><th>GPA</th><th>学分（已修/总）</th><th>备注</th><th></th></tr>${snapRows}</table></div>` : ""}
+  </div>`;
+  // —— 选课规划 ——
+  const editCourseId = toInt(url.searchParams.get("edit_course"), 0);
+  const editCourse = editCourseId ? courses.find((c) => c.id === editCourseId) : null;
+  const cf = editCourse || { term: "", course_code: "", course_name: "", credits: "", kind: "prereq", status: "planned", grade: "", note: "" };
+  const kindHtml = Object.entries(COURSE_KINDS).map(([k, label]) => {
+    const p = prog.byKind[k];
+    return `<div><label>${esc(label)}：已完成 ${p.done}/${p.total} 门 · 学分 ${p.creditsDone}/${p.credits}</label>${bar(p.done, p.total)}</div>`;
+  }).join("");
+  const courseGroupsHtml = groups.length ? groups.map((gr) => `
+  <h3>${esc(gr.term)}（${gr.courses.length} 门）</h3>
+  <div class="wrap"><table><tr><th>课程代码</th><th>课程名</th><th>学分</th><th>类别</th><th>状态</th><th>成绩</th><th>备注</th><th></th><th></th></tr>
+  ${gr.courses.map((c) => `<tr>
+    <td>${esc(c.course_code || "")}</td><td>${esc(c.course_name || "")}</td><td>${c.credits ?? ""}</td>
+    <td>${esc(COURSE_KINDS[c.kind] || c.kind || "")}</td>
+    <td><span class="pill">${esc(COURSE_STATUSES[c.status] || c.status || "")}</span></td>
+    <td>${esc(c.grade || "—")}</td><td>${esc((c.note || "").slice(0, 40))}</td>
+    <td><a href="/admin/client/${sid}?edit_course=${c.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这门课？')">
+      <input type="hidden" name="action" value="course_delete"><input type="hidden" name="id" value="${c.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("")}
+  </table></div>`).join("") : `<p class="mut">暂无选课记录，用下方表单按学期排课。</p>`;
+  const courseCard = `
+  <div class="card"><h2>选课规划</h2>
+  <p>已完成学分 <strong>${prog.creditsDone}</strong> / 规划总学分 ${prog.creditsTotal} · 已完成先修课 <strong>${prog.prereqDone}/${prog.prereqTotal}</strong> 门 · 课程共 ${prog.total} 门（已完成 ${prog.doneCount}）</p>
+  ${kindHtml}
+  <h3>${editCourse ? "编辑课程 #" + editCourse.id : "新增课程"}</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="${editCourse ? "course_update" : "course_add"}">
+    ${editCourse ? `<input type="hidden" name="id" value="${editCourse.id}">` : ""}
+    <div class="row">
+      <div><label>学期 *</label><input name="term" required maxlength="20" value="${esc(cf.term || "")}" placeholder="如 2026-Spring"></div>
+      <div><label>课程代码</label><input name="course_code" maxlength="20" value="${esc(cf.course_code || "")}" placeholder="如 BIO 181"></div>
+      <div><label>课程名</label><input name="course_name" maxlength="80" value="${esc(cf.course_name || "")}" placeholder="如 解剖学 I"></div>
+      <div><label>学分</label><input name="credits" type="number" min="0" max="30" value="${esc(cf.credits ?? "")}"></div>
+    </div>
+    <div class="row">
+      <div><label>类别</label><select name="kind">${opts(COURSE_KINDS, cf.kind || "prereq")}</select></div>
+      <div><label>状态</label><select name="status">${opts(COURSE_STATUSES, cf.status || "planned")}</select></div>
+      <div><label>成绩（可空）</label><input name="grade" maxlength="10" value="${esc(cf.grade || "")}" placeholder="如 A / B+"></div>
+    </div>
+    <label>备注</label><input name="note" maxlength="2000" value="${esc(cf.note || "")}">
+    <button type="submit">${editCourse ? "保存修改" : "添加课程"}</button>
+    ${editCourse ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
+  </form>
+  ${courseGroupsHtml}
+  </div>`;
+  // —— 辅导会议 ——
+  const editMeetingId = toInt(url.searchParams.get("edit_meeting"), 0);
+  const editMeeting = editMeetingId ? meetings.find((m) => m.id === editMeetingId) : null;
+  const mf = editMeeting || { meeting_date: todayStr(), topic: "", summary: "", action_items: "", next_date: "" };
+  const meetingRows = meetings.map((m) => `<tr>
+    <td>${esc(m.meeting_date || "")}</td><td>${esc(m.topic || "")}</td>
+    <td>${esc((m.summary || "").slice(0, 80))}${(m.summary || "").length > 80 ? "…" : ""}</td>
+    <td>${esc((m.action_items || "").slice(0, 60))}${(m.action_items || "").length > 60 ? "…" : ""}</td>
+    <td>${esc(m.next_date || "—")}</td>
+    <td><a href="/admin/client/${sid}?edit_meeting=${m.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条会议记录？')">
+      <input type="hidden" name="action" value="meeting_delete"><input type="hidden" name="id" value="${m.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const meetingCard = `
+  <div class="card"><h2>专题辅导会议</h2>
+  <h3>${editMeeting ? "编辑会议 #" + editMeeting.id : "新增会议记录"}</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="${editMeeting ? "meeting_update" : "meeting_add"}">
+    ${editMeeting ? `<input type="hidden" name="id" value="${editMeeting.id}">` : ""}
+    <div class="row">
+      <div><label>会议日期</label><input name="meeting_date" type="date" value="${esc(mf.meeting_date || "")}"></div>
+      <div style="flex:2"><label>专题 *</label><input name="topic" required maxlength="120" value="${esc(mf.topic || "")}" placeholder="如 先修课 GPA 冲刺计划"></div>
+      <div><label>下次会议（可空）</label><input name="next_date" type="date" value="${esc(mf.next_date || "")}"></div>
+    </div>
+    <label>纪要</label><textarea name="summary" maxlength="4000">${esc(mf.summary || "")}</textarea>
+    <label>待办（每行一条）</label><textarea name="action_items" maxlength="4000">${esc(mf.action_items || "")}</textarea>
+    <button type="submit">${editMeeting ? "保存修改" : "添加会议"}</button>
+    ${editMeeting ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
+  </form>
+  ${meetings.length ? `<div class="wrap"><table><tr><th>日期</th><th>专题</th><th>纪要</th><th>待办</th><th>下次会议</th><th></th><th></th></tr>${meetingRows}</table></div>` : `<p class="mut">暂无会议记录。</p>`}
+  </div>`;
+  return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery", hero + goalCard + statusCard + courseCard + meetingCard));
+}
+async function postClient(req, env, sidFromPath) {
+  const db = env.DB;
+  const fd = await req.formData();
+  const action = String(fd.get("action") || "");
+  const sid = sidFromPath || toInt(fd.get("student_id"), 0);
+  const student = sid ? await db.prepare("SELECT id FROM students WHERE id=?").bind(sid).first() : null;
+  if (!student) return redirect("/admin/delivery");
+  const back = "/admin/client/" + sid;
+  if (action === "goal_save") {
+    await db.prepare(
+      `INSERT INTO student_goals(student_id, target_school, target_term, goal_note, gpa_target, created_at, updated_at)
+       VALUES(?,?,?,?,?,?,?)
+       ON CONFLICT(student_id) DO UPDATE SET target_school=excluded.target_school, target_term=excluded.target_term,
+         goal_note=excluded.goal_note, gpa_target=excluded.gpa_target, updated_at=excluded.updated_at`
+    ).bind(sid, clampStr(fd.get("target_school"), 120), clampStr(fd.get("target_term"), 40),
+      clampStr(fd.get("goal_note"), 2000), clampStr(fd.get("gpa_target"), 10), nowIso(), nowIso()).run();
+    return redirect(back);
+  }
+  if (action === "status_add") {
+    const gpaRaw = String(fd.get("gpa") ?? "").trim();
+    const gpaNum = gpaRaw === "" ? null : Number(gpaRaw);
+    const numOrNull = (v) => { const s = String(v ?? "").trim(); return s === "" ? null : toInt(s, 0); };
+    await db.prepare(
+      `INSERT INTO student_status(student_id, snapshot_date, gpa, credits_done, credits_total, note, created_at)
+       VALUES(?,?,?,?,?,?,?)`
+    ).bind(sid, clampStr(fd.get("snapshot_date"), 10) || todayStr(),
+      gpaNum === null || Number.isNaN(gpaNum) ? null : gpaNum,
+      numOrNull(fd.get("credits_done")), numOrNull(fd.get("credits_total")),
+      clampStr(fd.get("note"), 2000), nowIso()).run();
+    return redirect(back);
+  }
+  if (action === "status_delete") {
+    await db.prepare("DELETE FROM student_status WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "course_add" || action === "course_update") {
+    const term = clampStr(fd.get("term"), 20);
+    const code = clampStr(fd.get("course_code"), 20);
+    const name = clampStr(fd.get("course_name"), 80);
+    if (!term || (!code && !name)) return redirect(back);
+    const credits = toInt(fd.get("credits"), 0);
+    const kind = COURSE_KINDS[fd.get("kind")] ? String(fd.get("kind")) : "prereq";
+    const status = COURSE_STATUSES[fd.get("status")] ? String(fd.get("status")) : "planned";
+    const grade = clampStr(fd.get("grade"), 10) || null;
+    const note = clampStr(fd.get("note"), 2000);
+    if (action === "course_update") {
+      await db.prepare(
+        `UPDATE student_courses SET term=?, course_code=?, course_name=?, credits=?, kind=?, status=?, grade=?, note=?, updated_at=? WHERE id=? AND student_id=?`
+      ).bind(term, code, name, credits, kind, status, grade, note, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO student_courses(student_id, term, course_code, course_name, credits, kind, status, grade, note, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(sid, term, code, name, credits, kind, status, grade, note, nowIso(), nowIso()).run();
+    }
+    return redirect(back);
+  }
+  if (action === "course_delete") {
+    await db.prepare("DELETE FROM student_courses WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "meeting_add" || action === "meeting_update") {
+    const topic = clampStr(fd.get("topic"), 120);
+    if (!topic) return redirect(back);
+    const mdate = clampStr(fd.get("meeting_date"), 10) || todayStr();
+    const summary = clampStr(fd.get("summary"), 4000);
+    const items = clampStr(fd.get("action_items"), 4000);
+    const nextDate = clampStr(fd.get("next_date"), 10) || null;
+    if (action === "meeting_update") {
+      await db.prepare(
+        `UPDATE student_meetings SET meeting_date=?, topic=?, summary=?, action_items=?, next_date=?, updated_at=? WHERE id=? AND student_id=?`
+      ).bind(mdate, topic, summary, items, nextDate, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO student_meetings(student_id, meeting_date, topic, summary, action_items, next_date, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?)`
+      ).bind(sid, mdate, topic, summary, items, nextDate, nowIso(), nowIso()).run();
+    }
+    return redirect(back);
+  }
+  if (action === "meeting_delete") {
+    await db.prepare("DELETE FROM student_meetings WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  return redirect(back);
+}
+
 // ===== 路由 =====
 async function handleAdmin(req, env, url) {
   const p = url.pathname;
   if (p === "/admin/login") return handleLogin(req, env);
   if (p === "/admin/logout") return handleLogout();
   if (!(await isAuthed(req, env))) return redirect("/admin/login");
+  const clientMatch = p.match(/^\/admin\/client\/(\d+)$/);
   if (req.method === "POST") {
+    if (clientMatch) return postClient(req, env, parseInt(clientMatch[1], 10));
     if (p === "/admin/leads") return postLeads(req, env);
     if (p === "/admin/delivery") return postDelivery(req, env);
     if (p === "/admin/agents") return postAgents(req, env);
@@ -1766,6 +2075,7 @@ async function handleAdmin(req, env, url) {
     return redirect("/admin");
   }
   if (p === "/admin" || p === "/admin/") return pageDashboard(env);
+  if (clientMatch) return pageClient(env, url, parseInt(clientMatch[1], 10));
   if (p === "/admin/leads") return pageLeads(req, env, url);
   if (p === "/admin/user") return pageUser(env, url);
   if (p === "/admin/delivery") return pageDelivery(env, url);
@@ -1811,4 +2121,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES };

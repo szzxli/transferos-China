@@ -65,6 +65,30 @@ CREATE TABLE IF NOT EXISTS staff_reviews(
   review_type TEXT DEFAULT 'regular', review_date TEXT,
   examiner TEXT, examiner_platform TEXT, score REAL,
   verdict TEXT DEFAULT 'observe', comment TEXT, created_at TEXT);
+
+-- ===== v6 新增表：一对一专属客户端（按 student_id 关联 students）=====
+-- 学生目标（每名学生至多一条，student_id 唯一，页面保存走 upsert）
+CREATE TABLE IF NOT EXISTS student_goals(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER UNIQUE,
+  target_school TEXT, target_term TEXT, goal_note TEXT, gpa_target TEXT,
+  created_at TEXT, updated_at TEXT);
+-- 状态快照（每学期结束记一条：当时 GPA 与学分进度）
+CREATE TABLE IF NOT EXISTS student_status(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+  snapshot_date TEXT, gpa REAL, credits_done INTEGER, credits_total INTEGER,
+  note TEXT, created_at TEXT);
+-- 选课规划（kind: prereq 必修先修 / gened 通识 / elective 选修；
+-- status: planned 计划中 / enrolled 已选 / ongoing 进行中 / done 已完成 / dropped 已退）
+CREATE TABLE IF NOT EXISTS student_courses(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+  term TEXT, course_code TEXT, course_name TEXT, credits INTEGER,
+  kind TEXT DEFAULT 'prereq', status TEXT DEFAULT 'planned', grade TEXT,
+  note TEXT, created_at TEXT, updated_at TEXT);
+-- 专题辅导会议（纪要 + 待办 + 下次会议日期）
+CREATE TABLE IF NOT EXISTS student_meetings(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+  meeting_date TEXT, topic TEXT, summary TEXT, action_items TEXT,
+  next_date TEXT, created_at TEXT, updated_at TEXT);
 -- 注：既有数据库的 staff 新列（kind/emp_no/platform/job_function/persona/accountable）
 -- 与 tasks 新列（type）、leads 评级列（grade/score/grade_reason/graded_at）、
 -- content_items 状态列（status）
