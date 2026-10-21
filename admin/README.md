@@ -70,3 +70,4 @@
 
 ---
 2026-10-20：已部署上线（Cloudflare Workers 项目 transferos-admin，D1 已建表，密钥已设置）。
+
