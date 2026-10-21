@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>一对一专属客户端</title>
+<meta name="description" content="一对一辅导专属客户端：目标、状态、考试、选课与辅导会议，一页看清。">
+<meta name="theme-color" content="#16453a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2316453a'/%3E%3Ccircle cx='50' cy='50' r='25' fill='none' stroke='%23c9f06b' stroke-width='9'/%3E%3Ccircle cx='50' cy='50' r='7' fill='%23c9f06b'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-in">
+    <span class="logo" aria-hidden="true">
+      <svg viewBox="0 0 100 100" width="26" height="26"><rect width="100" height="100" rx="22" fill="#c9f06b"/><circle cx="50" cy="50" r="25" fill="none" stroke="#16453a" stroke-width="9"/><circle cx="50" cy="50" r="7" fill="#16453a"/></svg>
+    </span>
+    <span class="topbar-title">一对一专属客户端</span>
+    <span class="topbar-badge">只读</span>
+  </div>
+</header>
+
+<main id="main">
+  <!-- 门页：无参数且本地未存时显示 -->
+  <section id="gate" class="card gate" hidden>
+    <h1>打开我的专属客户端</h1>
+    <p class="mut">输入导师发给你的学生编号与访问密钥。输入一次后，本设备会自动记住。</p>
+    <form id="gate-form">
+      <label>学生编号
+        <input id="gate-s" inputmode="numeric" autocomplete="off" placeholder="如 12" required>
+      </label>
+      <label>访问密钥
+        <input id="gate-k" autocomplete="off" placeholder="如 ck_…" required>
+      </label>
+      <button type="submit" class="btn-primary">进入</button>
+      <p id="gate-err" class="err" hidden></p>
+    </form>
+  </section>
+
+  <!-- 加载 / 错误 -->
+  <section id="state" class="card state" hidden>
+    <p id="state-text" class="mut">正在加载…</p>
+    <button id="state-retry" class="btn-ghost" hidden>重试</button>
+  </section>
+
+  <!-- 内容区（由 app.js 渲染） -->
+  <div id="app" hidden>
+    <section class="hero card">
+      <div class="hero-head">
+        <h1 id="stu-name">—</h1>
+        <span id="stu-system" class="pill" hidden></span>
+      </div>
+      <p id="stu-meta" class="mut"></p>
+      <div id="main-line" class="mainline" hidden>
+        <div class="mainline-label">当前主线</div>
+        <div id="main-line-name" class="mainline-name"></div>
+        <div id="main-line-next" class="mainline-next"></div>
+      </div>
+    </section>
+
+    <section class="card" id="sec-goals">
+      <h2>我的目标</h2>
+      <div id="goal-lines"></div>
+      <div id="goal-detail"></div>
+    </section>
+
+    <section class="card" id="sec-status">
+      <h2>当前状态</h2>
+      <div id="status-latest"></div>
+      <div id="status-history"></div>
+    </section>
+
+    <section class="card" id="sec-exams">
+      <h2>考试记录</h2>
+      <div id="exams"></div>
+    </section>
+
+    <section class="card" id="sec-courses">
+      <h2>选课规划</h2>
+      <div id="course-progress"></div>
+      <div id="course-groups"></div>
+    </section>
+
+    <section class="card" id="sec-meetings">
+      <h2>辅导会议</h2>
+      <div id="meetings"></div>
+    </section>
+
+    <footer class="foot">
+      <p class="mut">本页为只读视图，数据由导师维护更新。如需修改任何信息，请直接联系导师。</p>
+      <p><a href="#" id="forget">清除本设备记住的编号与密钥</a></p>
+    </footer>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
