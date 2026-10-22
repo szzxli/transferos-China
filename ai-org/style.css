@@ -98,6 +98,8 @@ footer.appFoot{color:var(--mut);font-size:12px;margin-top:26px}
 .siteFoot .disclaimer{border-top:1px solid var(--line-d);margin-top:22px;padding-top:14px}
 .siteFoot .disclaimer p{margin:5px 0}
 .siteFoot .disclaimer strong{color:#d7dde6}
+.footContact{margin:16px 0 0;font-size:13px;color:#b8bac0}
+.footContact a{color:var(--blue)}
 @media(max-width:860px){
   .siteNav nav{display:none}
   .siteNav .navCta{display:none}
