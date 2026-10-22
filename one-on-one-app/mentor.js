@@ -40,6 +40,7 @@ const I18N = {
     "wb.noStudents": "你名下暂时没有学生。",
     "wb.notifiable": "可通知",
     "wb.notNotifiable": "不可通知（请联系管理员补齐联系方式）",
+    "wb.correction": "课程数据纠错",
   },
   en: {
     "app.title": "Mentor Workspace",
@@ -74,6 +75,7 @@ const I18N = {
     "wb.noStudents": "No students are assigned to you yet.",
     "wb.notifiable": "Reachable",
     "wb.notNotifiable": "Not reachable (ask the admin to complete your contact info)",
+    "wb.correction": "Course data correction",
   },
 };
 let LANG = "zh";
@@ -179,7 +181,9 @@ function studentHtml(blk, i) {
     : "";
   const unread = blk.unread_messages.length
     ? blk.unread_messages.map((m) =>
-        '<div class="know-item"><div class="know-body">' + esc(m.body || "") + '</div>' +
+        '<div class="know-item"><div class="know-body">' +
+        (m.category === "data_correction" ? '<span class="pill">' + esc(t("wb.correction")) + "</span> " : "") +
+        esc(m.body || "") + '</div>' +
         '<div class="mut">' + esc(String(m.created_at || "").slice(0, 16).replace("T", " ")) + "</div></div>").join("")
     : '<p class="empty">' + esc(t("wb.noUnread")) + "</p>";
   return '<section class="card"><h2>' + esc(stu.name || "") +

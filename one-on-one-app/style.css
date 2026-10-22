@@ -439,6 +439,11 @@ fieldset.fld{border:0;padding:0}
 .care-lead{font-size:14.5px}
 .care-list{margin:8px 0;padding-left:20px}
 .care-list li{margin:5px 0}
+/* v13.3：私密空间常驻求助提示（静态文案、零网络） */
+.priv-help{
+  padding:10px 12px;font-size:13.5px;line-height:1.6;
+  background:#eef4f1;border:1px solid #cfded6;border-radius:10px;color:#274435;
+}
 /* 问题解决 */
 .review-banner{
   padding:10px 12px;margin-bottom:12px;font-size:13.5px;line-height:1.55;

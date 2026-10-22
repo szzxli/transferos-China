@@ -108,6 +108,7 @@ const I18N = {
     "obstacles.none": "目前没有未解决的问题。遇到卡点，去问题解决中心拆一拆。",
     "private.entryDesc": "日记、想法和情绪困惑只存在这台设备上，只有你能看到，平台不留存。",
     "private.enter": "进入私密空间",
+    "private.helpNotice": "这里的内容只有你能看到，不会上传，也不会通知任何人。如果你正经历困难、需要帮助：美国 988（自杀与危机热线）、Crisis Text Line（短信 HOME 到 741741）、学校心理咨询中心；中国心理援助热线 12356（以官方当期公布为准）。",
     "feed.empty": "还没有动态。完成一个行动、跨过一个里程碑，这里就会留下你的脚印。",
     "feed.tAction": "完成了一步", "feed.tMilestone": "跨过一步", "feed.tProblem": "解决了一个问题",
     "feed.tTrail": "{name} 给了你一句", "feed.tStreak": "连续第 {n} 天记录自己",
@@ -140,6 +141,17 @@ const I18N = {
     "match.break": "{code} 的先修 {p} 还没有已修 / 在修课程承接",
     "match.none": "无",
     "card.major": "专业选择",
+    "corr.open": "课程数据有误？",
+    "corr.code": "课程代码（可空）",
+    "corr.codePh": "如 BIO 150",
+    "corr.desc": "哪里不对",
+    "corr.descPh": "简单写清哪一项不对：学分、先修、名称……",
+    "corr.send": "提交纠错",
+    "corr.sending": "提交中…",
+    "corr.sent": "已提交给导师，核对后会更新数据。",
+    "corr.errEmpty": "先写一下哪里不对再提交。",
+    "corr.errTooLong": "描述最多 500 字。",
+    "corr.note": "纠错只发课程代码与你的描述，走导师留言通道，不带其他任何资料。",
     "major.desc": "选一个在读学校的专业，立刻按你已修 / 在修的课算匹配与缺口。数据只用学校官方来源；标「待核实」的专业只列名、不编要求。",
     "major.pick": "选择专业",
     "major.unverifiedTag": "要求待官方核实",
@@ -534,6 +546,7 @@ const I18N = {
     "obstacles.none": "No unresolved problems right now. When something blocks you, break it down in Problem Solving.",
     "private.entryDesc": "Diaries, thoughts and feelings live only on this device — only you can see them; the platform keeps nothing.",
     "private.enter": "Open Private Space",
+    "private.helpNotice": "Only you can see what is written here. Nothing is uploaded, and nobody is notified. If you are going through a difficult time and need help: US 988 (Suicide and Crisis Lifeline), Crisis Text Line (text HOME to 741741), your school's counseling center; China psychological support hotline 12356 (as currently published by official sources).",
     "feed.empty": "No updates yet. Finish an action or cross a milestone and your footprints will appear here.",
     "feed.tAction": "Finished a step", "feed.tMilestone": "Crossed a milestone", "feed.tProblem": "Solved a problem",
     "feed.tTrail": "{name} left you a line", "feed.tStreak": "Day {n} of logging yourself",
@@ -566,6 +579,17 @@ const I18N = {
     "match.break": "{code}'s prerequisite {p} has no completed / in-progress course behind it",
     "match.none": "None",
     "card.major": "Major Picker",
+    "corr.open": "Course data looks wrong?",
+    "corr.code": "Course code (optional)",
+    "corr.codePh": "e.g., BIO 150",
+    "corr.desc": "What's wrong",
+    "corr.descPh": "Briefly say which item is wrong: credits, prerequisite, name…",
+    "corr.send": "Submit report",
+    "corr.sending": "Submitting…",
+    "corr.sent": "Sent to your mentor — the data will be updated after verification.",
+    "corr.errEmpty": "Describe what's wrong first.",
+    "corr.errTooLong": "Description up to 500 characters.",
+    "corr.note": "A report sends only the course code and your description via the mentor message channel — nothing else.",
     "major.desc": "Pick a major at your school to instantly match it against the courses you have taken or are taking. Data comes only from official school sources; majors marked unverified are name-only — no invented requirements.",
     "major.pick": "Choose a major",
     "major.unverifiedTag": "Requirements pending official verification",
@@ -2573,6 +2597,58 @@ document.addEventListener("click", (ev) => {
 $("msg-form").addEventListener("submit", sendMessage);
 $("msg-input").addEventListener("input", () => {
   $("msg-count").textContent = [...$("msg-input").value].length + " / 500";
+});
+/* v13.3：课程数据纠错——走既有导师留言通道，载荷只有课程代码 + 描述 + 类型标记，
+ * 不带成绩、考试、关键日期或任何私密层内容；服务端按 category 白名单落库、导师侧可辨识。 */
+async function fillCorrCodes() {
+  const dl = $("corr-codes");
+  if (!dl || dl.options.length) return;
+  const ds = majorDataset || (window.OOOMajors ? await OOOMajors.loadDataset() : null);
+  if (!ds) return;
+  const codes = new Set();
+  (ds.courses || []).forEach((c) => { if (c.course_code) codes.add(c.course_code); });
+  dl.innerHTML = [...codes].sort().map((c) => '<option value="' + esc(c) + '">').join("");
+}
+$("corr-toggle").addEventListener("click", () => {
+  const f = $("corr-form");
+  f.hidden = !f.hidden;
+  if (!f.hidden) fillCorrCodes().catch(() => { /* 数据集未就绪时代码手填即可 */ });
+});
+$("corr-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const errEl = $("corr-err");
+  const showErr = (s) => { errEl.textContent = s || ""; errEl.hidden = !s; };
+  const code = $("corr-code").value.trim().toUpperCase().slice(0, 24);
+  const desc = $("corr-desc").value.trim();
+  if (!desc) { showErr(t("corr.errEmpty")); return; }
+  if ([...desc].length > 500) { showErr(t("corr.errTooLong")); return; }
+  const btn = $("corr-send");
+  btn.disabled = true; btn.textContent = t("corr.sending");
+  showErr("");
+  const { s, k, api } = creds();
+  try {
+    const resp = await fetch(api + "/api/client/message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ s, key: k, body: desc, category: "data_correction", course_code: code }),
+    });
+    if (resp.status === 404) { showErr(t("msg.errGone")); return; }
+    if (resp.status === 429) { showErr(t("msg.errFreq")); return; }
+    if (!resp.ok) { showErr(t("msg.errNet")); return; }
+    const j = await resp.json();
+    if (!j || j.ok !== true) { showErr(t("msg.errNet")); return; }
+    if (lastData) {
+      lastData.messages = (lastData.messages || []).concat([j.message]);
+      renderThread(lastData);
+    }
+    $("corr-code").value = "";
+    $("corr-desc").value = "";
+    $("corr-msg").textContent = t("corr.sent");
+  } catch (e) {
+    showErr(t("msg.errNet"));
+  } finally {
+    btn.disabled = false; btn.textContent = t("corr.send");
+  }
 });
 $("gate-form").addEventListener("submit", (ev) => {
   ev.preventDefault();

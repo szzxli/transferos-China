@@ -1060,8 +1060,10 @@ const KEYDATE_MIGRATIONS = [
   "ALTER TABLE student_key_dates ADD COLUMN kind TEXT",
 ];
 // v13 迁移：学生留言补 mentor_id（目标导师 staff.id；存量/未分配导师为 NULL），幂等
+// v13.3 迁移：学生留言补 category（类型标记；当前只用 data_correction=课程数据纠错，其余为 NULL），幂等
 const MESSAGE_MIGRATIONS = [
   "ALTER TABLE student_messages ADD COLUMN mentor_id INTEGER",
+  "ALTER TABLE student_messages ADD COLUMN category TEXT",
 ];
 let schemaReady = false;
 async function ensureSchema(db) {
@@ -1467,6 +1469,16 @@ async function handleApi(req, env, url) {
     if ([...text].length > MESSAGE_MAX_LEN) {
       return jsonResp(req, { ok: false, error: "message too long (max " + MESSAGE_MAX_LEN + ")" }, 400);
     }
+    // v13.3：类型标记走白名单——只认 data_correction（课程数据纠错），其余取值一律不落（当普通留言）；
+    // course_code 仅纠错时读取，清洗为大写字母/数字/空格/点/连字符、≤24 字，不合规直接丢弃（不报错）；
+    // 请求体里其他字段（成绩、考试、关键日期、私密类字段等）一概不读、不存、不回传。
+    const category = String((body && body.category) || "") === "data_correction" ? "data_correction" : null;
+    let courseCode = "";
+    if (category) {
+      const rawCode = String((body && body.course_code) || "").trim().toUpperCase().slice(0, 24);
+      if (/^[A-Z0-9][A-Z0-9 .\-]*$/.test(rawCode)) courseCode = rawCode;
+    }
+    const storedBody = courseCode ? "课程 " + courseCode + "：" + text : text;
     // v13：留言必须有主——学生已分配默认导师时，目标导师必须已注册且可通知；
     // 指向未注册/不可通知导师 → 明确 409，不落库、不进无主收件箱。
     // 未分配导师（存量学生）沿用旧口径落库（mentor_id 为 NULL、无发件箱），后台补分配后即纳入通知链。
@@ -1486,17 +1498,18 @@ async function handleApi(req, env, url) {
     }
     const ts = nowIso();
     const r = await db.prepare(
-      `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor, mentor_id)
-       VALUES(?, 'student', ?, ?, 1, 0, ?)`
-    ).bind(student.id, text, ts, mentor ? mentor.id : null).run();
-    await logEvent(db, student.id, "message_student", r.meta.last_row_id, "学生给导师留言");
+      `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor, mentor_id, category)
+       VALUES(?, 'student', ?, ?, 1, 0, ?, ?)`
+    ).bind(student.id, storedBody, ts, mentor ? mentor.id : null, category).run();
+    await logEvent(db, student.id, "message_student", r.meta.last_row_id,
+      category ? "学生提交课程数据纠错" : "学生给导师留言");
     if (mentor) {
       await pushOutbox(db, mentor, student.id, "student_message",
-        (student.name || "学生") + " 发来一条留言", "message", r.meta.last_row_id);
+        (student.name || "学生") + (category ? " 提交了一条课程数据纠错" : " 发来一条留言"), "message", r.meta.last_row_id);
     }
     return jsonResp(req, {
       ok: true,
-      message: { id: r.meta.last_row_id, sender: "student", body: text, created_at: ts },
+      message: { id: r.meta.last_row_id, sender: "student", body: storedBody, created_at: ts, category: category || "" },
     });
   }
 
@@ -1885,7 +1898,7 @@ async function handleApi(req, env, url) {
       })),
       messages: messageRows.map((m) => ({
         id: m.id, sender: m.sender || "", sender_label: MESSAGE_SENDERS[m.sender] || m.sender || "",
-        body: m.body || "", created_at: m.created_at || "",
+        body: m.body || "", created_at: m.created_at || "", category: m.category || "",
       })),
       unread_mentor: unreadMentor,
       // —— v12 ——
@@ -2093,7 +2106,7 @@ async function handleApi(req, env, url) {
         })),
         trail_revisit_pending: revisitRows ? revisitRows.n : 0,
         unread_messages: unreadMsgs.map((m) => ({
-          id: m.id, body: m.body || "", created_at: m.created_at || "",
+          id: m.id, body: m.body || "", created_at: m.created_at || "", category: m.category || "",
         })),
       });
     }
@@ -4533,7 +4546,7 @@ async function pageClient(env, url, sid) {
   // —— 导师沟通（v10）——
   const threadHtml = messageRows.length ? messageRows.map((m) => `
     <div style="margin:8px 0;padding:9px 12px;border-radius:10px;${m.sender === "mentor" ? "background:#eef4f1" : "background:#f6f2ea"}">
-      <span class="mut">${m.sender === "mentor" ? "导师" : "学生"} · ${esc(String(m.created_at || "").slice(0, 16).replace("T", " "))}</span>
+      <span class="mut">${m.sender === "mentor" ? "导师" : "学生"} · ${esc(String(m.created_at || "").slice(0, 16).replace("T", " "))}${m.category === "data_correction" ? ` <span class="pill">课程数据纠错</span>` : ""}</span>
       <div style="white-space:pre-wrap">${esc(m.body || "")}</div>
     </div>`).join("") : `<p class="mut">暂无留言。</p>`;
   const messageCard = `

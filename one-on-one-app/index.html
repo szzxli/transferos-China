@@ -124,6 +124,7 @@
       <section class="card" id="sec-private">
         <h2 data-i18n="card.private">私密空间</h2>
         <p class="mut" style="margin:0 0 10px" data-i18n="private.entryDesc">日记、想法和情绪困惑只存在这台设备上，只有你能看到，平台不留存。</p>
+        <p class="priv-help" style="margin:0 0 10px" data-i18n="private.helpNotice">这里的内容只有你能看到，不会上传，也不会通知任何人。如果你正经历困难、需要帮助：美国 988（自杀与危机热线）、Crisis Text Line（短信 HOME 到 741741）、学校心理咨询中心；中国心理援助热线 12356（以官方当期公布为准）。</p>
         <button type="button" class="btn-primary" data-open="private" data-i18n="private.enter">进入私密空间</button>
       </section>
 
@@ -244,6 +245,20 @@
           <button type="button" class="btn-primary" id="major-export" data-i18n="major.export">一键导出（Markdown）</button>
         </div>
         <p class="mut" id="major-export-msg" style="margin:8px 0 0"></p>
+        <div style="margin-top:12px">
+          <button type="button" class="btn-ghost" id="corr-toggle" data-i18n="corr.open">课程数据有误？</button>
+          <form id="corr-form" hidden style="margin-top:10px">
+            <label class="fld"><span data-i18n="corr.code">课程代码（可空）</span>
+              <input id="corr-code" list="corr-codes" maxlength="24" data-i18n-ph="corr.codePh" placeholder="如 BIO 150"></label>
+            <datalist id="corr-codes"></datalist>
+            <label class="fld"><span data-i18n="corr.desc">哪里不对</span>
+              <textarea id="corr-desc" rows="3" maxlength="500" data-i18n-ph="corr.descPh" placeholder="简单写清哪一项不对：学分、先修、名称……"></textarea></label>
+            <p class="mut" style="margin:0 0 8px" data-i18n="corr.note">纠错只发课程代码与你的描述，走导师留言通道，不带其他任何资料。</p>
+            <p class="err" id="corr-err" hidden></p>
+            <button type="submit" class="btn-primary" id="corr-send" data-i18n="corr.send">提交纠错</button>
+            <p class="mut" id="corr-msg" style="margin:8px 0 0"></p>
+          </form>
+        </div>
       </section>
 
       <section class="card" id="sec-match">
@@ -303,6 +318,9 @@
   <div class="sheet-head">
     <button type="button" class="sheet-back" data-close="view-private">← <span data-i18n="sheet.back">返回</span></button>
     <h2 data-i18n="view.private">私密空间</h2>
+  </div>
+  <div class="sheet-body">
+    <p class="priv-help" style="margin:0" data-i18n="private.helpNotice">这里的内容只有你能看到，不会上传，也不会通知任何人。如果你正经历困难、需要帮助：美国 988（自杀与危机热线）、Crisis Text Line（短信 HOME 到 741741）、学校心理咨询中心；中国心理援助热线 12356（以官方当期公布为准）。</p>
   </div>
   <div class="sheet-body" id="private-body"></div>
 </div>
