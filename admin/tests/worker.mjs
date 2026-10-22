@@ -712,6 +712,67 @@ function computeUpcomingReminders(keyDates, exams, milestones, today, horizonDay
   out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   return out.map((r) => ({ ...r, days_left: Math.round((Date.parse(r.date + "T00:00:00Z") - t0) / 864e5), date_fmt: fmt(Date.parse(r.date + "T00:00:00Z")) }));
 }
+/* —— v13.4：家长视图展示区块（家长接口 GET /api/parent 与学生端预览
+ * GET /api/client/parent-preview 共用同一构建函数，保证两边字段形状逐键一致）——
+ * 只组装家长层展示内容：学生基本信息（姓名/slug/阶段/套餐）、导师整理的进展更新、
+ * 如何托举事项、需要关注事项、方案层事实成就、学生主动发的一句话、未来 30 天日期提醒。
+ * 不查 parent_messages（家长↔导师留言不在本区块；家长接口的留言与未读标记由其处理函数
+ * 在本函数之外单独处理），不查考试/课程明细、GPA、学生留言等学生原始数据
+ * （成就与提醒的数据源只取里程碑/行动/问题的标题与日期文本）。纯读、无副作用。 */
+async function parentViewSections(db, student) {
+  const psid = student.id;
+  const updateRows = (await db.prepare(
+    `SELECT * FROM parent_updates WHERE student_id = ? ORDER BY update_date DESC, id DESC LIMIT 200`).bind(psid).all()).results || [];
+  const supportRows = (await db.prepare(
+    `SELECT * FROM parent_support_actions WHERE student_id = ?
+     ORDER BY CASE WHEN status = 'active' THEN 0 WHEN status = 'done' THEN 1 ELSE 2 END, sort ASC, id ASC LIMIT 200`).bind(psid).all()).results || [];
+  const concernRows = (await db.prepare(
+    `SELECT * FROM parent_concerns WHERE student_id = ? ORDER BY concern_date DESC, id DESC LIMIT 100`).bind(psid).all()).results || [];
+  const achMilestones = (await db.prepare(
+    `SELECT title, date_text FROM student_milestones WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 30`).bind(psid).all()).results || [];
+  const achActions = (await db.prepare(
+    `SELECT title, created_at, updated_at FROM student_actions WHERE student_id = ? AND status = 'done' ORDER BY updated_at DESC, id DESC LIMIT 30`).bind(psid).all()).results || [];
+  const achProblems = (await db.prepare(
+    `SELECT title, created_at, updated_at FROM student_problem_shares WHERE student_id = ? AND progress = 'resolved' ORDER BY updated_at DESC, id DESC LIMIT 30`).bind(psid).all()).results || [];
+  const achievements = buildAchievements(achMilestones, achActions, achProblems);
+  const studentNoteRows = (await db.prepare(
+    `SELECT * FROM note_to_parents WHERE student_id = ? AND withdrawn_at IS NULL ORDER BY id DESC LIMIT 10`).bind(psid).all()).results || [];
+  const kdRows = (await db.prepare(
+    `SELECT * FROM student_key_dates WHERE student_id = ? ORDER BY date ASC, id ASC LIMIT 100`).bind(psid).all()).results || [];
+  const examRows = (await db.prepare(
+    `SELECT exam_name, exam_date FROM student_exams WHERE student_id = ? LIMIT 200`).bind(psid).all()).results || [];
+  const upcomingReminders = computeUpcomingReminders(kdRows, examRows, achMilestones, todayStr(), REMINDER_HORIZON_DAYS);
+  const studentOut = {
+    name: student.name || "", slug: student.slug || "",
+    stage: student.stage || "", stage_label: DELIVERY_STAGES[student.stage] || student.stage || "",
+  };
+  if (student.package) studentOut.package = student.package;
+  return {
+    student: studentOut,
+    updates: updateRows.map((u) => ({
+      id: u.id, update_date: u.update_date || "", title: u.title || "",
+      body: u.body || "", current_focus: u.current_focus || "", next_step: u.next_step || "",
+      created_at: u.created_at || "",
+    })),
+    support_actions: supportRows.map((a) => ({
+      id: a.id, title: a.title || "", detail: a.detail || "", category: a.category || "",
+      due_text: a.due_text || "", status: a.status || "",
+      status_label: SUPPORT_ACTION_STATUSES[a.status] || a.status || "", sort: a.sort,
+    })),
+    achievements,
+    student_notes: studentNoteRows.map((n) => ({
+      id: n.id, body: n.body || "", feeling_tag: n.feeling_tag || "",
+      feeling_tag_label: n.feeling_tag ? (FEELING_TAGS[n.feeling_tag] || n.feeling_tag) : "",
+      created_at: n.created_at || "",
+    })),
+    upcoming_reminders: upcomingReminders,
+    concerns: concernRows.map((c) => ({
+      id: c.id, concern_date: c.concern_date || "", title: c.title || "",
+      body: c.body || "", action_text: c.action_text || "",
+      created_at: c.created_at || "",
+    })),
+  };
+}
 /* v12 问题方案同步校验（学生端 POST /api/client/problem 用）：字段白名单归一，
  * 任一不合法返回 { error }；私密字段（diary/journal/mood/emotion 等）不在白名单内，天然丢弃。 */
 function normProblemInput(body) {
@@ -945,6 +1006,12 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     title TEXT, detail TEXT, category TEXT, due_text TEXT,
     status TEXT DEFAULT 'active', sort INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT)`,
+  // 需要关注（v13.4 新增；导师整理的需关注事项，与进展更新分开计列、并列呈现；
+  // 呈现规则见《一对一交付标准》附则九：如实呈现、困难单列，不允许只展示积极信息）
+  `CREATE TABLE IF NOT EXISTS parent_concerns(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    concern_date TEXT, title TEXT, body TEXT, action_text TEXT,
+    created_at TEXT, updated_at TEXT)`,
   // 家长↔导师留言（与 student_messages 完全独立；sender: parent / mentor）
   `CREATE TABLE IF NOT EXISTS parent_messages(
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
@@ -1754,6 +1821,27 @@ async function handleApi(req, env, url) {
   // GET /api/client/<学生id 或 slug>?key=<访问密钥>。密钥为 students.client_key（每名学生一个随机密钥），
   // 无 key / key 不对 / 学生不存在一律 404，不暴露学生存在性。写入仅限上方 v9 签名接口，其余只读。
   // 返回六块数据，选课分组与汇总复用 groupCoursesByTerm / courseProgress，与后台客户端页同口径。
+  // 学生端「家长看到的是什么」只读预览（v13.4）：GET /api/client/parent-preview?s=<slug 或 id>&key=<学生密钥>。
+  // 用学生密钥鉴权（与学生端其它接口同一口径：无 key / key 不对 / 学生不存在一律 404）；
+  // 返回内容 = 家长页实际载荷的展示区块，与 GET /api/parent 共用 parentViewSections 构建、
+  // 字段逐键一致；不含家长↔导师留言与未读数（家长写给导师的沟通不在家长页展示给学生的
+  // 预览范围），且纯读、无任何已读标记等副作用。严重问题另走单独沟通流程（交付标准附则九）。
+  // 注意：本精确路径必须排在下面 /api/client/<locator> 正则之前，否则会被当作 slug 吞掉。
+  if (p === "/api/client/parent-preview") {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    await ensureSchema(db);
+    const locator = url.searchParams.get("s") || "";
+    const student = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(locator).first();
+    const key = url.searchParams.get("key") || "";
+    if (!student || !student.client_key || !timingSafeEq(key, String(student.client_key))) {
+      return jsonResp(req, { ok: false, error: "not found" }, 404);
+    }
+    const view = await parentViewSections(db, student);
+    return jsonResp(req, { ok: true, ...view });
+  }
+
   const clientApiMatch = p.match(/^\/api\/client\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
   if (clientApiMatch) {
     if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
@@ -1991,11 +2079,6 @@ async function handleApi(req, env, url) {
       return jsonResp(req, { ok: false, error: "not found" }, 404);
     }
     const psid = student.id;
-    const updateRows = (await db.prepare(
-      `SELECT * FROM parent_updates WHERE student_id = ? ORDER BY update_date DESC, id DESC LIMIT 200`).bind(psid).all()).results || [];
-    const supportRows = (await db.prepare(
-      `SELECT * FROM parent_support_actions WHERE student_id = ?
-       ORDER BY CASE WHEN status = 'active' THEN 0 WHEN status = 'done' THEN 1 ELSE 2 END, sort ASC, id ASC LIMIT 200`).bind(psid).all()).results || [];
     const pMsgRows = (await db.prepare(
       `SELECT * FROM parent_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(psid).all()).results || [];
     // 未读计数在标记已读之前计算：unread_mentor_parent 反映「打开家长页时有几条导师留言未读」，前端据此亮红点
@@ -2005,53 +2088,25 @@ async function handleApi(req, env, url) {
         `UPDATE parent_messages SET read_by_parent = 1 WHERE student_id = ? AND sender = 'mentor' AND read_by_parent = 0`
       ).bind(psid).run();
     }
-    // —— v13：成就（方案层事实）/ 学生一句话（主动分享）/ 未来 30 天日期提醒 ——
-    // 成就数据源只查里程碑/行动/问题三表的标题与日期文本，不查成绩、课程、考试明细。
-    const achMilestones = (await db.prepare(
-      `SELECT title, date_text FROM student_milestones WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 30`).bind(psid).all()).results || [];
-    const achActions = (await db.prepare(
-      `SELECT title, created_at, updated_at FROM student_actions WHERE student_id = ? AND status = 'done' ORDER BY updated_at DESC, id DESC LIMIT 30`).bind(psid).all()).results || [];
-    const achProblems = (await db.prepare(
-      `SELECT title, created_at, updated_at FROM student_problem_shares WHERE student_id = ? AND progress = 'resolved' ORDER BY updated_at DESC, id DESC LIMIT 30`).bind(psid).all()).results || [];
-    const achievements = buildAchievements(achMilestones, achActions, achProblems);
-    const studentNoteRows = (await db.prepare(
-      `SELECT * FROM note_to_parents WHERE student_id = ? AND withdrawn_at IS NULL ORDER BY id DESC LIMIT 10`).bind(psid).all()).results || [];
-    const kdRows = (await db.prepare(
-      `SELECT * FROM student_key_dates WHERE student_id = ? ORDER BY date ASC, id ASC LIMIT 100`).bind(psid).all()).results || [];
-    const examRows = (await db.prepare(
-      `SELECT exam_name, exam_date FROM student_exams WHERE student_id = ? LIMIT 200`).bind(psid).all()).results || [];
-    const upcomingReminders = computeUpcomingReminders(kdRows, examRows, achMilestones, todayStr(), REMINDER_HORIZON_DAYS);
-    const studentOut = {
-      name: student.name || "", slug: student.slug || "",
-      stage: student.stage || "", stage_label: DELIVERY_STAGES[student.stage] || student.stage || "",
-    };
-    if (student.package) studentOut.package = student.package;
+    // 展示区块（进展/托举/成就/一句话/日期提醒/需要关注）与学生端预览共用 parentViewSections，
+    // 保证学生预览所见与家长实际所见逐键一致（v13.4）。
+    const view = await parentViewSections(db, student);
     return jsonResp(req, {
       ok: true,
-      student: studentOut,
-      updates: updateRows.map((u) => ({
-        id: u.id, update_date: u.update_date || "", title: u.title || "",
-        body: u.body || "", current_focus: u.current_focus || "", next_step: u.next_step || "",
-        created_at: u.created_at || "",
-      })),
-      support_actions: supportRows.map((a) => ({
-        id: a.id, title: a.title || "", detail: a.detail || "", category: a.category || "",
-        due_text: a.due_text || "", status: a.status || "",
-        status_label: SUPPORT_ACTION_STATUSES[a.status] || a.status || "", sort: a.sort,
-      })),
+      student: view.student,
+      updates: view.updates,
+      support_actions: view.support_actions,
       messages: pMsgRows.map((m) => ({
         id: m.id, sender: m.sender || "", sender_label: PARENT_MESSAGE_SENDERS[m.sender] || m.sender || "",
         body: m.body || "", created_at: m.created_at || "",
       })),
       unread_mentor_parent: unreadMentorParent,
       // —— v13 ——
-      achievements,
-      student_notes: studentNoteRows.map((n) => ({
-        id: n.id, body: n.body || "", feeling_tag: n.feeling_tag || "",
-        feeling_tag_label: n.feeling_tag ? (FEELING_TAGS[n.feeling_tag] || n.feeling_tag) : "",
-        created_at: n.created_at || "",
-      })),
-      upcoming_reminders: upcomingReminders,
+      achievements: view.achievements,
+      student_notes: view.student_notes,
+      upcoming_reminders: view.upcoming_reminders,
+      // —— v13.4：需要关注（导师整理、如实呈现，与进展并列）——
+      concerns: view.concerns,
     });
   }
 
@@ -4058,6 +4113,8 @@ async function pageClient(env, url, sid) {
   // —— v11 家长端查询 ——
   const parentUpdates = (await db.prepare(
     "SELECT * FROM parent_updates WHERE student_id=? ORDER BY update_date DESC, id DESC LIMIT 200").bind(sid).all()).results || [];
+  const parentConcerns = (await db.prepare(
+    "SELECT * FROM parent_concerns WHERE student_id=? ORDER BY concern_date DESC, id DESC LIMIT 100").bind(sid).all()).results || [];
   const parentSupport = (await db.prepare(
     "SELECT * FROM parent_support_actions WHERE student_id=? ORDER BY sort ASC, id ASC LIMIT 200").bind(sid).all()).results || [];
   const parentMsgs = (await db.prepare(
@@ -4584,6 +4641,17 @@ async function pageClient(env, url, sid) {
     <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条托举事项？')">
       <input type="hidden" name="action" value="parent_support_delete"><input type="hidden" name="id" value="${a.id}">
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const editPcId = toInt(url.searchParams.get("edit_pconcern"), 0);
+  const editPc = editPcId ? parentConcerns.find((c) => c.id === editPcId) : null;
+  const pcf = editPc || { concern_date: todayStr(), title: "", body: "", action_text: "" };
+  const pcRows = parentConcerns.map((c) => `<tr>
+    <td>${esc(c.concern_date || "")}</td><td>${esc(c.title || "")}</td>
+    <td>${esc((c.body || "").slice(0, 40))}${(c.body || "").length > 40 ? "…" : ""}</td>
+    <td>${esc((c.action_text || "").slice(0, 40))}${(c.action_text || "").length > 40 ? "…" : ""}</td>
+    <td><a href="/admin/client/${sid}?edit_pconcern=${c.id}">编辑</a></td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条需要关注事项？')">
+      <input type="hidden" name="action" value="parent_concern_delete"><input type="hidden" name="id" value="${c.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const parentThreadHtml = parentMsgs.length ? parentMsgs.map((m) => `
     <div style="margin:8px 0;padding:9px 12px;border-radius:10px;${m.sender === "mentor" ? "background:#eef4f1" : "background:#f6f2ea"}">
       <span class="mut">${m.sender === "mentor" ? "导师" : "家长"} · ${esc(String(m.created_at || "").slice(0, 16).replace("T", " "))}</span>
@@ -4618,6 +4686,21 @@ async function pageClient(env, url, sid) {
     ${editPu ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
   </form>
   ${parentUpdates.length ? `<div class="wrap"><table><tr><th>日期</th><th>标题</th><th>当前解决策略</th><th>下一步</th><th></th><th></th></tr>${puRows}</table></div>` : `<p class="mut">暂无家长更新。</p>`}
+  <h3>${editPc ? "编辑需要关注 #" + editPc.id : "新增需要关注"}</h3>
+  <p class="mut">固定说明（呈现规则，见交付标准附则九）：<strong>如实呈现，困难单列，不只报喜。</strong>进展不顺利、存在风险或未达预期的事项写到这里，与进展更新并列给家长看，不要藏进进展正文、不要淡化、不要省略。严重问题（安全、学籍、重大考试失利等）除写到这里外，必须另走单独沟通流程直接与家长沟通，不以页面发布代替沟通。没有需要关注的事项就留空，页面会如实显示空态，不要凑数编造。</p>
+  <form method="post">
+    <input type="hidden" name="action" value="${editPc ? "parent_concern_update" : "parent_concern_add"}">
+    ${editPc ? `<input type="hidden" name="id" value="${editPc.id}">` : ""}
+    <div class="row">
+      <div><label>日期</label><input name="concern_date" type="date" value="${esc(pcf.concern_date || "")}"></div>
+      <div style="flex:2"><label>标题 *</label><input name="title" required maxlength="120" value="${esc(pcf.title || "")}" placeholder="如 近期状态需要关注"></div>
+    </div>
+    <label>情况说明（给家长看的整理版：事实 + 影响，不写学生私密原文）</label><textarea name="body" maxlength="4000" style="min-height:90px">${esc(pcf.body || "")}</textarea>
+    <label>正在采取的措施 / 需要家长配合什么</label><textarea name="action_text" maxlength="2000">${esc(pcf.action_text || "")}</textarea>
+    <button type="submit">${editPc ? "保存修改" : "添加需要关注"}</button>
+    ${editPc ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
+  </form>
+  ${parentConcerns.length ? `<div class="wrap"><table><tr><th>日期</th><th>标题</th><th>情况说明</th><th>措施</th><th></th><th></th></tr>${pcRows}</table></div>` : `<p class="mut">暂无需要关注事项（家长端显示空态）。</p>`}
   <h3>${editPs ? "编辑托举事项 #" + editPs.id : "新增如何托举事项"}</h3>
   <p class="mut">只写家长可以实际执行的托举事项（如补充材料、保留稳定节奏）；不要在这里写向家长追问成绩或考试细节的内容。</p>
   <form method="post">
@@ -4971,6 +5054,31 @@ async function postClient(req, env, sidFromPath) {
   }
   if (action === "parent_update_delete") {
     await db.prepare("DELETE FROM parent_updates WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  // —— v13.4 需要关注（与进展更新分开计列；呈现规则见交付标准附则九）——
+  if (action === "parent_concern_add" || action === "parent_concern_update") {
+    const title = clampStr(fd.get("title"), 120);
+    if (!title) return redirect(back);
+    const cDate = clampStr(fd.get("concern_date"), 10);
+    const concernDate = /^\d{4}-\d{2}-\d{2}$/.test(cDate) ? cDate : todayStr();
+    const cBody = clampStr(fd.get("body"), 4000);
+    const cAction = clampStr(fd.get("action_text"), 2000);
+    if (action === "parent_concern_update") {
+      await db.prepare(
+        `UPDATE parent_concerns SET concern_date=?, title=?, body=?, action_text=?, updated_at=? WHERE id=? AND student_id=?`
+      ).bind(concernDate, title, cBody, cAction, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO parent_concerns(student_id, concern_date, title, body, action_text, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?)`
+      ).bind(sid, concernDate, title, cBody, cAction, nowIso(), nowIso()).run();
+    }
+    return redirect(back);
+  }
+  if (action === "parent_concern_delete") {
+    await db.prepare("DELETE FROM parent_concerns WHERE id=? AND student_id=?")
       .bind(toInt(fd.get("id"), 0), sid).run();
     return redirect(back);
   }

@@ -187,7 +187,27 @@ const I18N = {
     "catalog.empty": "没有符合的课程",
     "catalog.count": "共 {n} 门课（由已建模专业的要求集汇总）",
     "card.parentNote": "给爸妈的一句话",
-    "pnote.desc": "写一句话主动发给爸妈看（可附一个心情标签）。只有你主动发出的这一句会出现在家长页；日记和私密空间的内容永远不会发过去。",
+    "pnote.desc": "写一句话主动发给爸妈看（可附一个心情标签）。这一句会以你的名义出现在家长页；家长页还会显示导师整理的进展、成就、需要关注和近期重要日子——点下方按钮可以预览爸妈看到的全部内容。日记和私密空间的内容永远不会发过去。",
+    "pprev.open": "预览爸妈看到的页面",
+    "pprev.title": "爸妈看到的页面",
+    "pprev.note": "这就是爸妈打开链接看到的全部内容。",
+    "pprev.loading": "正在加载预览…",
+    "pprev.err": "预览加载失败，稍后再试。",
+    "pprev.empty": "暂无内容",
+    "pprev.updates": "进展",
+    "pprev.concerns": "需要关注",
+    "pprev.ach": "最近的成就",
+    "pprev.rem": "近期重要日子",
+    "pprev.notes": "你发给爸妈的话",
+    "pprev.support": "需要家庭配合的事项",
+    "pprev.focus": "当前解决策略",
+    "pprev.next": "下一步",
+    "pprev.action": "正在采取的措施",
+    "pprev.kind.milestone": "里程碑",
+    "pprev.kind.action": "已完成行动",
+    "pprev.kind.problem": "已解决问题",
+    "pprev.remToday": "就是今天",
+    "pprev.remIn": "{n} 天后",
     "pnote.ph": "想对爸妈说的一句话（80 字内）",
     "pnote.send": "发给爸妈",
     "pnote.sent": "已发送，爸妈能看到了",
@@ -625,7 +645,27 @@ const I18N = {
     "catalog.empty": "No matching courses",
     "catalog.count": "{n} courses (aggregated from modeled majors' requirement sets)",
     "card.parentNote": "One Line for Mom & Dad",
-    "pnote.desc": "Write one line to actively share with your parents (optionally with a feeling tag). Only lines you send appear on the parent page; diary and private-space content never goes there.",
+    "pnote.desc": "Write one line to actively share with your parents (optionally with a feeling tag). It appears on the parent page under your name. The parent page also shows mentor-prepared progress, achievements, items needing attention and upcoming dates — tap below to preview everything they see. Diary and private-space content never goes there.",
+    "pprev.open": "Preview what Mom & Dad see",
+    "pprev.title": "What Mom & Dad See",
+    "pprev.note": "This is everything Mom & Dad see when they open their link.",
+    "pprev.loading": "Loading preview…",
+    "pprev.err": "Preview failed to load — please try again later.",
+    "pprev.empty": "Nothing here yet",
+    "pprev.updates": "Progress",
+    "pprev.concerns": "Needs Attention",
+    "pprev.ach": "Achievements",
+    "pprev.rem": "Upcoming Dates",
+    "pprev.notes": "Your Lines for Mom & Dad",
+    "pprev.support": "How Family Can Support",
+    "pprev.focus": "Current solution strategy",
+    "pprev.next": "Next step",
+    "pprev.action": "What we are doing about it",
+    "pprev.kind.milestone": "Milestone",
+    "pprev.kind.action": "Completed action",
+    "pprev.kind.problem": "Resolved problem",
+    "pprev.remToday": "Today",
+    "pprev.remIn": "in {n} days",
     "pnote.ph": "One line for your parents (≤80 chars)",
     "pnote.send": "Send to parents",
     "pnote.sent": "Sent — your parents can see it now",
@@ -1700,7 +1740,7 @@ function attachVoice(textarea, opts) {
 }
 
 /* —— 独立视图（sheet）管理 —— */
-const SHEETS = ["view-private", "view-problems", "view-trail", "view-match", "view-share", "view-catalog"];
+const SHEETS = ["view-private", "view-problems", "view-trail", "view-match", "view-share", "view-catalog", "view-parent-preview"];
 function openSheet(id) {
   for (const s of SHEETS) { const el = $(s); if (el) el.hidden = s !== id; }
   window.scrollTo(0, 0);
@@ -2547,6 +2587,84 @@ async function sendParentNote() {
   }
 }
 
+/* ================= v13.4：家长所见预览（只读） =================
+ * 数据来自 GET /api/client/parent-preview（学生密钥鉴权）：服务端用与家长接口
+ * 同一构建函数组装，返回的正是家长页实际载荷的展示区块（进展 / 需要关注 / 成就 /
+ * 重要日子 / 一句话 / 托举事项），不含家长写给导师的留言。本视图只渲染、不写任何数据。 */
+async function openParentPreview() {
+  openSheet("view-parent-preview");
+  const box = $("pprev-body");
+  box.innerHTML = '<p class="mut">' + esc(t("pprev.loading")) + "</p>";
+  const { s, k, api } = creds();
+  let d = null;
+  try {
+    const resp = await fetch(api + "/api/client/parent-preview?s=" + encodeURIComponent(s) + "&key=" + encodeURIComponent(k),
+      { headers: { "Accept": "application/json" } });
+    d = await resp.json();
+    if (!resp.ok || !d || d.ok !== true) d = null;
+  } catch (e) { d = null; }
+  if (!d) { box.innerHTML = '<p class="err">' + esc(t("pprev.err")) + "</p>"; return; }
+  renderParentPreview(d);
+}
+function pprevSection(titleKey, inner) {
+  return '<section class="card"><h2>' + esc(t(titleKey)) + "</h2>" + inner + "</section>";
+}
+function renderParentPreview(d) {
+  const box = $("pprev-body");
+  const empty = '<p class="empty">' + esc(t("pprev.empty")) + "</p>";
+  const ups = d.updates || [];
+  const upsHtml = ups.length ? '<div class="tl">' + ups.map((u) =>
+    '<div class="tl-item"><span class="tl-dot"></span>' +
+    '<div class="tl-date">' + esc(u.update_date || "") + "</div>" +
+    '<div class="tl-title">' + esc(u.title || "") + "</div>" +
+    (u.body ? '<div class="pu-sec-text">' + esc(u.body) + "</div>" : "") +
+    (u.current_focus ? '<div class="pu-sec-label">' + esc(t("pprev.focus")) + '</div><div class="pu-sec-text">' + esc(u.current_focus) + "</div>" : "") +
+    (u.next_step ? '<div class="pu-sec-label">' + esc(t("pprev.next")) + '</div><div class="pu-sec-text">' + esc(u.next_step) + "</div>" : "") +
+    "</div>").join("") + "</div>" : empty;
+  const cons = d.concerns || [];
+  const consHtml = cons.length ? '<div class="tl">' + cons.map((c) =>
+    '<div class="tl-item"><span class="tl-dot warn"></span>' +
+    '<div class="tl-date">' + esc(c.concern_date || "") + "</div>" +
+    '<div class="tl-title">' + esc(c.title || "") + "</div>" +
+    (c.body ? '<div class="pu-sec-text">' + esc(c.body) + "</div>" : "") +
+    (c.action_text ? '<div class="pu-sec-label">' + esc(t("pprev.action")) + '</div><div class="pu-sec-text">' + esc(c.action_text) + "</div>" : "") +
+    "</div>").join("") + "</div>" : empty;
+  const ach = (d.achievements || []).slice().sort((a, b) => String(b.date_text || "").localeCompare(String(a.date_text || "")));
+  const achHtml = ach.length ? ach.slice(0, 10).map((a) =>
+    '<div class="tl-item"><span class="tl-dot"></span><div class="tl-body">' +
+    '<div class="tl-date">' + esc(t("pprev.kind." + a.kind)) + (a.date_text ? " · " + esc(a.date_text) : "") + "</div>" +
+    '<div class="tl-title">' + esc(a.title || "") + "</div></div></div>").join("") : empty;
+  const rems = d.upcoming_reminders || [];
+  const remHtml = rems.length ? rems.map((r) =>
+    '<div class="cd-item"><div class="cd-main"><div class="cd-title">' + esc(r.title || "") + "</div>" +
+    '<div class="cd-date">' + esc(r.date_fmt || r.date || "") + '</div></div><div class="cd-days">' +
+    esc(r.days_left === 0 ? t("pprev.remToday") : fmt("pprev.remIn", { n: r.days_left })) + "</div></div>").join("") : empty;
+  const notes = d.student_notes || [];
+  const notesHtml = notes.length ? notes.slice(0, 3).map((n) =>
+    '<div class="pnote-item"><div class="pnote-main"><span>「' + esc(n.body) + "」</span>" +
+    (n.feeling_tag_label ? ' <span class="pill">' + esc(n.feeling_tag_label) + "</span>" : "") +
+    ' <span class="mut">' + esc(String(n.created_at || "").slice(0, 10)) + "</span></div></div>").join("") : empty;
+  const sups = (d.support_actions || []).filter((a) => a.status !== "archived");
+  const supHtml = sups.length ? sups.map((a) => {
+    const done = a.status === "done";
+    return '<div class="act-item' + (done ? " done" : "") + '">' +
+      '<span class="act-check">' + (done ? "✓" : "") + "</span>" +
+      '<div class="act-body"><div class="act-title">' + esc(a.title || "") + "</div>" +
+      (a.detail ? '<div class="act-detail">' + esc(a.detail) + "</div>" : "") +
+      "</div>" +
+      (a.due_text ? '<span class="act-due">' + esc(a.due_text) + "</span>" : "") +
+      "</div>";
+  }).join("") : empty;
+  box.innerHTML =
+    '<p class="priv-help" style="margin:0 0 10px">' + esc(t("pprev.note")) + "</p>" +
+    pprevSection("pprev.updates", upsHtml) +
+    pprevSection("pprev.concerns", consHtml) +
+    pprevSection("pprev.ach", achHtml) +
+    pprevSection("pprev.rem", remHtml) +
+    pprevSection("pprev.notes", notesHtml) +
+    pprevSection("pprev.support", supHtml);
+}
+
 /* —— 初始化 —— */
 document.querySelectorAll(".tab-btn").forEach((b) => {
   b.addEventListener("click", () => switchTab(b.getAttribute("data-tab")));
@@ -2575,6 +2693,7 @@ document.addEventListener("click", (ev) => {
     if (which === "private") openPrivateSheet();
     else if (which === "problems") { openProblemsSheet(); }
     else if (which === "trail") { openSheet("view-trail"); renderTrailSheet(); }
+    else if (which === "parent-preview") { openParentPreview(); }
     else if (which === "match") { openSheet("view-match"); renderMatchSheet(); }
     else if (which === "catalog") {
       openSheet("view-catalog");

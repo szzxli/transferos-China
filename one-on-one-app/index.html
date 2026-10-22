@@ -294,7 +294,7 @@
 
       <section class="card" id="sec-parent-note">
         <h2 data-i18n="card.parentNote">给爸妈的一句话</h2>
-        <p class="mut" style="margin:0 0 8px" data-i18n="pnote.desc">写一句话主动发给爸妈看（可附一个心情标签）。只有你主动发出的这一句会出现在家长页；日记和私密空间的内容永远不会发过去。</p>
+        <p class="mut" style="margin:0 0 8px" data-i18n="pnote.desc">写一句话主动发给爸妈看（可附一个心情标签）。这一句会以你的名义出现在家长页；家长页还会显示导师整理的进展、成就、需要关注和近期重要日子——点下方按钮可以预览爸妈看到的全部内容。日记和私密空间的内容永远不会发过去。</p>
         <textarea id="pnote-input" rows="2" maxlength="80" data-i18n-ph="pnote.ph" placeholder="想对爸妈说的一句话（80 字内）"></textarea>
         <div class="mood-row" id="pnote-tags"></div>
         <div class="priv-actions">
@@ -302,6 +302,9 @@
           <span class="mut" id="pnote-status"></span>
         </div>
         <div id="pnote-list"></div>
+        <div class="priv-actions" style="margin-top:10px">
+          <button type="button" class="btn-ghost" data-open="parent-preview" data-i18n="pprev.open">预览爸妈看到的页面</button>
+        </div>
       </section>
     </div>
 
@@ -339,6 +342,14 @@
     <h2 data-i18n="view.trail">导师轨迹</h2>
   </div>
   <div class="sheet-body" id="trail-body"></div>
+</div>
+
+<div class="sheet" id="view-parent-preview" hidden>
+  <div class="sheet-head">
+    <button type="button" class="sheet-back" data-close="view-parent-preview">← <span data-i18n="sheet.back">返回</span></button>
+    <h2 data-i18n="pprev.title">爸妈看到的页面</h2>
+  </div>
+  <div class="sheet-body" id="pprev-body"></div>
 </div>
 
 <div class="sheet" id="view-match" hidden>

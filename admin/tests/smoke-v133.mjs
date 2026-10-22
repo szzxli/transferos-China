@@ -3,7 +3,8 @@
 // 服务端才读 course_code 并把「课程 <代码>：」前缀拼进正文落库；其它任何 category 值一律按
 // 普通留言处理（category 落 NULL、正文不拼前缀）。请求里夹带的任何额外字段（mood / key_dates /
 // 考试分数 / 日记等）服务端一律不读、不存、不回传。导师工作台未读列表与学生端留言列表都带
-// category，导师可辨识；家长接口顶层键集仍恰为 v13 的 9 个（纠错不进家长面）。
+// category，导师可辨识；家长接口顶层键集在本文件写作时为 v13 的 9 个（纠错不进家长面）；
+// v13.4 起扩为 10 个（新增 concerns 需要关注），本文件对应断言已按 v13.4 口径适配。
 // 运行：node tests/smoke-v133.mjs（需先把最新 src/index.js 拷为 tests/worker.mjs）
 import { DatabaseSync } from "node:sqlite";
 import worker from "./worker.mjs";
@@ -140,8 +141,9 @@ section("家长接口：顶层键集不变、纠错不进家长面");
 {
   const pd = await getParent("v133a", impA.parent_key);
   const topKeys = Object.keys(pd).sort().join(",");
-  ok(topKeys === "achievements,messages,ok,student,student_notes,support_actions,unread_mentor_parent,upcoming_reminders,updates",
-    "家长顶层键集恰为 v13 的 9 个（" + topKeys + "）");
+  // v13.4 适配：家长顶层键集由 v13 的 9 个扩为 10 个（新增 concerns 需要关注），纠错仍不进家长面
+  ok(topKeys === "achievements,concerns,messages,ok,student,student_notes,support_actions,unread_mentor_parent,upcoming_reminders,updates",
+    "家长顶层键集恰为 v13.4 的 10 个（" + topKeys + "）");
   ok(!JSON.stringify(pd).includes("data_correction") && !JSON.stringify(pd).includes("课程 BIO 150"),
     "家长响应不含纠错标记与纠错正文");
 }

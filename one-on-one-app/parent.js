@@ -60,6 +60,10 @@ const I18N = {
     "progress.stageDesc": "服务按阶段推进。导师会在每个阶段把孩子的进展整理成更新发到这里；您在这里看到的，都是导师确认过的最新情况。",
     "progress.title": "进展时间线",
     "updates.empty": "还没有进展更新。",
+    "concerns.title": "需要关注",
+    "concerns.desc": "进展不顺利或需要留意的地方，导师会如实写在这里，和进展放在一起看。",
+    "concerns.empty": "目前没有需要特别关注的事项。",
+    "concerns.action": "正在采取的措施",
     "support.principleTitle": "如何托举",
     "support.principle": "导师会把需要家庭配合的事项写在这里；不在这里追问成绩与考试细节，给孩子保留稳定的空间。",
     "support.title": "需要家庭配合的事项",
@@ -135,6 +139,10 @@ const I18N = {
     "progress.stageDesc": "The service moves forward in stages. At each stage your mentor posts a prepared update here — everything you see has been reviewed by your mentor first.",
     "progress.title": "Progress Timeline",
     "updates.empty": "No progress updates yet.",
+    "concerns.title": "Needs Attention",
+    "concerns.desc": "Where progress is not going smoothly or something needs watching, your mentor writes it here honestly — read it together with the progress above.",
+    "concerns.empty": "Nothing needs special attention right now.",
+    "concerns.action": "What we are doing about it",
     "support.principleTitle": "How You Can Support",
     "support.principle": "Your mentor lists here anything the family can help with. We don't go into grades or exam details here — that protects a calm, stable space for your child.",
     "support.title": "What the Family Can Help With",
@@ -381,6 +389,23 @@ function renderProgress(d) {
         '<div class="tl-title">' + esc(u.title || "") + "</div>" +
         updateBodyHtml(u) + "</div>").join("") + "</div>"
     : '<p class="empty">' + esc(t("updates.empty")) + "</p>";
+  renderConcerns(d);
+}
+
+/* —— v13.4：需要关注（导师整理、如实呈现，与进展并列；无数据如实空态） —— */
+function renderConcerns(d) {
+  const box = $("concerns-list");
+  if (!box) return;
+  const list = d.concerns || [];
+  box.innerHTML = list.length
+    ? '<div class="tl">' + list.map((c) =>
+        '<div class="tl-item"><span class="tl-dot warn"></span>' +
+        '<div class="tl-date">' + esc(c.concern_date || "") + "</div>" +
+        '<div class="tl-title">' + esc(c.title || "") + "</div>" +
+        (c.body ? '<div class="pu-sec-text">' + esc(c.body) + "</div>" : "") +
+        (c.action_text ? '<div class="pu-sec-label">' + esc(t("concerns.action")) + '</div><div class="pu-sec-text">' + esc(c.action_text) + "</div>" : "") +
+        "</div>").join("") + "</div>"
+    : '<p class="empty">' + esc(t("concerns.empty")) + "</p>";
 }
 
 /* —— 页3 托举 —— */
