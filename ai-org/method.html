@@ -19,11 +19,19 @@
 
 <header class="top">
   <h1><span class="en">METHOD &amp; BASIS</span>方法与口径</h1>
-  <p class="sub">评估器的每个数字都来自可复现的公式与标明来源的系数。本页把计算链、系数来源与假设纪律一次说清：不藏公式，不给假精确，算亏了也照实呈现。</p>
+  <p class="sub">每个数字都来自可复现的公式与标明来源的系数。先看图，30 秒懂个大概；要核对细节，每节末尾有完整口径原文。</p>
 </header>
 
 <section class="card reveal" id="m-principles">
   <h2>一、计算原则</h2>
+  <div class="principle-grid">
+    <div class="principle"><b>确定性计算</b><span>同一组输入，永远同一组结果</span></div>
+    <div class="principle"><b>只出区间</b><span>保守 + 中性两档，不给单点预测</span></div>
+    <div class="principle"><b>假设全公开</b><span>每个系数标来源类型与可信度</span></div>
+    <div class="principle"><b>负数照实</b><span>首年净效益可为负，不截断美化</span></div>
+    <div class="principle"><b>估算不是承诺</b><span>真实效果只认基线、账本与验收</span></div>
+  </div>
+  <details class="src-details"><summary>看完整口径原文</summary>
   <ul>
     <li><strong>确定性计算</strong>：评估器是纯公式引擎，同一组输入永远得到同一组结果；任何数字都不由人工或模型临场生成。</li>
     <li><strong>只出区间</strong>：企业版结果一律以保守与中性两档给出区间，不输出单点预测；区间的两端来自情景实现率与就绪度系数的组合，不是装饰性的误差范围。</li>
@@ -31,10 +39,26 @@
     <li><strong>负数照实</strong>：首年净效益可为负，公式不做截断美化；三年净效益的原始计算若为负，报告以 0 呈现并附注说明，不静默改数。</li>
     <li><strong>估算不是承诺</strong>：评估结果是基于公开基准与明确假设的估算，不是收益承诺；企业真实效果只认基线测量、试点账本与三道门验收结论。</li>
   </ul>
+  </details>
 </section>
 
 <section class="card reveal" id="m-chain">
   <h2>二、计算链（企业版）</h2>
+  <div class="flow-chain">
+    <div class="chain-node"><b>企业分级</b><span>5 档 · 定编制上限</span></div><span class="chain-arrow">→</span>
+    <div class="chain-node"><b>重复工时</b><span>行业占比 × 部门系数</span></div><span class="chain-arrow">→</span>
+    <div class="chain-node"><b>毛释放工时</b><span>× 可自动化 × 实现率</span></div><span class="chain-arrow">→</span>
+    <div class="chain-node"><b>就绪度折算</b><span>毛释放 × 就绪度系数</span></div><span class="chain-arrow">→</span>
+    <div class="chain-node"><b>折算价值</b><span>工时 × 人力成本</span></div><span class="chain-arrow">→</span>
+    <div class="chain-node"><b>成本与净值</b><span>托管费 · 一次性投入 · 回本</span></div>
+  </div>
+  <div class="chip-row">
+    <span class="mchip">情景实现率：保守 <b>60%</b> / 中性 <b>85%</b></span>
+    <span class="mchip">可自动化比例（按数字化基础）：<b>35% / 50% / 65%</b></span>
+    <span class="mchip">单部门释放钳制 ≤ <b>90%</b></span>
+    <span class="mchip">只有已配置岗位覆盖的部门，才计入效益</span>
+  </div>
+  <details class="src-details"><summary>看完整口径原文</summary>
   <ul>
     <li><strong>企业分级</strong>：按员工总数分五档：微型（1–50 人）、小型（51–100 人）、中型（101–300 人）、中型（301–1000 人）、大型（1000 人以上）。分级决定可配置岗位数的上限、人均培训工时与流程改造成本的档位。</li>
     <li><strong>重复工时</strong>：每个部门的重复劳动占比 = 行业重复劳动占比 × 部门相对系数 × 全局缩放（默认 1.00），结果钳制在 0.9 以内；部门可自动化比例只由数字化基础决定：纸质与微信办公 35%、基础办公软件 50%、有业务系统 65%。数字化基础只在这一步计入，就绪度不再重复计算（见第三节）。</li>
@@ -46,7 +70,42 @@
     <li><strong>盈亏平衡与敏感性</strong>：报告另给中性档的两个平衡点（线性近似）：托管单价平衡点 = 中性月折算价值 ÷ 已配置岗位数，单价高于此点月净转负；实现率平衡点按折算价值与实现率成正比求解，超过 100% 视为无解。同时对重复劳动占比、中性情景实现率、托管单价、就绪度系数四项各做 ±30% 的单因素摆动，按对中性档月净折算价值的影响排序，列出前三项。</li>
     <li><strong>营收合理性校验</strong>：如填写了年营收，引擎会校验年人力成本占年营收的比例是否落在 3%–85% 的宽带内；落在带外只在报告中提示，不拦截计算。</li>
   </ul>
-<h2>三、就绪度、磨合成本与 J 曲线</h2>
+  </details>
+</section>
+
+<section class="card reveal" id="m-readiness">
+  <h2>三、就绪度、磨合成本与 J 曲线</h2>
+  <div class="factor-row">
+    <div class="factor-card"><b>流程文档化</b><span>0.80 / 0.92 / 1.00</span></div><span class="mult-sign">×</span>
+    <div class="factor-card"><b>员工数字素养</b><span>0.80 / 0.92 / 1.00</span></div><span class="mult-sign">×</span>
+    <div class="factor-card"><b>管理层推动力</b><span>0.75 / 0.90 / 1.00</span></div><span class="mult-sign">=</span>
+    <div class="factor-card factor-out"><b>就绪度系数</b><span>钳制在 0.40 – 1.00</span></div>
+  </div>
+  <p class="mini-note">数字化基础不进就绪度，只进可自动化比例——两个问题分开算，不双计。</p>
+  <div class="jchart-wrap">
+    <p class="jchart-title">J 曲线：上线后第一年的实现率爬坡</p>
+    <svg class="jchart" viewBox="0 0 600 248" role="img" aria-label="J曲线图：前三个月实现率30%、60%、85%爬坡，其后稳态100%，首年折算系数约0.90">
+      <line x1="44" y1="196" x2="588" y2="196" stroke="#d8d8de" stroke-width="1"/>
+      <line x1="44" y1="16" x2="588" y2="16" stroke="#e6e6eb" stroke-width="1" stroke-dasharray="4 4"/>
+      <text x="588" y="11" font-size="11" fill="#86868b" text-anchor="end">稳态 100%</text>
+      <polyline points="44,142 93,88 143,43 193,16 242,16 292,16 341,16 391,16 440,16 490,16 539,16 588,16" fill="none" stroke="#0071e3" stroke-width="2.5" stroke-linejoin="round"/>
+      <circle cx="44" cy="142" r="4" fill="#0071e3"/><text x="44" y="128" font-size="12" font-weight="700" fill="#1d1d1f" text-anchor="middle">30%</text>
+      <circle cx="93" cy="88" r="4" fill="#0071e3"/><text x="93" y="74" font-size="12" font-weight="700" fill="#1d1d1f" text-anchor="middle">60%</text>
+      <circle cx="143" cy="43" r="4" fill="#0071e3"/><text x="143" y="29" font-size="12" font-weight="700" fill="#1d1d1f" text-anchor="middle">85%</text>
+      <text x="44" y="216" font-size="11" fill="#86868b" text-anchor="middle">第 1 月</text>
+      <text x="143" y="216" font-size="11" fill="#86868b" text-anchor="middle">第 3 月</text>
+      <text x="341" y="216" font-size="11" fill="#86868b" text-anchor="middle">第 7 月</text>
+      <text x="588" y="216" font-size="11" fill="#86868b" text-anchor="end">第 12 月</text>
+      <text x="400" y="120" font-size="13" font-weight="700" fill="#1d1d1f">首年折算系数 ≈ 0.90</text>
+      <text x="400" y="140" font-size="11.5" fill="#515154">首年按爬坡后的平均实现率折算，不按满格算</text>
+    </svg>
+  </div>
+  <div class="principle-grid grid-3">
+    <div class="principle"><b>培训成本</b><span>覆盖人数 × 人均培训工时 × 时薪</span></div>
+    <div class="principle"><b>流程改造与岗位卡</b><span>按企业分级取成本区间</span></div>
+    <div class="principle"><b>沟通成本增量</b><span>年人力成本 × 增量率 × 会议密度</span></div>
+  </div>
+  <details class="src-details"><summary>看完整口径原文</summary>
   <ul>
     <li><strong>就绪度三因子</strong>：组织就绪度系数由三个因子连乘：流程文档化（几乎没有 0.80、部分有 0.92、较完善 1.00）× 员工数字素养（偏低 0.80、中等 0.92、偏高 1.00）× 管理层推动力（观望 0.75、支持 0.90、强力推动 1.00），连乘后钳制在 0.40–1.00。三项都是组织因素，均为假设值（低可信度）。</li>
     <li><strong>数字化不双计</strong>：数字化基础只进入第二节的可自动化比例，不进入就绪度。可自动化比例回答「技术上有多少活能被承接」，就绪度回答「组织接不接得住」，两个问题分开算，避免同一因素计两次。</li>
@@ -54,7 +113,20 @@
     <li><strong>J 曲线</strong>：上线后前 3 个月实现率按 30% / 60% / 85% 爬坡，其后 9 个月按稳态 100% 折算，首年折算系数 =（0.30 + 0.60 + 0.85 + 9）÷ 12 ≈ 0.896（约 0.90）。首年折算价值 = 稳态月折算价值 × 12 × 首年折算系数。</li>
     <li><strong>首年净效益</strong>：首年成本与首年折算价值统一按 12 个月口径（托管费按全年计，不再区分试点期月份）；首年净效益 = 首年折算价值 − 首年成本 − 磨合成本，区间两端交叉组合：低端取低折算价值、高成本与高磨合，高端取高折算价值、低成本与低磨合。首年净效益可以为负，照实呈现。</li>
   </ul>
-<h2>四、系数来源与可信度</h2>
+  </details>
+</section>
+
+<section class="card reveal" id="m-sources">
+  <h2>四、系数来源与可信度</h2>
+  <div class="src-legend">
+    <div class="src-row"><span class="src-badge src-a">商业调查</span><span class="src-desc">来自本项目商业调查报告</span><span class="src-cred">可信度 中</span></div>
+    <div class="src-row"><span class="src-badge src-b">公开基准</span><span class="src-desc">可公开查证的基准数据</span><span class="src-cred">可信度 中 / 低</span></div>
+    <div class="src-row"><span class="src-badge src-c">假设值</span><span class="src-desc">尚无外部数据支撑的拟定参数</span><span class="src-cred">可信度 低</span></div>
+    <div class="src-row"><span class="src-badge src-t">定价假设</span><span class="src-desc">只用于估算，不是对外报价</span><span class="src-cred">特殊标注</span></div>
+    <div class="src-row"><span class="src-badge src-t">口径规则</span><span class="src-desc">统计口径写死，不随访客调参改变</span><span class="src-cred">特殊标注</span></div>
+  </div>
+  <p class="mini-note">凡标假设值的系数都是拟定值：先按拟定值发布、用起来，再在真实试点中逐项校准，校准后才定版。</p>
+  <details class="src-details"><summary>看完整口径原文</summary>
   <ul>
     <li><strong>三类来源</strong>：引擎给每个系数标注来源类型与可信度，评估器中的系数表与之一一对应。来源分三类：商业调查（本项目商业调查报告）、公开基准（可公开查证的基准数据）、假设值（尚无外部数据支撑的拟定参数）；可信度分中、低两级，另有「定价假设」「口径规则」两类特殊标注。</li>
     <li><strong>来自商业调查</strong>：行业重复劳动占比由商业调查的行业重复性评分换算（可信度中；其中「其他服务业」一档例外，为假设值、低）；定价锚（诊断、试点包、单岗位托管的测算区间）、流程改造与岗位卡建设成本、个人版订阅单价均来自商业调查，标「定价假设」，只用于估算，不是对外报价。</li>
@@ -63,13 +135,31 @@
     <li><strong>口径规则类</strong>：效益只统计已配置岗位覆盖部门、大型只算试点部门、首年统一 12 个月等统计口径，以及痛点的处理方式（痛点只作定性标记进入报告提示，不调整任何系数），在系数表中标为「口径规则」，不随访客调参改变。</li>
     <li><strong>托管单价的性质</strong>：托管单价在评估器中为访客可调参数，默认值取自商业调查的定价假设区间；访客可按自身报价或预算改写后重算。本站不公示价格，正式合作的价格通过商务沟通确认。</li>
   </ul>
-<h2>五、个人版口径</h2>
+  </details>
+</section>
+
+<section class="card reveal" id="m-personal">
+  <h2>五、个人版口径</h2>
+  <div class="flow-chain">
+    <div class="chain-node"><b>七类任务耗时</b><span>你每周花的时间</span></div><span class="chain-arrow">→</span>
+    <div class="chain-node"><b>潜在省时</b><span>× 各任务可辅助比例</span></div><span class="chain-arrow">→</span>
+    <div class="chain-node"><b>释放时间</b><span>× 落地系数 0.60–0.90</span></div><span class="chain-arrow">→</span>
+    <div class="chain-node"><b>时间价值</b><span>× 时薪 × 变现率（默认 0.5）</span></div><span class="chain-arrow">→</span>
+    <div class="chain-node"><b>月度净值</b><span>时间价值 − 订阅成本</span></div>
+  </div>
+  <div class="chip-row">
+    <span class="mchip">智能体小队上限 <b>5 个</b></span>
+    <span class="mchip">学习投入按小时单列，不折入月度净值</span>
+    <span class="mchip">变现率为 0 时，省下的时间仍真实存在，只是不折算成收入</span>
+  </div>
+  <details class="src-details"><summary>看完整口径原文</summary>
   <ul>
     <li><strong>潜在省时</strong>：七类任务的每周耗时分别乘以各任务的可辅助比例，合计为潜在可释放时间；再乘落地系数带（0.60–0.90），得到释放时间区间。</li>
     <li><strong>时间价值</strong>：释放时间 × 时薪 × 时间变现率（默认 0.5，评估器中可调）；时薪未填时，按月收入与每周工时折算。变现率为 0 时，省下的时间仍真实存在，只是不折算成收入。</li>
     <li><strong>小队与成本</strong>：智能体小队按任务量与痛点规则生成，上限 5 个；订阅成本按小队规模与订阅单价估算，月度净值 = 时间价值 − 订阅成本。</li>
     <li><strong>学习投入</strong>：按熟练程度取学习小时与周期，以小时单列，不折入月度净值；回本周期以周计，按中位释放与变现率估算。</li>
   </ul>
+  </details>
 </section>
 
 <section class="card reveal" id="m-disclaimer">
