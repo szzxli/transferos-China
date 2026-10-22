@@ -117,7 +117,7 @@
     var sum = deptSum(input.depts);
     if (input.totalStaff <= 0) { err.textContent = "请填写员工总数（大于 0）。"; return; }
     if (sum !== input.totalStaff) { err.textContent = "部门人数合计（" + sum + "）与员工总数（" + input.totalStaff + "）不一致，请对齐后重新生成。"; return; }
-    if (input.monthlyCost <= 0) { err.textContent = "请填写平均月人力成本（大于 0），否则无法估算节约金额。"; return; }
+    if (input.monthlyCost <= 0) { err.textContent = "请填写平均月人力成本（大于 0），否则无法估算折算价值。"; return; }
     err.textContent = "";
     render(input, E.evaluate(input, readParams()));
   });
@@ -126,8 +126,8 @@
     var painsTxt = input.pains.length ? input.pains.map(function (k) { return E.PAIN_LABELS[k]; }).join("、") : "未选择";
     var pb = r.paybackMonths;
     function pbFmt(v) { return v < 1 ? "不足 1" : v.toFixed(1); }
-    var pbTxt = !pb ? "月净节约不足以覆盖托管费（见下）" :
-      (!isFinite(pb.high) ? pbFmt(pb.low) + " 个月起（保守档月净节约为负，上限不成立）" :
+    var pbTxt = !pb ? "月净折算价值不足以覆盖托管费（见下）" :
+      (!isFinite(pb.high) ? pbFmt(pb.low) + " 个月起（保守档月净折算价值为负，上限不成立）" :
        range(pb.low, pb.high, pbFmt) + " 个月");
     var readyPct = Math.round(r.readiness.factor * 100);
 
@@ -139,22 +139,45 @@
       "｜流程文档化：" + esc(r.readiness.labels.doc) + "｜数字素养：" + esc(r.readiness.labels.lit) +
       (input.monthlyVolume > 0 ? "｜月业务量 " + input.monthlyVolume + " 件" : "") + "｜痛点：" + esc(painsTxt) + "</p>";
     if (r.tier.largePilotOnly) html += "<p class='hint err'>大型企业口径：员工规模与素质差异使复杂度与磨合成本显著升高，本评估只支持单部门试点口径，不做全公司效益承诺；培训等磨合成本仅按首批试点覆盖范围计算。</p>";
+    if (r.revenueCheck && r.revenueCheck.warn) html += "<p class='hint err'>提示：按所填年营收估算，人力成本约占营收 " + Math.round(r.revenueCheck.ratio * 100) + "%，超出 3%–85% 的合理性宽带（假设值），请核对年营收或人力成本口径；本提示不拦截评估。</p>";
 
     html += "<h3>一、经济效益估算（区间：保守 – 中性）</h3>";
-    html += "<p class='hint'>组织就绪度系数 <strong>" + readyPct + "%</strong>（流程文档化 × 数字素养 × 管理层推动力 × 数字化基础，假设值）：理论毛节约须打折到此比例才是可实现节约，两者差距即组织障碍的量化。</p>";
+    html += "<p class='hint'>组织就绪度系数 <strong>" + readyPct + "%</strong>（流程文档化 × 数字素养 × 管理层推动力，假设值；数字化基础只进入可自动化比例，不重复计入）：理论毛折算价值须打折到此比例才是可实现折算价值，两者差距即组织障碍的量化。</p>";
     html += "<div class='big'>" +
       "<div class='kpi'><div class='k'>可释放工时（可实现，人月当量/月）</div><div class='v'>" + range(r.releasedFte.low, r.releasedFte.high, function (v) { return v.toFixed(1); }) + " 人</div></div>" +
-      "<div class='kpi'><div class='k'>年节约人力成本</div><div class='v'>" + range(r.saveYear.low, r.saveYear.high, wan) + "</div></div>" +
-      "<div class='kpi'><div class='k'>理论上限年节约（毛口径，未打折）</div><div class='v'>" + range(r.saveGrossYear.low, r.saveGrossYear.high, wan) + "</div></div>" +
-      "<div class='kpi'><div class='k'>产能提升（可释放工时占比）</div><div class='v'>" + range(r.capacity.low * 100, r.capacity.high * 100, function (v) { return v.toFixed(1); }) + "%</div></div>" +
+      "<div class='kpi'><div class='k'>年释放工时折算价值</div><div class='v'>" + range(r.saveYear.low, r.saveYear.high, wan) + "</div></div>" +
+      "<div class='kpi'><div class='k'>理论上限年折算价值（毛口径，未打折）</div><div class='v'>" + range(r.saveGrossYear.low, r.saveGrossYear.high, wan) + "</div></div>" +
+      "<div class='kpi'><div class='k'>产能提升（覆盖范围内可释放工时占比）</div><div class='v'>" + range(r.capacity.low * 100, r.capacity.high * 100, function (v) { return v.toFixed(1); }) + "%</div></div>" +
       "<div class='kpi'><div class='k'>首年净效益（扣托管与磨合、含 J 曲线爬坡）</div><div class='v'>" + range(r.firstYearNet.low, r.firstYearNet.high, wan) + "</div></div>" +
       "<div class='kpi'><div class='k'>首年实施投入（诊断+试点+托管）</div><div class='v'>" + range(r.firstYearCost.low, r.firstYearCost.high, wan) + "</div></div>" +
       "<div class='kpi'><div class='k'>回本周期（一次性投入回收）</div><div class='v'>" + pbTxt + "</div></div>" +
       "<div class='kpi'><div class='k'>3 年净效益（扣实施成本）</div><div class='v'>" + range(r.net3Year.low, r.net3Year.high, wan) + "</div></div></div>";
     if (r.volumeGain) html += "<p class='hint'>按月业务量 " + input.monthlyVolume + " 件估算，同等人力下每月可多承接约 " + range(r.volumeGain.low, r.volumeGain.high, function (v) { return Math.round(v).toLocaleString("zh-CN"); }) + " 件（产能释放折算，非营收承诺）。</p>";
+    var cov = r.coverage;
+    if (cov) {
+      if (cov.mode === "单部门试点口径") html += "<p class='hint'>岗位覆盖率（单部门试点口径）：仅「" + esc(cov.pilotDeptLabel || "") + "」1 个部门计入效益与成本，覆盖 " + cov.coveredHeads + "/" + cov.totalHeads + " 人（" + Math.round(cov.headRatio * 100) + "%）；其余部门不在本次口径内。</p>";
+      else html += "<p class='hint'>岗位覆盖率：首批岗位覆盖 " + cov.coveredDeptCount + "/" + cov.deptCount + " 个部门、" + cov.coveredHeads + "/" + cov.totalHeads + " 人（" + Math.round(cov.headRatio * 100) + "%）；未覆盖部门的释放工时与成本均未计入本报告。</p>";
+    }
+    html += "<p class='hint'>变现条件：本报告的金额为释放工时折算价值（释放工时 × 人力成本）；只有当释放的工时带来真实减员或避免新增招聘时，才转化为现金节约，否则体现为产能释放（同等人力承接更多业务）。</p>";
     if (r.firstYearNet.high < 0) html += "<p class='hint err'>提示：即使中性档，首年净效益也为负——磨合与爬坡成本在第一年占主导，建议缩小试点范围或先补组织就绪度（流程文档化、培训）再扩展。</p>";
-    else if (r.netMonth.low < 0) html += "<p class='hint err'>提示：保守档下月节约低于托管月费，建议缩小首批岗位范围先行试点，再按实测基线扩展。</p>";
+    else if (r.netMonth.low < 0) html += "<p class='hint err'>提示：保守档下月折算价值低于托管月费，建议缩小首批岗位范围先行试点，再按实测基线扩展。</p>";
     if (r.net3Clamped) html += "<p class='hint'>注：保守情形下 3 年净效益原始计算为负，表中按 0 显示；这表示该规模/成本结构下不宜全量托管，应先做单岗位试点验证。</p>";
+
+    if (r.sensitivity) {
+      html += "<h3>关键假设敏感性（单因素摆动对中性档月净折算价值的影响，前三）</h3><table><tr><th>假设</th><th>摆动</th><th>中性档月净折算价值区间</th><th>最大影响</th></tr>";
+      r.sensitivity.forEach(function (s) {
+        html += "<tr><td>" + esc(s.label) + "</td><td class='num'>" + esc(s.swing) + "</td><td class='num'>" + range(s.netLow, s.netHigh, wan) + "</td><td class='num'>" + wan(s.impact) + "</td></tr>";
+      });
+      html += "</table><p class='hint'>敏感性为单因素摆动：其余输入不变，逐个假设上下摆动 30% 后重算。影响越大，结论越依赖该假设，正式诊断应优先以企业真实基线替换该假设。</p>";
+    }
+    if (r.breakeven) {
+      html += "<h3>盈亏平衡点（中性档，线性近似）</h3>";
+      if (r.breakeven.hostedUnit !== null && r.breakeven.hostedUnit !== undefined) html += "<p class='hint'>托管单价平衡点：<strong>" + yuan(r.breakeven.hostedUnit) + "/岗/月</strong>（高于此价，中性档月净折算价值转负；当前参数低档 " + yuan(r.params.hostedLow) + "/岗/月）。</p>";
+      else html += "<p class='hint'>托管单价平衡点：无解——中性档释放工时折算价值为 0，任何正单价都无法回本。</p>";
+      if (r.breakeven.realization === null || r.breakeven.realization === undefined) html += "<p class='hint'>实现率平衡点：无解——中性档释放工时折算价值为 0。</p>";
+      else if (r.breakeven.realizationExceeds) html += "<p class='hint'>实现率平衡点：超过 100%（无解）——即使实现率拉满，中性档月净折算价值仍为负，需先降成本或扩大试点范围。</p>";
+      else html += "<p class='hint'>实现率平衡点：<strong>" + Math.round(r.breakeven.realization * 100) + "%</strong>（低于此实现率，中性档月净折算价值转负；当前中性情景实现率 " + Math.round(r.params.realizeNeutral * 100) + "%）。</p>";
+    }
 
     html += "<h3>磨合成本（v2 新增，首年单列）</h3><table><tr><th>项目</th><th>口径</th><th>金额</th></tr>" +
       "<tr><td>全员培训工时成本</td><td>覆盖 " + r.friction.heads + " 人 × 人均 " + r.friction.trainHours + " 小时 × 时薪 " + yuan(r.friction.hourlyCost) + "</td><td class='num'>" + wan(r.friction.training) + "</td></tr>" +
@@ -168,15 +191,16 @@
       html += "</ul></div>";
     }
 
-    html += "<h3>分部门明细（可实现口径）</h3><table><tr><th>部门</th><th>人数</th><th>重复劳动占比</th><th>可自动化比例</th><th>可释放工时（人/月）</th><th>年节约（万元）</th></tr>";
+    html += "<h3>分部门明细（覆盖范围口径）</h3><table><tr><th>部门</th><th>人数</th><th>重复劳动占比</th><th>可自动化比例</th><th>可释放工时（人/月）</th><th>年折算价值（万元）</th><th>计入</th></tr>";
     r.depts.forEach(function (d) {
       if (d.headcount <= 0) return;
       html += "<tr><td>" + esc(d.label) + "</td><td class='num'>" + d.headcount + "</td><td class='num'>" +
         Math.round(d.repeatShare * 100) + "%</td><td class='num'>" + Math.round(d.autoBase * 100) + "%</td><td class='num'>" +
         range(d.fteConservative, d.fteNeutral, function (v) { return v.toFixed(1); }) + "</td><td class='num'>" +
-        range(d.saveMonthConservative * 12, d.saveMonthNeutral * 12, function (v) { return (v / 10000).toFixed(1); }) + "</td></tr>";
+        (d.covered ? range(d.saveMonthConservative * 12, d.saveMonthNeutral * 12, function (v) { return (v / 10000).toFixed(1); }) : "—") + "</td><td>" +
+        (d.covered ? "计入" : "未计入（二期）") + "</td></tr>";
     });
-    html += "</table>";
+    html += "</table><p class='hint'>未计入部门的释放工时为潜在口径，不进入本报告任何汇总；其岗位在首批达标后列入二期，届时按同一口径重算。</p>";
 
     html += "<h3>二、AI 组织实施结构方案</h3>";
     html += "<p>企业分级：<strong>" + esc(r.tier.detail) + "</strong>（" + esc(r.org.tierNote) + "）拟设 AI 数字员工岗位 " + r.postCount + " 个。首个试点岗位建议：<strong>" + esc(r.org.pilotPost) + "</strong>（按可释放工时最高测算）。</p>";
@@ -213,7 +237,7 @@
     html += "</table><p class='hint'>本机调节参数：保守情景实现率 " + Math.round(r.params.realizeConservative * 100) + "%、中性情景实现率 " + Math.round(r.params.realizeNeutral * 100) + "%、重复占比缩放 ×" + r.params.repeatScale.toFixed(2) + "、托管单价 " + yuan(r.params.hostedLow) + "–" + yuan(r.params.hostedHigh) + "/岗位/月。标「假设值」的系数可在表单中调节，正式诊断将以企业真实基线数据替换。</p>";
 
     html += "<h3>下一步（服务入口）</h3><p>深度诊断：2 周流程盘点与基线测量，输出岗位 AI 化排序与试点方案。单岗位试点包：45 天单岗位托管试点，含岗位卡、治理规则与周效果账本，期末以实测数据复盘是否扩展。（本页为评估工具，正式合作请与服务团队联系签约。）</p>";
-    html += "<p class='disclaimer'>免责声明：本报告基于公开基准与上表假设系数估算，不是收益承诺；行业与部门系数中标注「假设值」者未经逐户核实。正式诊断需以企业真实数据（处理量、响应时长、差错率、人力工时）做基线测量后重新测算。回本周期仅回收一次性投入（诊断+试点+培训+流程改造），托管月费已在月净节约中扣除；首年净效益已扣磨合成本并按 J 曲线爬坡折算，可能为负、照实呈现。</p>";
+    html += "<p class='disclaimer'>免责声明：本报告基于公开基准与上表假设系数估算，不是收益承诺；行业与部门系数中标注「假设值」者未经逐户核实。正式诊断需以企业真实数据（处理量、响应时长、差错率、人力工时）做基线测量后重新测算。回本周期仅回收一次性投入（诊断+试点+培训+流程改造），托管月费已在月净折算价值中扣除；首年净效益已扣磨合成本并按 J 曲线爬坡折算，可能为负、照实呈现。</p>";
 
     showReport(html);
   }
@@ -311,7 +335,7 @@
       "<li><strong>第 1–2 周 · 单点试用</strong>：只上「" + esc(r.squad[0].name) + "」一个智能体，记录实际省时与产出质量，定下自己的检查习惯。</li>" +
       "<li><strong>第 3–6 周 · 扩到三件套</strong>：按省时排序逐个加入小队成员，每加一个都留一周磨合，模板与提示词沉淀成个人档案。</li>" +
       "<li><strong>第 7–12 周 · 成习惯与复盘</strong>：每周复盘一次省时账本与适应期感受，淘汰不好用的智能体，学习投入（" + r.learning.hours + " 小时）在此阶段摊完。</li></ul>";
-    html += "<h3>四、假设与声明</h3><p class='hint'>任务可辅助比例、落地系数与订阅单价均为假设值/定价假设（见企业版报告的假设清单口径）；省时估算不等于增收承诺，时间价值取决于变现率这一主观参数。</p>";
+    html += "<h3>四、假设与声明</h3><p class='hint'>任务可辅助比例、落地系数与订阅单价均为假设值/定价假设（见企业版报告的假设清单口径）；省时估算不等于增收承诺，时间价值取决于变现率这一主观参数。时间价值与企业版同口径，均为释放工时折算价值：只有当省下的时间真实转化为收入时才是现金收益，否则为产能与生活空间。</p>";
     html += "<p class='disclaimer'>诚实声明：本报告与企业版同口径——所有数字由确定性公式按上表假设系数计算，是估算而非承诺；学习投入按小时单列、未折现进月净效益，回本周数按中位释放与变现率估算。建议以 2 周实测记录校准自己的可辅助比例后再做订阅决定。</p>";
 
     showReport(html);

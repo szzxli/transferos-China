@@ -1,8 +1,15 @@
-/* 传统企业 AI 数字员工评估器 · 确定性计算引擎 v2（纯函数，无 DOM 依赖，可单测）
+/* 传统企业 AI 数字员工评估器 · 确定性计算引擎 v3（纯函数，无 DOM 依赖，可单测）
  * 纪律：所有效益数字由本文件公式计算，禁止写死效益结论。
  * 系数来源标注：source ∈ {survey=商业调查报告, benchmark=公开基准, assumption=假设值}
  * v2 变更：企业分级（创始人锚点）+ 组织就绪度（毛节约→可实现节约）+ 磨合成本（含 J 曲线）
  *          + 会议磨合专项提示 + 个人版评估引擎 evaluatePersonal。
+ * v3 变更（外部审查修复）：① 口径统一——效益只统计已配置岗位覆盖部门，未覆盖部门的
+ *          节约与成本同时排除；大型只按试点部门计算；输出岗位覆盖率。
+ *          ② 数字化基础去双计——只进入可自动化比例，就绪度只由文档/素养/推动力构成。
+ *          ③ 痛点取消数值加成，改为定性标记（painTags），不调整任何系数。
+ *          ④ 新增关键假设敏感性（前三）与盈亏平衡点（托管单价/实现率，线性近似）。
+ *          ⑤ 年营收合理性校验（人力成本占营收宽带，仅提示不拦截）；
+ *          首年托管费与首年节约统一 12 个月口径（J 曲线爬坡一致应用）。
  */
 (function (global) {
   "use strict";
@@ -36,16 +43,7 @@
     system:{ label: "有业务系统",     auto: 0.65, source: "assumption", confidence: "低" }
   };
 
-  // 痛点对相关部门可自动化比例的加成（每命中一项 +0.03，上限钳制）
-  var PAIN_BOOST = {
-    night:  { dept: "service", boost: 0.03, source: "assumption", confidence: "低" },
-    slow:   { dept: "service", boost: 0.03, source: "assumption", confidence: "低" },
-    cac:    { dept: "content", boost: 0.03, source: "assumption", confidence: "低" },
-    unstable:{ dept: "ops",    boost: 0.03, source: "assumption", confidence: "低" },
-    scattered:{ dept: "finance", boost: 0.03, source: "assumption", confidence: "低" },
-    labor:  { dept: null, boost: 0.0, source: "assumption", confidence: "低" } // 人力成本高：影响优先级，不改系数
-  };
-
+  // 痛点（v3）：只作定性标记，进入报告提示与磨合说明，不再对任何系数做数值加成
   var PAIN_LABELS = {
     labor: "人力成本高", slow: "响应慢", cac: "获客贵",
     unstable: "交付不稳定", scattered: "数据散乱", night: "夜间无人值守"
@@ -76,13 +74,15 @@
   function isMidOrAbove(key) { return key === "midA" || key === "midB" || key === "large"; }
 
   // ---------- v2 组织就绪度（全部假设值，UI 假设清单可见） ----------
-  // 实现率系数 = 流程文档化 × 员工数字素养 × 管理层推动力 × 数字化基础，钳制 [0.40, 1.00]
+  // 实现率系数 = 流程文档化 × 员工数字素养 × 管理层推动力，钳制 [0.40, 1.00]
+  // v3：数字化基础只进入可自动化比例（DIGITAL_AUTO），不在就绪度中重复计入
   var READINESS = {
     doc:   { none: { label: "几乎没有", f: 0.80 }, partial: { label: "部分有", f: 0.92 }, good: { label: "较完善", f: 1.00 } },
     lit:   { low:  { label: "偏低", f: 0.80 }, mid: { label: "中等", f: 0.92 }, high: { label: "偏高", f: 1.00 } },
-    drive: { watch:{ label: "观望", f: 0.75 }, support: { label: "支持", f: 0.90 }, strong: { label: "强力推动", f: 1.00 } },
-    digi:  { paper:{ f: 0.85 }, basic: { f: 0.95 }, system: { f: 1.00 } }
+    drive: { watch:{ label: "观望", f: 0.75 }, support: { label: "支持", f: 0.90 }, strong: { label: "强力推动", f: 1.00 } }
   };
+  // 年营收合理性校验：人力成本（年）占年营收的宽带（假设值，仅提示不拦截）
+  var REVENUE_BAND = { low: 0.03, high: 0.85, source: "assumption", confidence: "低" };
   // 会议密度 → 首年沟通成本增量率倍增（假设值）
   var MEETING_MULT = { low: { label: "低", mult: 0.5 }, mid: { label: "中", mult: 1.0 }, high: { label: "高", mult: 1.8 } };
   // J 曲线：上线后前 3 个月实现率爬坡（假设值），其后 9 个月按稳态 100%
@@ -101,15 +101,16 @@
   function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
   function num(v, d) { var n = Number(v); return isFinite(n) ? n : (d || 0); }
 
-  function readinessOf(input) {
+  function readinessOf(input, scale) {
     var doc = READINESS.doc[input.processDoc] || READINESS.doc.partial;
     var lit = READINESS.lit[input.digitalLiteracy] || READINESS.lit.mid;
     var drive = READINESS.drive[input.mgmtDrive] || READINESS.drive.support;
-    var digi = READINESS.digi[input.digital] || READINESS.digi.basic;
-    var raw = doc.f * lit.f * drive.f * digi.f;
+    var raw = doc.f * lit.f * drive.f;
+    var factor = clamp(raw, 0.40, 1.00);
+    if (scale && scale !== 1) factor = clamp(factor * scale, 0.40, 1.00); // 仅敏感性分析内部摆动用
     return {
-      factor: clamp(raw, 0.40, 1.00),
-      parts: { doc: doc.f, lit: lit.f, drive: drive.f, digi: digi.f },
+      factor: factor,
+      parts: { doc: doc.f, lit: lit.f, drive: drive.f },
       labels: { doc: doc.label, lit: lit.label, drive: drive.label }
     };
   }
@@ -137,13 +138,16 @@
    * 输出 saveMonth/saveYear 为打折后「可实现节约」；毛口径见 saveGrossMonth/saveGrossYear。
    */
   function evaluate(input, params) {
-    var p = Object.assign({}, DEFAULT_PARAMS, params || {});
+    var rawParams = params || {};
+    var skipSens = !!rawParams.__noSens;
+    var p = Object.assign({}, DEFAULT_PARAMS, rawParams);
+    delete p.__noSens;
     var ind = INDUSTRY_REPEAT[input.industry] || INDUSTRY_REPEAT.other;
     var totalStaff = Math.max(0, Math.round(num(input.totalStaff, 0)));
     var monthlyCost = Math.max(0, num(input.monthlyCost, 0));
     var digi = DIGITAL_AUTO[input.digital] || DIGITAL_AUTO.basic;
     var tierKey = tierOf(totalStaff), tier = TIERS[tierKey];
-    var ready = readinessOf(input);
+    var ready = readinessOf(input, num(p.readinessScale, 1));
     var meeting = MEETING_MULT[input.meetingDensity] || MEETING_MULT.mid;
 
     // 部门人数清洗（负数归零）
@@ -153,23 +157,19 @@
       deptSum += depts[k];
     });
 
-    // 每部门计算：毛工时（情景实现率）→ ×就绪度 = 可实现工时
-    var deptResults = [], gC = 0, gN = 0, aC = 0, aN = 0;
+    // 每部门计算（潜在口径）：毛工时（情景实现率）→ ×就绪度 = 可实现工时
+    // v3：痛点不再加成，autoBase 只取数字化基数
+    var deptResults = [];
     Object.keys(DEPT_FACTOR).forEach(function (k) {
       var head = depts[k];
       var repeatShare = clamp(ind.repeat * DEPT_FACTOR[k].factor * p.repeatScale, 0, 0.9);
-      var boost = 0;
-      (input.pains || []).forEach(function (pk) {
-        if (PAIN_BOOST[pk] && PAIN_BOOST[pk].dept === k) boost += PAIN_BOOST[pk].boost;
-      });
-      var autoBase = clamp(digi.auto + boost, 0, 0.9);
+      var autoBase = clamp(digi.auto, 0, 0.9);
       var fteGrossC = clamp(head * repeatShare * autoBase * p.realizeConservative, 0, head * 0.9);
       var fteGrossN = clamp(head * repeatShare * autoBase * p.realizeNeutral, 0, head * 0.9);
       var fteC = fteGrossC * ready.factor, fteN = fteGrossN * ready.factor;
-      gC += fteGrossC; gN += fteGrossN; aC += fteC; aN += fteN;
       deptResults.push({
         key: k, label: DEPT_FACTOR[k].label, headcount: head,
-        repeatShare: repeatShare, autoBase: autoBase,
+        repeatShare: repeatShare, autoBase: autoBase, covered: false,
         fteGrossConservative: fteGrossC, fteGrossNeutral: fteGrossN,
         fteConservative: fteC, fteNeutral: fteN,
         saveMonthConservative: fteC * monthlyCost,
@@ -177,45 +177,68 @@
       });
     });
 
+    // ---------- 组织方案 ----------
+    var org = buildOrg(input, depts, totalStaff, deptResults, tierKey);
+    var postCount = org.posts.reduce(function (s, x) { return s + x.count; }, 0);
+
+    // ---------- v3 口径统一：只统计已配置岗位覆盖部门 ----------
+    // 被编制上限推迟的岗位，其部门的节约与成本同时排除（成本本就只按已配置岗位计）
+    var coveredKeys = {};
+    org.posts.forEach(function (x) { if (x.deptKey) coveredKeys[x.deptKey] = true; });
+    var gC = 0, gN = 0, aC = 0, aN = 0, coveredHeads = 0, coveredDeptLabels = [];
+    deptResults.forEach(function (d) {
+      d.covered = !!coveredKeys[d.key];
+      if (!d.covered) return;
+      coveredHeads += d.headcount;
+      coveredDeptLabels.push(d.label);
+      gC += d.fteGrossConservative; gN += d.fteGrossNeutral;
+      aC += d.fteConservative; aN += d.fteNeutral;
+    });
+    var presentDepts = deptResults.filter(function (d) { return d.headcount > 0; }).length;
+    var coverage = {
+      coveredDeptKeys: Object.keys(coveredKeys),
+      coveredDeptLabels: coveredDeptLabels,
+      coveredDeptCount: coveredDeptLabels.length,
+      deptCount: presentDepts,
+      deptRatio: presentDepts > 0 ? coveredDeptLabels.length / presentDepts : 0,
+      coveredHeads: coveredHeads,
+      totalHeads: deptSum,
+      headRatio: deptSum > 0 ? coveredHeads / deptSum : 0,
+      pilotDeptLabel: tierKey === "large" ? (coveredDeptLabels[0] || null) : null,
+      mode: tierKey === "large" ? "单部门试点口径" : "已配置岗位覆盖口径"
+    };
+
     var saveGrossMonth = { low: gC * monthlyCost, high: gN * monthlyCost };
     var saveGrossYear = { low: saveGrossMonth.low * 12, high: saveGrossMonth.high * 12 };
     var saveMonth = { low: aC * monthlyCost, high: aN * monthlyCost };
     var saveYear = { low: saveMonth.low * 12, high: saveMonth.high * 12 };
 
-    // 产能提升率 = 可实现释放工时占总工时比例（以部门人数合计为分母）
-    var baseStaff = deptSum > 0 ? deptSum : totalStaff;
+    // 产能提升率 = 覆盖范围内可实现释放工时占覆盖范围工时比例
     var capacity = {
-      low: baseStaff > 0 ? aC / baseStaff : 0,
-      high: baseStaff > 0 ? aN / baseStaff : 0
+      low: coveredHeads > 0 ? aC / coveredHeads : 0,
+      high: coveredHeads > 0 ? aN / coveredHeads : 0
     };
     var volumeGain = null;
     var vol = num(input.monthlyVolume, 0);
     if (vol > 0) volumeGain = { low: vol * capacity.low, high: vol * capacity.high };
-
-    // ---------- 组织方案 ----------
-    var org = buildOrg(input, depts, totalStaff, deptResults, tierKey);
-    var postCount = org.posts.reduce(function (s, x) { return s + x.count; }, 0);
 
     // ---------- 托管成本 ----------
     var hostedMonth = {
       low: postCount * Math.max(0, num(p.hostedLow, PRICING.hostedPerPostMonthly.low)),
       high: postCount * Math.max(0, num(p.hostedHigh, PRICING.hostedPerPostMonthly.high))
     };
-    var PILOT_MONTHS = 1.5, RUN_MONTHS_Y1 = 12 - PILOT_MONTHS; // 首年：45 天试点 + 10.5 个月正式托管
+    // v3 时间线对齐：首年托管费与首年节约统一 12 个月口径（节约侧按 J 曲线爬坡折算）
     var firstYearCost = {
-      low: PRICING.diagnosis.low + PRICING.pilot.low + hostedMonth.low * RUN_MONTHS_Y1,
-      high: PRICING.diagnosis.high + PRICING.pilot.high + hostedMonth.high * RUN_MONTHS_Y1
+      low: PRICING.diagnosis.low + PRICING.pilot.low + hostedMonth.low * 12,
+      high: PRICING.diagnosis.high + PRICING.pilot.high + hostedMonth.high * 12
     };
 
     // ---------- v2 磨合成本（独立成块） ----------
     var hourlyCost = monthlyCost / HOURS_PER_MONTH;
-    // 培训覆盖人数：大型只做单部门试点 → 仅首批岗位对应部门的人数；其余分级为全员
+    // 培训覆盖人数：大型只做单部门试点 → 仅试点部门覆盖人数；其余分级为全员
     var frictionHeads = totalStaff;
     if (tierKey === "large") {
-      var covered = 0, coveredLabels = {};
-      org.posts.forEach(function (x) { coveredLabels[x.dept] = true; });
-      deptResults.forEach(function (d) { if (coveredLabels[d.label]) covered += d.headcount; });
-      frictionHeads = covered > 0 ? covered : (deptSum || totalStaff);
+      frictionHeads = coveredHeads > 0 ? coveredHeads : (deptSum || totalStaff);
     }
     var trainingCost = frictionHeads * tier.trainHours * hourlyCost;
     var processCost = { low: tier.processCost[0], high: tier.processCost[1] };
@@ -256,6 +279,56 @@
     var net3Clamped = net3RawLow < 0;
     var net3Year = { low: Math.max(0, net3RawLow), high: Math.max(0, net3RawHigh) };
 
+    // ---------- v3 年营收合理性校验（仅提示，不拦截） ----------
+    var revenueCheck = null;
+    var revenueWan = Math.max(0, num(input.revenueWan, 0));
+    if (revenueWan > 0 && totalStaff > 0 && monthlyCost > 0) {
+      var laborRatio = (monthlyCost * totalStaff * 12) / (revenueWan * 10000);
+      revenueCheck = {
+        ratio: laborRatio, band: [REVENUE_BAND.low, REVENUE_BAND.high],
+        warn: laborRatio < REVENUE_BAND.low || laborRatio > REVENUE_BAND.high
+      };
+    }
+
+    // ---------- v3 盈亏平衡点（中性档，线性近似） ----------
+    // 月净折算价值（中性）= 中性月折算价值 − 岗位数 × 托管单价 → 单价平衡点 = 中性月折算价值 / 岗位数
+    // 实现率平衡点按「折算价值与实现率成正比」线性近似（工时钳制段除外），>100% 视为无解
+    var breakeven = { hostedUnit: null, realization: null, realizationExceeds: false };
+    if (postCount > 0 && saveMonth.high > 0) {
+      breakeven.hostedUnit = saveMonth.high / postCount;
+      if (p.realizeNeutral > 0) {
+        breakeven.realization = hostedMonth.low / (saveMonth.high / p.realizeNeutral);
+        breakeven.realizationExceeds = breakeven.realization > 1;
+      }
+    }
+
+    // ---------- v3 关键假设敏感性（单因素 ±30% 摆动，按对中性档月净折算价值的影响排序） ----------
+    var sensitivity = null;
+    if (!skipSens) {
+      var baseNet = netMonth.high;
+      var cand = [
+        { key: "repeatScale", label: "重复劳动占比（全局缩放）", lo: { repeatScale: p.repeatScale * 0.7 }, hi: { repeatScale: p.repeatScale * 1.3 } },
+        { key: "realizeNeutral", label: "中性情景实现率", lo: { realizeNeutral: p.realizeNeutral * 0.7 }, hi: { realizeNeutral: Math.min(1, p.realizeNeutral * 1.3) } },
+        { key: "hostedPrice", label: "托管单价", lo: { hostedLow: p.hostedLow * 0.7, hostedHigh: p.hostedHigh * 0.7 }, hi: { hostedLow: p.hostedLow * 1.3, hostedHigh: p.hostedHigh * 1.3 } },
+        { key: "readinessScale", label: "组织就绪度系数", lo: { readinessScale: num(p.readinessScale, 1) * 0.7 }, hi: { readinessScale: num(p.readinessScale, 1) * 1.3 } }
+      ];
+      var scored = cand.map(function (c) {
+        var loR = evaluate(input, Object.assign({}, p, c.lo, { __noSens: true }));
+        var hiR = evaluate(input, Object.assign({}, p, c.hi, { __noSens: true }));
+        var loNet = loR.netMonth.high, hiNet = hiR.netMonth.high;
+        return {
+          key: c.key, label: c.label, swing: "±30%",
+          netLow: Math.min(loNet, hiNet), netHigh: Math.max(loNet, hiNet),
+          impact: Math.max(Math.abs(loNet - baseNet), Math.abs(hiNet - baseNet))
+        };
+      });
+      scored.sort(function (a, b) { return b.impact - a.impact; });
+      sensitivity = scored.slice(0, 3);
+    }
+
+    // 痛点定性标记（v3：只呈现，不改系数）
+    var painTags = (input.pains || []).filter(function (k) { return PAIN_LABELS[k]; }).map(function (k) { return PAIN_LABELS[k]; });
+
     // ---------- 会议磨合专项提示（规则生成，不含数字结论） ----------
     var advisory = null;
     if ((isMidOrAbove(tierKey) && input.meetingDensity !== "low") || input.meetingDensity === "high") {
@@ -288,6 +361,8 @@
       netMonth: netMonth, oneOff: oneOff, paybackMonths: paybackMonths,
       net3Year: net3Year, net3Clamped: net3Clamped,
       meetingAdvisory: advisory,
+      coverage: coverage, revenueCheck: revenueCheck,
+      breakeven: breakeven, sensitivity: sensitivity, painTags: painTags,
       params: p
     };
   }
@@ -302,6 +377,7 @@
       if (head >= t.minHead) {
         var override = (POST_NAME_OVERRIDE[input.industry] || {})[k];
         candidates.push({
+          deptKey: k,
           dept: DEPT_FACTOR[k].label,
           name: override || t.name,
           count: clamp(Math.round(head / t.perHeads), 1, 5),
@@ -310,13 +386,19 @@
       }
     });
     candidates.sort(function (a, b) { return (fteByDept[b.dept] || 0) - (fteByDept[a.dept] || 0); });
+    // v3：大型只按试点部门口径——候选只保留可释放工时最高部门（试点部门），其余全部列二期
+    var bestKey = null, bestFte = -1;
+    deptResults.forEach(function (d) { if (d.fteNeutral > bestFte) { bestFte = d.fteNeutral; bestKey = d.key; } });
     var posts = [], deferred = [], used = 0;
     candidates.forEach(function (c) {
+      if (tierKey === "large" && c.deptKey !== bestKey) { deferred.push(c.name); return; }
       if (used + c.count <= postCap) { posts.push(c); used += c.count; }
       else deferred.push(c.name);
     });
     if (posts.length === 0) {
-      posts.push({ dept: "通用", name: "AI 行政协同员", count: 1, duty: POST_TEMPLATES.misc.duty, reviewer: "业务负责人（真人）" });
+      // 兜底岗位服务于可释放工时最高部门（试点目标部门），覆盖口径随之计入该部门
+      var fb = deptResults.filter(function (d) { return d.key === bestKey; })[0];
+      posts.push({ deptKey: bestKey, dept: fb && fb.headcount > 0 ? fb.label : "通用", name: "AI 行政协同员", count: 1, duty: POST_TEMPLATES.misc.duty, reviewer: "业务负责人（真人）" });
     }
     var best = null;
     deptResults.forEach(function (d) { if (!best || d.fteNeutral > best.fteNeutral) best = d; });
@@ -387,7 +469,9 @@
     rows.push({ item: "就绪度因子 · 流程文档化", value: "几乎没有 ×0.80 / 部分有 ×0.92 / 较完善 ×1.00", source: "assumption", confidence: "低" });
     rows.push({ item: "就绪度因子 · 员工数字素养", value: "偏低 ×0.80 / 中等 ×0.92 / 偏高 ×1.00", source: "assumption", confidence: "低" });
     rows.push({ item: "就绪度因子 · 管理层推动力", value: "观望 ×0.75 / 支持 ×0.90 / 强力推动 ×1.00", source: "assumption", confidence: "低" });
-    rows.push({ item: "就绪度因子 · 数字化基础", value: "纸质 ×0.85 / 基础 ×0.95 / 有系统 ×1.00", source: "assumption", confidence: "低" });
+    rows.push({ item: "效益统计口径（v3）", value: "只统计已配置岗位覆盖部门；大型只算试点部门；首年托管费与折算价值统一 12 个月", source: "assumption", confidence: "口径规则" });
+    rows.push({ item: "痛点标记（v3）", value: "定性标记，进入报告提示，不调整任何系数", source: "assumption", confidence: "口径规则" });
+    rows.push({ item: "人力成本占营收合理性宽带", value: "3%–85%（超出仅提示，不拦截）", source: "assumption", confidence: "低" });
     rows.push({ item: "磨合 · 人均培训工时", value: "微型 4h / 小型 6h / 中型 10–12h / 大型 16h", source: "assumption", confidence: "低" });
     rows.push({ item: "磨合 · 流程改造与岗位卡建设", value: "微型 0.5–1.5 万 / 小型 1.5–4 万 / 中型 4–20 万 / 大型按单部门试点 8–20 万", source: "survey", confidence: "定价假设" });
     rows.push({ item: "磨合 · 首年沟通成本增量率", value: "微型 0.3% / 小型 0.5% / 中型 1.0–1.5% / 大型 2.0%（×会议密度 0.5/1/1.8）", source: "assumption", confidence: "低" });
@@ -511,7 +595,7 @@
     evaluate: evaluate, evaluatePersonal: evaluatePersonal, coefficientTable: coefficientTable,
     INDUSTRY_REPEAT: INDUSTRY_REPEAT, DEPT_FACTOR: DEPT_FACTOR,
     DIGITAL_AUTO: DIGITAL_AUTO, PAIN_LABELS: PAIN_LABELS, PRICING: PRICING, DEFAULT_PARAMS: DEFAULT_PARAMS,
-    TIERS: TIERS, tierOf: tierOf, READINESS: READINESS, MEETING_MULT: MEETING_MULT,
+    TIERS: TIERS, tierOf: tierOf, READINESS: READINESS, REVENUE_BAND: REVENUE_BAND, MEETING_MULT: MEETING_MULT,
     J_RAMP: J_RAMP, J_YEAR_FACTOR: J_YEAR_FACTOR,
     PERSON_TASKS: PERSON_TASKS, PERSON_PAINS: PERSON_PAINS, PERSON_OCCUPATIONS: PERSON_OCCUPATIONS
   };
