@@ -174,6 +174,8 @@ table.nums tr.total td { font-size: 16px; color: var(--brand1); border-bottom: n
 
 .disclaimer { font-size: 12px; color: var(--muted); text-align: center; margin-top: 16px; line-height: 1.6; }
 .disclaimer a { color: var(--brand1); }
+.foot-contact { font-size: 13px; color: var(--muted); text-align: center; margin-top: 14px; line-height: 1.6; }
+.foot-contact a { color: var(--brand1); }
 .footnote { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.6; }
 
 /* ---- plan.html ---- */
