@@ -25,6 +25,17 @@ const I18N = {
     "gate.kph": "如 pk_…",
     "gate.btn": "进入家长端",
     "gate.errBoth": "请把专属名和家长密钥都填好",
+    "install.title": "把家长端放到手机桌面",
+    "install.desc": "点桌面图标就能进来看孩子的最新进展，不用每次找链接。",
+    "install.ios1": "点浏览器底部的「分享」按钮",
+    "install.ios2": "在菜单里选「添加到主屏幕」",
+    "install.ios3": "点右上角「添加」，桌面上就会出现家长端图标",
+    "install.and1": "点浏览器右上角的菜单（三个点）",
+    "install.and2": "选「安装应用」或「添加到主屏幕」",
+    "install.and3": "确认后，桌面上就会出现家长端图标",
+    "install.inapp1": "在微信等内置浏览器里没法添加到桌面。",
+    "install.inapp2": "请先点右上角「···」，选「在浏览器中打开」，再按提示添加到主屏幕。",
+    "install.btn": "一键安装到桌面",
     "state.loading": "正在加载…",
     "state.retry": "重试",
     "state.notfound.title": "链接不对或已失效",
@@ -89,6 +100,17 @@ const I18N = {
     "gate.kph": "e.g. pk_…",
     "gate.btn": "Open Parent Updates",
     "gate.errBoth": "Please enter both your ID and parent key",
+    "install.title": "Put the parent view on your home screen",
+    "install.desc": "Tap the desktop icon to see your child's latest progress — no need to find the link each time.",
+    "install.ios1": "Tap the Share button at the bottom of the browser",
+    "install.ios2": "Choose “Add to Home Screen” in the menu",
+    "install.ios3": "Tap “Add” in the top right — the parent view icon will appear on the home screen",
+    "install.and1": "Tap the browser menu (three dots) in the top right",
+    "install.and2": "Choose “Install app” or “Add to Home screen”",
+    "install.and3": "Confirm — the parent view icon will appear on the home screen",
+    "install.inapp1": "You can't add to the home screen from an in-app browser like WeChat.",
+    "install.inapp2": "Tap “···” in the top right and choose “Open in browser”, then add it to the home screen.",
+    "install.btn": "Install to home screen",
     "state.loading": "Loading…",
     "state.retry": "Retry",
     "state.notfound.title": "This link doesn't work or has expired",
@@ -472,6 +494,58 @@ $("forget").addEventListener("click", (ev) => {
   try { history.replaceState(null, "", location.pathname); } catch (e) { /* 忽略 */ }
   showGate();
 });
+/* ================= v13.2：添加到主屏幕引导（与学生端同一机制，家长口径文案） =================
+ * 分流：已 standalone 打开 → 永不显示；微信等内置浏览器 → 先用系统浏览器打开；
+ * iOS → 分享菜单三步；Android → 有 beforeinstallprompt 用一键安装按钮，否则菜单三步；
+ * 桌面等其他环境 → 不显示。关闭后 localStorage 记住（oop_ 前缀，与学生端独立）。 */
+const LS_INSTALL_DISMISSED = "oop_install_dismissed";
+function installEnv() {
+  const ua = navigator.userAgent || "";
+  const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  if (standalone) return "standalone";
+  if (/MicroMessenger|QQ\/|Weibo|DingTalk|AlipayClient/i.test(ua)) return "inapp";
+  const ios = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (ios) return "ios";
+  if (/Android/i.test(ua)) return window.__bipEvent ? "android-bip" : "android-menu";
+  return "other";
+}
+function refreshInstallCard() {
+  const card = $("install-card");
+  if (!card) return;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(LS_INSTALL_DISMISSED) === "1"; } catch (e) { /* 存储不可用时照常显示 */ }
+  const env = installEnv();
+  if (dismissed || env === "standalone" || env === "other") { card.hidden = true; return; }
+  card.hidden = false;
+  $("install-steps-ios").hidden = env !== "ios";
+  $("install-steps-inapp").hidden = env !== "inapp";
+  $("install-steps-android").hidden = !(env === "android-menu");
+  $("install-btn").hidden = env !== "android-bip";
+}
+$("install-close").addEventListener("click", () => {
+  try { localStorage.setItem(LS_INSTALL_DISMISSED, "1"); } catch (e) { /* 忽略 */ }
+  $("install-card").hidden = true;
+});
+$("install-btn").addEventListener("click", async () => {
+  const ev = window.__bipEvent;
+  if (!ev) { refreshInstallCard(); return; }
+  try {
+    ev.prompt();
+    const choice = await ev.userChoice;
+    if (choice && choice.outcome === "accepted") {
+      try { localStorage.setItem(LS_INSTALL_DISMISSED, "1"); } catch (e) { /* 忽略 */ }
+      $("install-card").hidden = true;
+    }
+  } catch (e) { /* 用户取消或事件失效时保留卡片 */ }
+  window.__bipEvent = null;
+  refreshInstallCard();
+});
+window.addEventListener("beforeinstallprompt", (e) => { window.__bipEvent = e; refreshInstallCard(); });
+window.addEventListener("appinstalled", () => {
+  try { localStorage.setItem(LS_INSTALL_DISMISSED, "1"); } catch (e) { /* 忽略 */ }
+  const c = $("install-card"); if (c) c.hidden = true;
+});
+refreshInstallCard();
 applyI18n();
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", load);
 else load();

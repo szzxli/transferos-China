@@ -5,9 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家长更新 · TransferOS</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="家长更新">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#16453a">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="manifest-parent.json">
+<script>window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();window.__bipEvent=e;});</script>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="style.css">
@@ -52,6 +55,32 @@
         </div>
         <p class="exclusive" data-i18n="hero.exclusive">家长专属 · 进展更新</p>
       </section>
+      <!-- v13.2：添加到主屏幕引导（横幅，非内容卡；环境分流与关闭记忆由 parent.js 控制） -->
+      <div class="install-card" id="install-card" hidden>
+        <button type="button" class="install-close" id="install-close" aria-label="关闭 / Close">×</button>
+        <div class="install-head">
+          <img class="install-icon" src="icon.svg" alt="" width="44" height="44">
+          <div>
+            <p class="install-title" data-i18n="install.title">把家长端放到手机桌面</p>
+            <p class="install-desc mut" data-i18n="install.desc">点桌面图标就能进来看孩子的最新进展，不用每次找链接。</p>
+          </div>
+        </div>
+        <ol class="install-steps" id="install-steps-ios" hidden>
+          <li><svg class="ishare" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 3l3.2 3.2-1.4 1.4L12.7 6.5v7h-1.4v-7L10.2 7.6 8.8 6.2zM6 10h4v1.6H7.6v8.8h8.8V11.6H14V10h4v12H6z" fill="#16453a"/></svg><span data-i18n="install.ios1">点浏览器底部的「分享」按钮</span></li>
+          <li data-i18n="install.ios2">在菜单里选「添加到主屏幕」</li>
+          <li data-i18n="install.ios3">点右上角「添加」，桌面上就会出现家长端图标</li>
+        </ol>
+        <ol class="install-steps" id="install-steps-android" hidden>
+          <li data-i18n="install.and1">点浏览器右上角的菜单（三个点）</li>
+          <li data-i18n="install.and2">选「安装应用」或「添加到主屏幕」</li>
+          <li data-i18n="install.and3">确认后，桌面上就会出现家长端图标</li>
+        </ol>
+        <div class="install-steps" id="install-steps-inapp" hidden>
+          <p data-i18n="install.inapp1">在微信等内置浏览器里没法添加到桌面。</p>
+          <p data-i18n="install.inapp2">请先点右上角「···」，选「在浏览器中打开」，再按提示添加到主屏幕。</p>
+        </div>
+        <button type="button" class="btn-primary" id="install-btn" hidden data-i18n="install.btn">一键安装到桌面</button>
+      </div>
       <button id="home-unread" class="unread-banner" type="button" hidden></button>
       <section class="card" id="card-latest">
         <h2><span data-i18n="latest.title">最新进展</span><span class="card-note" id="latest-date"></span></h2>

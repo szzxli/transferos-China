@@ -8,7 +8,11 @@
 <meta name="theme-color" content="#16453a">
 <meta name="apple-mobile-web-app-title" content="专属客户端">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script>window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();window.__bipEvent=e;});</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2316453a'/%3E%3Ccircle cx='50' cy='50' r='25' fill='none' stroke='%23c9f06b' stroke-width='9'/%3E%3Ccircle cx='50' cy='50' r='7' fill='%23c9f06b'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -66,6 +70,33 @@
           <div id="main-line-next" class="mainline-next"></div>
         </div>
       </section>
+
+      <!-- v13.2：添加到主屏幕引导（横幅，非内容卡；环境分流与关闭记忆由 app.js 控制） -->
+      <div class="install-card" id="install-card" hidden>
+        <button type="button" class="install-close" id="install-close" aria-label="关闭 / Close">×</button>
+        <div class="install-head">
+          <img class="install-icon" src="icon.svg" alt="" width="44" height="44">
+          <div>
+            <p class="install-title" data-i18n="install.title">把专属APP放到手机桌面</p>
+            <p class="install-desc mut" data-i18n="install.desc">点桌面图标就能进来，不用每次找链接。</p>
+          </div>
+        </div>
+        <ol class="install-steps" id="install-steps-ios" hidden>
+          <li><svg class="ishare" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 3l3.2 3.2-1.4 1.4L12.7 6.5v7h-1.4v-7L10.2 7.6 8.8 6.2zM6 10h4v1.6H7.6v8.8h8.8V11.6H14V10h4v12H6z" fill="#16453a"/></svg><span data-i18n="install.ios1">点浏览器底部的「分享」按钮</span></li>
+          <li data-i18n="install.ios2">在菜单里选「添加到主屏幕」</li>
+          <li data-i18n="install.ios3">点右上角「添加」，桌面上就会出现专属APP图标</li>
+        </ol>
+        <ol class="install-steps" id="install-steps-android" hidden>
+          <li data-i18n="install.and1">点浏览器右上角的菜单（三个点）</li>
+          <li data-i18n="install.and2">选「安装应用」或「添加到主屏幕」</li>
+          <li data-i18n="install.and3">确认后，桌面上就会出现专属APP图标</li>
+        </ol>
+        <div class="install-steps" id="install-steps-inapp" hidden>
+          <p data-i18n="install.inapp1">在微信等内置浏览器里没法添加到桌面。</p>
+          <p data-i18n="install.inapp2">请先点右上角「···」，选「在浏览器中打开」，再按提示添加到主屏幕——这样你的私密空间存在手机上也更稳。</p>
+        </div>
+        <button type="button" class="btn-primary" id="install-btn" hidden data-i18n="install.btn">一键安装到桌面</button>
+      </div>
 
       <section class="card" id="sec-dream">
         <h2 data-i18n="card.dream">与梦想的距离</h2>
