@@ -103,7 +103,9 @@
     lines.push("- 学校 / School: " + (meta.school || ""));
     lines.push("- 专业 / Major: " + (major.name || ""));
     lines.push("- 导出日期 / Exported: " + (o.today || ""));
-    lines.push("- 数据来源 / Sources: " + ((meta.sources || []).map((s) => s.url).join(" ; ") || "—"));
+    lines.push("- 数据来源 / Sources: " + ((major.sources && major.sources.length)
+      ? major.sources.join(" ; ")
+      : ((meta.sources || []).map((s) => s.url).join(" ; ") || "—")));
     lines.push("- 数据抓取日期 / Retrieved: " + (meta.retrieved || ""));
     lines.push("");
     lines.push("> 以学校官方学位审计为准 / Subject to the official degree audit of the school.");
