@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 560" fill="none" role="img" aria-label="透明玻璃舱与发光数据边界（抽象示意）">
+  <defs>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".10"/>
+      <stop offset=".55" stop-color="#FFFFFF" stop-opacity=".02"/>
+      <stop offset="1" stop-color="#78D7FF" stop-opacity=".07"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <!-- outer chamber -->
+  <rect x="70" y="60" width="660" height="440" rx="36" fill="url(#glass)" stroke="#FFFFFF" stroke-opacity=".16" stroke-width="2"/>
+  <!-- faint scan lines -->
+  <g stroke="#FFFFFF" stroke-opacity=".05" stroke-width="2">
+    <line x1="70" y1="150" x2="730" y2="150"/><line x1="70" y1="240" x2="730" y2="240"/>
+    <line x1="70" y1="330" x2="730" y2="330"/><line x1="70" y1="420" x2="730" y2="420"/>
+  </g>
+  <!-- hard boundary -->
+  <rect x="150" y="130" width="500" height="300" rx="26" fill="#78D7FF" fill-opacity=".04" stroke="#78D7FF" stroke-width="3" filter="url(#glow)"/>
+  <!-- brand motif: arch + three nodes, sealed inside the boundary -->
+  <path d="M265 330 C265 238 325 190 400 190 C475 190 535 238 535 330" stroke="#88DDFF" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="285" cy="338" r="17" fill="#F5F5F7"/>
+  <circle cx="400" cy="338" r="17" fill="#88DDFF"/>
+  <circle cx="515" cy="338" r="17" fill="#F5F5F7"/>
+  <!-- corner ticks on the boundary -->
+  <g stroke="#F5F5F7" stroke-width="4" stroke-linecap="round">
+    <path d="M150 168 V130 H188"/><path d="M612 130 H650 V168"/>
+    <path d="M650 392 V430 H612"/><path d="M188 430 H150 V392"/>
+  </g>
+</svg>

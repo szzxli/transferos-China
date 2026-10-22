@@ -3,11 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>企业评估 · AI 数字员工评估器</title>
+<title>企业评估 · AI 数字员工业务</title>
+<link rel="icon" type="image/svg+xml" href="assets/brand-mark.svg">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="siteNav"><div class="navIn"><a class="brand" href="index.html">AI 数字员工业务</a><nav><a href="index.html">首页</a><a href="evaluator.html" class="active">企业评估</a><a href="guide.html">个人指南</a><a href="services.html">服务与标准</a><a href="partner.html">合作入口</a></nav></div></header>
+<header class="siteNav"><div class="navIn">
+<a class="brand" href="index.html"><img src="assets/brand-mark.svg" alt=""><span>AI 数字员工业务</span></a>
+<nav aria-label="主导航"><a href="index.html">首页</a><a href="evaluator.html" class="active">企业评估</a><a href="guide.html">个人指南</a><a href="services.html">服务与标准</a><a href="partner.html">合作入口</a></nav>
+<a class="navCta" href="evaluator.html">开始评估 <span aria-hidden="true">↗</span></a>
+<button class="menuToggle" type="button" aria-label="打开导航" aria-expanded="false"><i></i><i></i></button>
+</div></header>
 <div class="wrap">
 <header class="top">
   <h1><span class="en">AI WORKFORCE EVALUATOR</span>AI 数字员工评估器</h1>
@@ -179,12 +185,19 @@
 <section class="card" id="report"></section>
 </div>
 <footer class="siteFoot"><div class="footIn">
+<div class="footBrand"><img src="assets/brand-mark.svg" alt=""><span>AI 数字员工业务</span></div>
+<p class="footTag">让 AI 成为有岗位、有边界、有账本的组织成员。</p>
+<div class="disclaimer">
 <p>本站所有价格均为<strong>定价假设</strong>，将在付费验证完成后定版；评估器结果由确定性公式计算、系数来源逐项标注，是基于公开基准与假设的估算，不是收益承诺。</p>
 <p>数据口径：平台只收结构数据与脱敏聚合指标；客户业务原文不出客户环境；敏感数据永不接触。</p>
+</div>
 </div></footer>
 <script src="engine.js"></script>
 <script src="app.js"></script>
-<script>/* 挂载适配：#personal 深链切到个人版（不改 app.js 本体） */
-if (location.hash === "#personal") { document.getElementById("tabPer").click(); }</script>
+<script>
+/* 本站挂载适配：支持 evaluator.html#personal 直达个人版（源评估器无此逻辑）。 */
+if (location.hash === "#personal") document.getElementById("tabPer").click();
+</script>
+<script src="site.js"></script>
 </body>
 </html>

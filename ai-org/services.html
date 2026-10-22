@@ -4,10 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>服务与标准 · AI 数字员工业务</title>
+<link rel="icon" type="image/svg+xml" href="assets/brand-mark.svg">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="siteNav"><div class="navIn"><a class="brand" href="index.html">AI 数字员工业务</a><nav><a href="index.html">首页</a><a href="evaluator.html">企业评估</a><a href="guide.html">个人指南</a><a href="services.html" class="active">服务与标准</a><a href="partner.html">合作入口</a></nav></div></header>
+<header class="siteNav"><div class="navIn">
+<a class="brand" href="index.html"><img src="assets/brand-mark.svg" alt=""><span>AI 数字员工业务</span></a>
+<nav aria-label="主导航"><a href="index.html">首页</a><a href="evaluator.html">企业评估</a><a href="guide.html">个人指南</a><a href="services.html" class="active">服务与标准</a><a href="partner.html">合作入口</a></nav>
+<a class="navCta" href="evaluator.html">开始评估 <span aria-hidden="true">↗</span></a>
+<button class="menuToggle" type="button" aria-label="打开导航" aria-expanded="false"><i></i><i></i></button>
+</div></header>
 <div class="wrap">
 
 <header class="top">
@@ -15,7 +21,7 @@
   <p class="sub">交付分工定死：平台定标准、做评估、管验收；认证集成商负责现场实施；客户企业出真人审核岗与终裁人。本页价格均为定价假设，付费验证完成后才定版。</p>
 </header>
 
-<section class="card">
+<section class="card reveal" id="svc-products">
   <h2>服务项目</h2>
   <table>
     <tr><th style="width:16%">服务</th><th style="width:24%">目标客户</th><th>交付物</th><th style="width:26%">价格锚</th></tr>
@@ -59,7 +65,7 @@
   <p class="hint">报价口径：只给岗位/月与包干口径，不按席位、不按 token——买家买的是岗位产出。诊断与试点包是付费过滤器，不以赚钱为目的定价，也不靠降价换量。</p>
 </section>
 
-<section class="card">
+<section class="card reveal" id="svc-flow">
   <h2>实施分工</h2>
   <table>
     <tr><th style="width:16%">角色</th><th>职责</th><th style="width:34%">不做什么</th></tr>
@@ -70,7 +76,7 @@
   <p class="hint">口径唯一性：同一项目内，岗位卡版本、指标定义、基线数据、验收结论各自只有一个有效版本；现场发现不适配，走「问题单 → 平台裁定 → 口径升版」，不得现场改口径先行。</p>
 </section>
 
-<section class="card">
+<section class="card reveal" id="svc-gates">
   <h2>验收标准：三道门（简表）</h2>
   <p class="hint">以下全部阈值均为<span class="tagDraft">拟定值，待首批试点校准</span>，校准前在单项目合同中逐项确认后生效。验收由平台主持，证据由集成商提交、客户确认；任一门发现证据造假，直接判定该门不通过。</p>
   <h3>第一道门 · 试点门（首个岗位试用期结束时）</h3>
@@ -106,14 +112,14 @@
   <p class="hint">判定：全过转入运营监测期；任一不过，整改期 20 个工作日后复验，逾期仍不过按合同约定扣减或终止，并完成数据交还与删除。<span class="tagDraft">拟定值</span></p>
 </section>
 
-<section class="card">
+<section class="card reveal" id="svc-monitoring">
   <h2>运营监测（口径）</h2>
   <p>每个在运营岗位每周产出一份<strong>周效果账本</strong>，字段定死：处理量、任务成功率、差错率（分一般/重大）、节约工时（对基线单位工时折算）、调用成本（模型与接口）、真人介入率。平台收账本汇总，不收业务原文。</p>
   <p>漂移即告警：成功率连续 2 周低于试点门通过线、重大差错出现 1 次、单位任务调用成本连续 2 周上升且累计涨幅 ≥ 20%、真人介入率连续 2 周上升、账本缺报 1 周——任一触发即启动复盘，根因与纠正动作记入错误档案。月度审计抽查账本真实性，季度复评给出扩岗/缩岗/换岗结论。<span class="tagDraft">告警阈值为拟定值，待首批试点校准</span></p>
   <p>监测数据经客户书面授权后，以脱敏聚合指标回流平台，用于校准评估器系数与磨合参数；聚合粒度不小于单岗位周维度，客户可随时撤回授权。</p>
 </section>
 
-<section class="card">
+<section class="card reveal" id="svc-data">
   <h2>信息隔离：数据三级与红线</h2>
   <table>
     <tr><th style="width:18%">级别</th><th style="width:30%">内容</th><th>处置</th></tr>
@@ -135,7 +141,7 @@
   <p class="hint">说明：本页合规口径写原则与执行动作，不构成法律意见；涉及个人信息保护、数据安全与 AI 生成内容标识等规则的具体适用，须在签约前由有资质律师按具体业务形态复核后写入合同与操作细则。</p>
 </section>
 
-<section class="card">
+<section class="card reveal" id="svc-signing">
   <h2>集成商准入要点</h2>
   <h3>硬条件（全部满足才可申请）</h3>
   <ul>
@@ -159,8 +165,13 @@
 
 </div>
 <footer class="siteFoot"><div class="footIn">
+<div class="footBrand"><img src="assets/brand-mark.svg" alt=""><span>AI 数字员工业务</span></div>
+<p class="footTag">让 AI 成为有岗位、有边界、有账本的组织成员。</p>
+<div class="disclaimer">
 <p>本站所有价格均为<strong>定价假设</strong>，将在付费验证完成后定版；评估器结果由确定性公式计算、系数来源逐项标注，是基于公开基准与假设的估算，不是收益承诺。</p>
 <p>数据口径：平台只收结构数据与脱敏聚合指标；客户业务原文不出客户环境；敏感数据永不接触。</p>
+</div>
 </div></footer>
+<script src="site.js"></script>
 </body>
 </html>
