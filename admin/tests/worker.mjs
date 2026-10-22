@@ -721,26 +721,32 @@ function computeUpcomingReminders(keyDates, exams, milestones, today, horizonDay
  * （成就与提醒的数据源只取里程碑/行动/问题的标题与日期文本）。纯读、无副作用。 */
 async function parentViewSections(db, student) {
   const psid = student.id;
-  const updateRows = (await db.prepare(
-    `SELECT * FROM parent_updates WHERE student_id = ? ORDER BY update_date DESC, id DESC LIMIT 200`).bind(psid).all()).results || [];
-  const supportRows = (await db.prepare(
-    `SELECT * FROM parent_support_actions WHERE student_id = ?
-     ORDER BY CASE WHEN status = 'active' THEN 0 WHEN status = 'done' THEN 1 ELSE 2 END, sort ASC, id ASC LIMIT 200`).bind(psid).all()).results || [];
-  const concernRows = (await db.prepare(
-    `SELECT * FROM parent_concerns WHERE student_id = ? ORDER BY concern_date DESC, id DESC LIMIT 100`).bind(psid).all()).results || [];
-  const achMilestones = (await db.prepare(
-    `SELECT title, date_text FROM student_milestones WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 30`).bind(psid).all()).results || [];
-  const achActions = (await db.prepare(
-    `SELECT title, created_at, updated_at FROM student_actions WHERE student_id = ? AND status = 'done' ORDER BY updated_at DESC, id DESC LIMIT 30`).bind(psid).all()).results || [];
-  const achProblems = (await db.prepare(
-    `SELECT title, created_at, updated_at FROM student_problem_shares WHERE student_id = ? AND progress = 'resolved' ORDER BY updated_at DESC, id DESC LIMIT 30`).bind(psid).all()).results || [];
+  // 性能优化（2026-10-22）：8 条查询彼此独立（都只按 student_id 取数），由串行改并行；
+  // SQL 与排序、组装逻辑一字未动，响应形状不变。
+  const rowsOf = (r) => r.results || [];
+  const [updateRows, supportRows, concernRows, achMilestones, achActions, achProblems,
+    studentNoteRows, kdRows, examRows] = await Promise.all([
+    db.prepare(
+      `SELECT * FROM parent_updates WHERE student_id = ? ORDER BY update_date DESC, id DESC LIMIT 200`).bind(psid).all().then(rowsOf),
+    db.prepare(
+      `SELECT * FROM parent_support_actions WHERE student_id = ?
+       ORDER BY CASE WHEN status = 'active' THEN 0 WHEN status = 'done' THEN 1 ELSE 2 END, sort ASC, id ASC LIMIT 200`).bind(psid).all().then(rowsOf),
+    db.prepare(
+      `SELECT * FROM parent_concerns WHERE student_id = ? ORDER BY concern_date DESC, id DESC LIMIT 100`).bind(psid).all().then(rowsOf),
+    db.prepare(
+      `SELECT title, date_text FROM student_milestones WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 30`).bind(psid).all().then(rowsOf),
+    db.prepare(
+      `SELECT title, created_at, updated_at FROM student_actions WHERE student_id = ? AND status = 'done' ORDER BY updated_at DESC, id DESC LIMIT 30`).bind(psid).all().then(rowsOf),
+    db.prepare(
+      `SELECT title, created_at, updated_at FROM student_problem_shares WHERE student_id = ? AND progress = 'resolved' ORDER BY updated_at DESC, id DESC LIMIT 30`).bind(psid).all().then(rowsOf),
+    db.prepare(
+      `SELECT * FROM note_to_parents WHERE student_id = ? AND withdrawn_at IS NULL ORDER BY id DESC LIMIT 10`).bind(psid).all().then(rowsOf),
+    db.prepare(
+      `SELECT * FROM student_key_dates WHERE student_id = ? ORDER BY date ASC, id ASC LIMIT 100`).bind(psid).all().then(rowsOf),
+    db.prepare(
+      `SELECT exam_name, exam_date FROM student_exams WHERE student_id = ? LIMIT 200`).bind(psid).all().then(rowsOf),
+  ]);
   const achievements = buildAchievements(achMilestones, achActions, achProblems);
-  const studentNoteRows = (await db.prepare(
-    `SELECT * FROM note_to_parents WHERE student_id = ? AND withdrawn_at IS NULL ORDER BY id DESC LIMIT 10`).bind(psid).all()).results || [];
-  const kdRows = (await db.prepare(
-    `SELECT * FROM student_key_dates WHERE student_id = ? ORDER BY date ASC, id ASC LIMIT 100`).bind(psid).all()).results || [];
-  const examRows = (await db.prepare(
-    `SELECT exam_name, exam_date FROM student_exams WHERE student_id = ? LIMIT 200`).bind(psid).all()).results || [];
   const upcomingReminders = computeUpcomingReminders(kdRows, examRows, achMilestones, todayStr(), REMINDER_HORIZON_DAYS);
   const studentOut = {
     name: student.name || "", slug: student.slug || "",
@@ -1133,38 +1139,68 @@ const MESSAGE_MIGRATIONS = [
   "ALTER TABLE student_messages ADD COLUMN category TEXT",
 ];
 let schemaReady = false;
-async function ensureSchema(db) {
-  if (schemaReady || !db) return;
+/* —— 性能优化（2026-10-22）：ensureSchema 快速通道 ——
+ * 原实现每个冷 isolate 串行执行全部 69 条建表/迁移语句（35 DDL + 34 迁移），
+ * 每条一次 D1 往返，是公开接口冷启动慢的主因。快速通道先用 1 条查询读取
+ * sqlite_master（表名 + 建表 SQL + 索引名），本地判断哪些语句已经生效、只补跑
+ * 缺失的；稳态下（生产库已全量建好）冷启动只剩 1 条探测查询。
+ * 语义与原实现严格等价：DDL 失败仍抛 ensureSchema DDL#i、迁移失败仍逐条吞掉；
+ * 解析不出或探测失败的语句一律按「未生效」处理、照原样执行；探测整体异常时
+ * 回退到原始全量串行路径（runSchemaFull），保证任何异常环境下行为不变。 */
+const MIGRATION_GROUPS = () => [
+  STAFF_MIGRATIONS, TASK_MIGRATIONS, LEAD_MIGRATIONS, CONTENT_MIGRATIONS,
+  GOAL_MIGRATIONS, STUDENT_MIGRATIONS, STAFF_V13_MIGRATIONS, KEYDATE_MIGRATIONS,
+  MESSAGE_MIGRATIONS,
+];
+function schemaStmtDone(sql, tables, indexes) {
+  const alt = sql.match(/ALTER\s+TABLE\s+([A-Za-z0-9_]+)\s+ADD\s+COLUMN\s+([A-Za-z0-9_]+)/i);
+  if (alt) {
+    const tableSql = tables.get(alt[1]);
+    if (tableSql === undefined) return false;
+    return new RegExp("\\b" + alt[2] + "\\b", "i").test(tableSql);
+  }
+  const idx = sql.match(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+([A-Za-z0-9_]+)/i);
+  if (idx) return indexes.has(idx[1]);
+  return false;
+}
+async function runSchemaFull(db) {
   for (let i = 0; i < DDL.length; i++) {
     try { await db.prepare(DDL[i]).run(); }
     catch (e) { throw new Error("ensureSchema DDL#" + i + ": " + (e && e.message ? e.message : String(e))); }
   }
-  for (const sql of STAFF_MIGRATIONS) {
-    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+  for (const group of MIGRATION_GROUPS()) {
+    for (const sql of group) {
+      try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+    }
   }
-  for (const sql of TASK_MIGRATIONS) {
-    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
-  }
-  for (const sql of LEAD_MIGRATIONS) {
-    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
-  }
-  for (const sql of CONTENT_MIGRATIONS) {
-    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
-  }
-  for (const sql of GOAL_MIGRATIONS) {
-    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
-  }
-  for (const sql of STUDENT_MIGRATIONS) {
-    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
-  }
-  for (const sql of STAFF_V13_MIGRATIONS) {
-    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
-  }
-  for (const sql of KEYDATE_MIGRATIONS) {
-    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
-  }
-  for (const sql of MESSAGE_MIGRATIONS) {
-    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+}
+async function ensureSchema(db) {
+  if (schemaReady || !db) return;
+  try {
+    const probe = (await db.prepare(
+      `SELECT type, name, sql FROM sqlite_master WHERE type IN ('table', 'index')`).all()).results || [];
+    const tables = new Map();
+    const indexes = new Set();
+    for (const r of probe) {
+      if (r.type === "table") tables.set(String(r.name), String(r.sql || ""));
+      else if (r.type === "index") indexes.add(String(r.name));
+    }
+    if (!tables.size) throw new Error("schema probe empty");
+    for (let i = 0; i < DDL.length; i++) {
+      const m = DDL[i].match(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([A-Za-z0-9_]+)/i);
+      if (m && tables.has(m[1])) continue;
+      try { await db.prepare(DDL[i]).run(); }
+      catch (e) { throw new Error("ensureSchema DDL#" + i + ": " + (e && e.message ? e.message : String(e))); }
+    }
+    for (const group of MIGRATION_GROUPS()) {
+      for (const sql of group) {
+        if (schemaStmtDone(sql, tables, indexes)) continue;
+        try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+      }
+    }
+  } catch (e) {
+    if (e && /^ensureSchema DDL#/.test(e.message || "")) throw e;
+    await runSchemaFull(db);
   }
   schemaReady = true;
 }
@@ -1855,28 +1891,51 @@ async function handleApi(req, env, url) {
     if (!student || !student.client_key || !timingSafeEq(key, String(student.client_key))) {
       return jsonResp(req, { ok: false, error: "not found" }, 404);
     }
-    const goal = await db.prepare(`SELECT * FROM student_goals WHERE student_id = ?`).bind(sid).first();
-    const goalLines = (await db.prepare(
-      `SELECT * FROM student_goal_lines WHERE student_id = ? ORDER BY priority ASC, id ASC LIMIT 100`).bind(sid).all()).results || [];
-    const snaps = (await db.prepare(
-      `SELECT * FROM student_status WHERE student_id = ? ORDER BY snapshot_date DESC, id DESC LIMIT 100`).bind(sid).all()).results || [];
-    const exams = (await db.prepare(
-      `SELECT * FROM student_exams WHERE student_id = ? ORDER BY exam_date DESC, id DESC LIMIT 200`).bind(sid).all()).results || [];
-    const courses = (await db.prepare(
-      `SELECT * FROM student_courses WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(sid).all()).results || [];
-    const meetings = (await db.prepare(
-      `SELECT * FROM student_meetings WHERE student_id = ? ORDER BY meeting_date DESC, id DESC LIMIT 200`).bind(sid).all()).results || [];
-    // —— v10 新模块 ——
-    const milestones = (await db.prepare(
-      `SELECT * FROM student_milestones WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 200`).bind(sid).all()).results || [];
-    const keyDates = (await db.prepare(
-      `SELECT * FROM student_key_dates WHERE student_id = ? ORDER BY date ASC, id ASC LIMIT 100`).bind(sid).all()).results || [];
-    const actionRows = (await db.prepare(
-      `SELECT * FROM student_actions WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 200`).bind(sid).all()).results || [];
-    const adviceRows = (await db.prepare(
-      `SELECT * FROM student_advice WHERE student_id = ? ORDER BY created_at DESC, id DESC LIMIT 100`).bind(sid).all()).results || [];
-    const messageRows = (await db.prepare(
-      `SELECT * FROM student_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(sid).all()).results || [];
+    // 性能优化（2026-10-22）：鉴权后的内容查询彼此独立（都只按 sid 取数），由串行改一波并行；
+    // SQL、排序、组装逻辑一字未动，响应形状不变。未读标记 UPDATE 依赖 messageRows，仍在其后串行。
+    const rowsOf = (r) => r.results || [];
+    const [goal, goalLines, snaps, exams, courses, meetings, milestones, keyDates,
+      actionRows, adviceRows, messageRows, problemRows, parentNoteRows, trailRows,
+      reqSets, reqRowsAll] = await Promise.all([
+      db.prepare(`SELECT * FROM student_goals WHERE student_id = ?`).bind(sid).first(),
+      db.prepare(
+        `SELECT * FROM student_goal_lines WHERE student_id = ? ORDER BY priority ASC, id ASC LIMIT 100`).bind(sid).all().then(rowsOf),
+      db.prepare(
+        `SELECT * FROM student_status WHERE student_id = ? ORDER BY snapshot_date DESC, id DESC LIMIT 100`).bind(sid).all().then(rowsOf),
+      db.prepare(
+        `SELECT * FROM student_exams WHERE student_id = ? ORDER BY exam_date DESC, id DESC LIMIT 200`).bind(sid).all().then(rowsOf),
+      db.prepare(
+        `SELECT * FROM student_courses WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(sid).all().then(rowsOf),
+      db.prepare(
+        `SELECT * FROM student_meetings WHERE student_id = ? ORDER BY meeting_date DESC, id DESC LIMIT 200`).bind(sid).all().then(rowsOf),
+      // —— v10 新模块 ——
+      db.prepare(
+        `SELECT * FROM student_milestones WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 200`).bind(sid).all().then(rowsOf),
+      db.prepare(
+        `SELECT * FROM student_key_dates WHERE student_id = ? ORDER BY date ASC, id ASC LIMIT 100`).bind(sid).all().then(rowsOf),
+      db.prepare(
+        `SELECT * FROM student_actions WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 200`).bind(sid).all().then(rowsOf),
+      db.prepare(
+        `SELECT * FROM student_advice WHERE student_id = ? ORDER BY created_at DESC, id DESC LIMIT 100`).bind(sid).all().then(rowsOf),
+      db.prepare(
+        `SELECT * FROM student_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(sid).all().then(rowsOf),
+      // —— v12 新模块：问题方案层 / 导师轨迹 / 课程要求集（全部为方案层数据，私密层永不经此接口）——
+      db.prepare(
+        `SELECT * FROM student_problem_shares WHERE student_id = ? ORDER BY id DESC LIMIT 100`).bind(sid).all().then(rowsOf),
+      // —— v13：学生自己发出的一句话（未撤回）——
+      db.prepare(
+        `SELECT * FROM note_to_parents WHERE student_id = ? AND withdrawn_at IS NULL ORDER BY id DESC LIMIT 20`).bind(sid).all().then(rowsOf),
+      db.prepare(
+        `SELECT t.*, m.meeting_date AS m_date, m.topic AS m_topic FROM mentor_trail_entries t
+         LEFT JOIN student_meetings m ON m.id = t.meeting_id
+         WHERE t.student_id = ? ORDER BY COALESCE(m.meeting_date, substr(t.created_at, 1, 10)) DESC, t.id DESC LIMIT 200`).bind(sid).all().then(rowsOf),
+      db.prepare(
+        `SELECT * FROM course_requirement_sets WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 20`).bind(sid).all().then(rowsOf),
+      // 原实现按 reqSets 非空才查要求条目；条目只在组装 course_match 时按 set 消费，
+      // reqSets 为空时本查询结果不被使用，提前并行取数不改变响应。
+      db.prepare(
+        `SELECT * FROM course_requirements WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 1000`).bind(sid).all().then(rowsOf),
+    ]);
     // 未读计数在标记已读之前计算：本次下发的 unread_mentor 反映「打开 APP 时有几条导师留言未读」，
     // 标记后下次 GET 归零；前端据此在「导师」页签亮红点。
     const unreadMentor = messageRows.filter((m) => m.sender === "mentor" && !m.read_by_student).length;
@@ -1892,20 +1951,7 @@ async function handleApi(req, env, url) {
         `SELECT * FROM knowledge_items WHERE enabled = 1 ORDER BY id ASC LIMIT 200`).all()).results || [];
       knowledge = allK.filter((k) => kTags.includes(String(k.tag || ""))).slice(0, KNOWLEDGE_LIMIT);
     }
-    // —— v12 新模块：问题方案层 / 导师轨迹 / 课程要求集与匹配（全部为方案层数据，私密层永不经此接口）——
-    const problemRows = (await db.prepare(
-      `SELECT * FROM student_problem_shares WHERE student_id = ? ORDER BY id DESC LIMIT 100`).bind(sid).all()).results || [];
-    // —— v13：学生自己发出的一句话（未撤回）——
-    const parentNoteRows = (await db.prepare(
-      `SELECT * FROM note_to_parents WHERE student_id = ? AND withdrawn_at IS NULL ORDER BY id DESC LIMIT 20`).bind(sid).all()).results || [];
-    const trailRows = (await db.prepare(
-      `SELECT t.*, m.meeting_date AS m_date, m.topic AS m_topic FROM mentor_trail_entries t
-       LEFT JOIN student_meetings m ON m.id = t.meeting_id
-       WHERE t.student_id = ? ORDER BY COALESCE(m.meeting_date, substr(t.created_at, 1, 10)) DESC, t.id DESC LIMIT 200`).bind(sid).all()).results || [];
-    const reqSets = (await db.prepare(
-      `SELECT * FROM course_requirement_sets WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 20`).bind(sid).all()).results || [];
-    const reqRowsAll = reqSets.length ? ((await db.prepare(
-      `SELECT * FROM course_requirements WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 1000`).bind(sid).all()).results || []) : [];
+    // —— v12/v13 数据已在上方并行波取齐（problemRows / parentNoteRows / trailRows / reqSets / reqRowsAll）——
     const courseMatch = reqSets.map((s) => {
       const reqs = reqRowsAll.filter((r) => r.set_id === s.id);
       return {
@@ -2079,8 +2125,16 @@ async function handleApi(req, env, url) {
       return jsonResp(req, { ok: false, error: "not found" }, 404);
     }
     const psid = student.id;
-    const pMsgRows = (await db.prepare(
-      `SELECT * FROM parent_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(psid).all()).results || [];
+    // 性能优化（2026-10-22）：家长留言查询与展示区块构建彼此独立，并行执行；
+    // 展示区块不读 parent_messages，未读计数与标记 UPDATE 仍在留言取回后按原顺序执行，响应不变。
+    const [pMsgRows, view] = await Promise.all([
+      db.prepare(
+        `SELECT * FROM parent_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(psid).all()
+        .then((r) => r.results || []),
+      // 展示区块（进展/托举/成就/一句话/日期提醒/需要关注）与学生端预览共用 parentViewSections，
+      // 保证学生预览所见与家长实际所见逐键一致（v13.4）。
+      parentViewSections(db, student),
+    ]);
     // 未读计数在标记已读之前计算：unread_mentor_parent 反映「打开家长页时有几条导师留言未读」，前端据此亮红点
     const unreadMentorParent = pMsgRows.filter((m) => m.sender === "mentor" && !m.read_by_parent).length;
     if (unreadMentorParent) {
@@ -2088,9 +2142,6 @@ async function handleApi(req, env, url) {
         `UPDATE parent_messages SET read_by_parent = 1 WHERE student_id = ? AND sender = 'mentor' AND read_by_parent = 0`
       ).bind(psid).run();
     }
-    // 展示区块（进展/托举/成就/一句话/日期提醒/需要关注）与学生端预览共用 parentViewSections，
-    // 保证学生预览所见与家长实际所见逐键一致（v13.4）。
-    const view = await parentViewSections(db, student);
     return jsonResp(req, {
       ok: true,
       student: view.student,
@@ -2196,6 +2247,23 @@ async function handleApi(req, env, url) {
     if ([...text].length > MESSAGE_MAX_LEN) {
       return jsonResp(req, { ok: false, error: "message too long (max " + MESSAGE_MAX_LEN + ")" }, 400);
     }
+    // v14 沟通台：channel='parent' 时回复进家长对话线（parent_messages），语义与后台
+    // parent_message_reply 完全一致（普通插入，不记学生事件流、不进发件箱）；
+    // 同时把该学生家长未读留言标导师已读。缺省/其它值沿用学生通道（v13 行为不变）。
+    if (String((body && body.channel) || "") === "parent") {
+      const pts = nowIso();
+      const pr = await db.prepare(
+        `INSERT INTO parent_messages(student_id, sender, body, created_at, read_by_parent, read_by_mentor)
+         VALUES(?, 'mentor', ?, ?, 0, 1)`
+      ).bind(stu.id, text, pts).run();
+      await db.prepare(
+        `UPDATE parent_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0`
+      ).bind(stu.id).run();
+      return jsonResp(req, {
+        ok: true, channel: "parent",
+        message: { id: pr.meta.last_row_id, sender: "mentor", body: text, created_at: pts },
+      });
+    }
     const ts = nowIso();
     const r = await db.prepare(
       `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor, mentor_id)
@@ -2212,6 +2280,108 @@ async function handleApi(req, env, url) {
     return jsonResp(req, {
       ok: true,
       message: { id: r.meta.last_row_id, sender: "mentor", body: text, created_at: ts },
+    });
+  }
+
+  // ===== v14 导师简易沟通台 API =====
+  // GET /api/mentor/inbox/<staff id 或 emp_no>?key=<mentor_key>：聚合收件箱。
+  // 只含该导师名下学生（students.mentor_id = staff.id）的两条留言线——学生线（student_messages）
+  // 与家长线（parent_messages）分开成条目：每条给出最后一条留言摘要与导师未读数；
+  // 顶部汇总 total_unread（未读总条数）与 pending_threads（有未读的线数）。
+  // 无任何留言的学生不产生条目；导师无指派学生 → threads 为空数组（诚实空态）。
+  // 查询纪律：学生列表 1 条 + 每学生 4 条小查询全部 Promise.all 并行（与 2026-10-22 性能修复同口径）。
+  const mentorInboxMatch = p.match(/^\/api\/mentor\/inbox\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
+  if (mentorInboxMatch) {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    await ensureSchema(db);
+    const staff = await findMentor(mentorInboxMatch[1], url.searchParams.get("key") || "");
+    if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const myStudents = (await db.prepare(
+      `SELECT id, name, slug FROM students WHERE mentor_id = ? ORDER BY id ASC LIMIT 50`).bind(staff.id).all()).results || [];
+    const perStudent = await Promise.all(myStudents.map(async (stu) => {
+      const [sLast, sUnread, pLast, pUnread] = await Promise.all([
+        db.prepare(`SELECT id, sender, body, created_at, category FROM student_messages WHERE student_id = ? ORDER BY id DESC LIMIT 1`).bind(stu.id).first(),
+        db.prepare(`SELECT COUNT(*) AS n FROM student_messages WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0`).bind(stu.id).first(),
+        db.prepare(`SELECT id, sender, body, created_at FROM parent_messages WHERE student_id = ? ORDER BY id DESC LIMIT 1`).bind(stu.id).first(),
+        db.prepare(`SELECT COUNT(*) AS n FROM parent_messages WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0`).bind(stu.id).first(),
+      ]);
+      return { stu, sLast, sUnread: sUnread ? sUnread.n : 0, pLast, pUnread: pUnread ? pUnread.n : 0 };
+    }));
+    const threads = [];
+    for (const { stu, sLast, sUnread, pLast, pUnread } of perStudent) {
+      if (sLast) threads.push({
+        student_id: stu.id, student_name: stu.name || "", slug: stu.slug || "",
+        channel: "student", channel_label: "学生留言",
+        last: { id: sLast.id, sender: sLast.sender || "", body: String(sLast.body || "").slice(0, 120), created_at: sLast.created_at || "", category: sLast.category || "" },
+        unread: sUnread,
+      });
+      if (pLast) threads.push({
+        student_id: stu.id, student_name: stu.name || "", slug: stu.slug || "",
+        channel: "parent", channel_label: "家长留言",
+        last: { id: pLast.id, sender: pLast.sender || "", body: String(pLast.body || "").slice(0, 120), created_at: pLast.created_at || "" },
+        unread: pUnread,
+      });
+    }
+    threads.sort((a, b) => (b.last.created_at || "").localeCompare(a.last.created_at || "") || b.last.id - a.last.id);
+    return jsonResp(req, {
+      ok: true,
+      mentor: { id: staff.id, name: staff.name || "", emp_no: staff.emp_no || "" },
+      total_unread: threads.reduce((sum, t) => sum + t.unread, 0),
+      pending_threads: threads.filter((t) => t.unread > 0).length,
+      threads,
+    });
+  }
+  // GET /api/mentor/thread/<staff id 或 emp_no>?key=&student_id=&channel=student|parent：
+  // 单条对话线全量（id 正序，上限 500，与学生/家长端同口径）。打开即把该线对方未读标导师已读
+  // （沿用既有 read_by_mentor 机制），unread_before 返回打开前的对方未读数。
+  // 学生不属于该导师 → 404（不暴露存在性）；家长线只查 parent_messages，学生线只查
+  // student_messages，两条线数据互不串。
+  const mentorThreadMatch = p.match(/^\/api\/mentor\/thread\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
+  if (mentorThreadMatch) {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    await ensureSchema(db);
+    const staff = await findMentor(mentorThreadMatch[1], url.searchParams.get("key") || "");
+    if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const sid = toInt(url.searchParams.get("student_id"), 0);
+    const stu = sid ? await db.prepare(
+      `SELECT id, name, slug FROM students WHERE id = ? AND mentor_id = ?`).bind(sid, staff.id).first() : null;
+    if (!stu) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const channel = url.searchParams.get("channel") === "parent" ? "parent" : "student";
+    if (channel === "parent") {
+      const rows = (await db.prepare(
+        `SELECT * FROM parent_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(stu.id).all()).results || [];
+      const unreadBefore = rows.filter((m) => m.sender === "parent" && !m.read_by_mentor).length;
+      if (unreadBefore) {
+        await db.prepare(
+          `UPDATE parent_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0`
+        ).bind(stu.id).run();
+      }
+      return jsonResp(req, {
+        ok: true,
+        student: { id: stu.id, name: stu.name || "", slug: stu.slug || "" },
+        channel, unread_before: unreadBefore,
+        messages: rows.map((m) => ({
+          id: m.id, sender: m.sender || "", sender_label: PARENT_MESSAGE_SENDERS[m.sender] || m.sender || "",
+          body: m.body || "", created_at: m.created_at || "",
+        })),
+      });
+    }
+    const rows = (await db.prepare(
+      `SELECT * FROM student_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(stu.id).all()).results || [];
+    const unreadBefore = rows.filter((m) => m.sender === "student" && !m.read_by_mentor).length;
+    if (unreadBefore) {
+      await db.prepare(
+        `UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0`
+      ).bind(stu.id).run();
+    }
+    return jsonResp(req, {
+      ok: true,
+      student: { id: stu.id, name: stu.name || "", slug: stu.slug || "" },
+      channel, unread_before: unreadBefore,
+      messages: rows.map((m) => ({
+        id: m.id, sender: m.sender || "", sender_label: MESSAGE_SENDERS[m.sender] || m.sender || "",
+        body: m.body || "", created_at: m.created_at || "", category: m.category || "",
+      })),
     });
   }
 

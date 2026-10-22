@@ -3,16 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>导师工作台 · TransferOS</title>
+<title>导师沟通台 · TransferOS</title>
 <meta name="theme-color" content="#16453a">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
+<style>
+  .inbox-row{display:flex;width:100%;text-align:left;gap:10px;align-items:flex-start;background:none;border:none;border-bottom:1px solid var(--line);padding:11px 2px;cursor:pointer;font:inherit;color:inherit}
+  .inbox-row:last-child{border-bottom:none}
+  .inbox-main{flex:1;min-width:0}
+  .inbox-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .inbox-name{font-weight:600}
+  .inbox-excerpt{color:var(--mut);font-size:13.5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .inbox-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+  .inbox-time{font-size:12px;color:var(--mut);white-space:nowrap}
+  .inbox-unread{background:#c0392b;color:#fff;border-radius:999px;font-size:12px;min-width:20px;height:20px;line-height:20px;text-align:center;padding:0 6px}
+  .th-msgs{max-height:55vh;overflow-y:auto;padding:4px 0}
+  .badge-dot{display:inline-block;background:#c0392b;color:#fff;border-radius:999px;font-size:12px;min-width:22px;height:22px;line-height:22px;text-align:center;padding:0 7px;vertical-align:2px}
+  #th-voice[disabled]{opacity:.45}
+  .voice-on{background:var(--brand);color:#fff}
+</style>
 </head>
 <body>
 <header class="topbar">
   <div class="topbar-in">
     <span class="logo" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0f332b"/><path d="M18 20h28v7H36v20h-8V27H18z" fill="#c9f06b"/></svg></span>
-    <span class="topbar-title" data-i18n="app.title">导师工作台</span>
+    <span class="topbar-title" data-i18n="app.title">导师沟通台</span>
     <button id="lang-toggle" class="lang-toggle" type="button" aria-label="Language / 语言"><span id="lang-zh" class="on">中</span><span class="lang-sep">|</span><span id="lang-en">EN</span></button>
   </div>
 </header>
@@ -26,7 +41,7 @@
       <label><span data-i18n="gate.k">导师密钥</span>
         <input id="gate-k" type="text" autocomplete="off" autocapitalize="none" data-i18n-ph="gate.kph" placeholder="如 mk_…"></label>
       <p id="gate-err" class="err" hidden></p>
-      <button class="btn-primary" type="submit" data-i18n="gate.btn">进入工作台</button>
+      <button class="btn-primary" type="submit" data-i18n="gate.btn">进入沟通台</button>
     </form>
   </section>
 
@@ -41,9 +56,33 @@
         <h1 id="m-name"></h1>
         <span class="pill" id="m-status"></span>
       </div>
-      <p class="exclusive" data-i18n="hero.exclusive">导师专属 · 名下学生方案层动态</p>
-      <p class="mut" id="m-note" data-i18n="hero.note">这里只显示你名下学生的方案层内容：近期动态、她的需求与待回复留言。学生的私密空间与家长通道内容不在这里。</p>
+      <p class="exclusive" data-i18n="hero.exclusive">导师专属 · 沟通台</p>
+      <p class="mut" id="m-note" data-i18n="hero.note">这里是你的沟通台：名下学生的留言与家长对话线都在这里回复；学生的私密空间与「给爸妈的一句话」不在这里。</p>
     </section>
+
+    <section class="card" id="inbox-card">
+      <h2><span data-i18n="cm.inbox">收件箱</span> <span class="badge-dot" id="inbox-badge" hidden></span></h2>
+      <div id="inbox-list"><p class="empty" data-i18n="cm.loading">正在加载…</p></div>
+    </section>
+
+    <section class="card" id="thread-card" hidden>
+      <button id="th-back" class="btn-ghost" type="button" data-i18n="cm.back">← 返回收件箱</button>
+      <h2 id="th-title" style="margin-top:10px"></h2>
+      <div id="th-msgs" class="th-msgs"></div>
+      <form id="th-form">
+        <textarea id="th-input" rows="3" maxlength="500" data-i18n-ph="cm.replyPh" placeholder="写回复…"></textarea>
+        <div class="msg-bar">
+          <span class="mut" id="th-status"></span>
+          <span>
+            <button id="th-voice" type="button" class="btn-ghost" data-i18n="cm.voice">🎤 语音</button>
+            <button id="th-send" type="submit" class="btn-send" data-i18n="cm.send">发送</button>
+          </span>
+        </div>
+        <p class="mut" id="th-voice-note" data-i18n="cm.voiceNote">语音输入使用浏览器自带的识别服务，转写由浏览器厂商的服务处理；转成文字后你可以先修改，再点发送。</p>
+        <p class="mut" id="th-voice-unsupported" hidden data-i18n="cm.voiceUnsupported">当前浏览器不支持语音识别，请打字输入。</p>
+      </form>
+    </section>
+
     <div id="students"></div>
     <p class="foot"><a href="#" id="forget" data-i18n="foot.forget">忘记已保存的链接信息</a></p>
   </div>

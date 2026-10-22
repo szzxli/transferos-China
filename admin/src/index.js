@@ -2247,6 +2247,23 @@ async function handleApi(req, env, url) {
     if ([...text].length > MESSAGE_MAX_LEN) {
       return jsonResp(req, { ok: false, error: "message too long (max " + MESSAGE_MAX_LEN + ")" }, 400);
     }
+    // v14 沟通台：channel='parent' 时回复进家长对话线（parent_messages），语义与后台
+    // parent_message_reply 完全一致（普通插入，不记学生事件流、不进发件箱）；
+    // 同时把该学生家长未读留言标导师已读。缺省/其它值沿用学生通道（v13 行为不变）。
+    if (String((body && body.channel) || "") === "parent") {
+      const pts = nowIso();
+      const pr = await db.prepare(
+        `INSERT INTO parent_messages(student_id, sender, body, created_at, read_by_parent, read_by_mentor)
+         VALUES(?, 'mentor', ?, ?, 0, 1)`
+      ).bind(stu.id, text, pts).run();
+      await db.prepare(
+        `UPDATE parent_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0`
+      ).bind(stu.id).run();
+      return jsonResp(req, {
+        ok: true, channel: "parent",
+        message: { id: pr.meta.last_row_id, sender: "mentor", body: text, created_at: pts },
+      });
+    }
     const ts = nowIso();
     const r = await db.prepare(
       `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor, mentor_id)
@@ -2263,6 +2280,108 @@ async function handleApi(req, env, url) {
     return jsonResp(req, {
       ok: true,
       message: { id: r.meta.last_row_id, sender: "mentor", body: text, created_at: ts },
+    });
+  }
+
+  // ===== v14 导师简易沟通台 API =====
+  // GET /api/mentor/inbox/<staff id 或 emp_no>?key=<mentor_key>：聚合收件箱。
+  // 只含该导师名下学生（students.mentor_id = staff.id）的两条留言线——学生线（student_messages）
+  // 与家长线（parent_messages）分开成条目：每条给出最后一条留言摘要与导师未读数；
+  // 顶部汇总 total_unread（未读总条数）与 pending_threads（有未读的线数）。
+  // 无任何留言的学生不产生条目；导师无指派学生 → threads 为空数组（诚实空态）。
+  // 查询纪律：学生列表 1 条 + 每学生 4 条小查询全部 Promise.all 并行（与 2026-10-22 性能修复同口径）。
+  const mentorInboxMatch = p.match(/^\/api\/mentor\/inbox\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
+  if (mentorInboxMatch) {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    await ensureSchema(db);
+    const staff = await findMentor(mentorInboxMatch[1], url.searchParams.get("key") || "");
+    if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const myStudents = (await db.prepare(
+      `SELECT id, name, slug FROM students WHERE mentor_id = ? ORDER BY id ASC LIMIT 50`).bind(staff.id).all()).results || [];
+    const perStudent = await Promise.all(myStudents.map(async (stu) => {
+      const [sLast, sUnread, pLast, pUnread] = await Promise.all([
+        db.prepare(`SELECT id, sender, body, created_at, category FROM student_messages WHERE student_id = ? ORDER BY id DESC LIMIT 1`).bind(stu.id).first(),
+        db.prepare(`SELECT COUNT(*) AS n FROM student_messages WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0`).bind(stu.id).first(),
+        db.prepare(`SELECT id, sender, body, created_at FROM parent_messages WHERE student_id = ? ORDER BY id DESC LIMIT 1`).bind(stu.id).first(),
+        db.prepare(`SELECT COUNT(*) AS n FROM parent_messages WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0`).bind(stu.id).first(),
+      ]);
+      return { stu, sLast, sUnread: sUnread ? sUnread.n : 0, pLast, pUnread: pUnread ? pUnread.n : 0 };
+    }));
+    const threads = [];
+    for (const { stu, sLast, sUnread, pLast, pUnread } of perStudent) {
+      if (sLast) threads.push({
+        student_id: stu.id, student_name: stu.name || "", slug: stu.slug || "",
+        channel: "student", channel_label: "学生留言",
+        last: { id: sLast.id, sender: sLast.sender || "", body: String(sLast.body || "").slice(0, 120), created_at: sLast.created_at || "", category: sLast.category || "" },
+        unread: sUnread,
+      });
+      if (pLast) threads.push({
+        student_id: stu.id, student_name: stu.name || "", slug: stu.slug || "",
+        channel: "parent", channel_label: "家长留言",
+        last: { id: pLast.id, sender: pLast.sender || "", body: String(pLast.body || "").slice(0, 120), created_at: pLast.created_at || "" },
+        unread: pUnread,
+      });
+    }
+    threads.sort((a, b) => (b.last.created_at || "").localeCompare(a.last.created_at || "") || b.last.id - a.last.id);
+    return jsonResp(req, {
+      ok: true,
+      mentor: { id: staff.id, name: staff.name || "", emp_no: staff.emp_no || "" },
+      total_unread: threads.reduce((sum, t) => sum + t.unread, 0),
+      pending_threads: threads.filter((t) => t.unread > 0).length,
+      threads,
+    });
+  }
+  // GET /api/mentor/thread/<staff id 或 emp_no>?key=&student_id=&channel=student|parent：
+  // 单条对话线全量（id 正序，上限 500，与学生/家长端同口径）。打开即把该线对方未读标导师已读
+  // （沿用既有 read_by_mentor 机制），unread_before 返回打开前的对方未读数。
+  // 学生不属于该导师 → 404（不暴露存在性）；家长线只查 parent_messages，学生线只查
+  // student_messages，两条线数据互不串。
+  const mentorThreadMatch = p.match(/^\/api\/mentor\/thread\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
+  if (mentorThreadMatch) {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    await ensureSchema(db);
+    const staff = await findMentor(mentorThreadMatch[1], url.searchParams.get("key") || "");
+    if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const sid = toInt(url.searchParams.get("student_id"), 0);
+    const stu = sid ? await db.prepare(
+      `SELECT id, name, slug FROM students WHERE id = ? AND mentor_id = ?`).bind(sid, staff.id).first() : null;
+    if (!stu) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const channel = url.searchParams.get("channel") === "parent" ? "parent" : "student";
+    if (channel === "parent") {
+      const rows = (await db.prepare(
+        `SELECT * FROM parent_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(stu.id).all()).results || [];
+      const unreadBefore = rows.filter((m) => m.sender === "parent" && !m.read_by_mentor).length;
+      if (unreadBefore) {
+        await db.prepare(
+          `UPDATE parent_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0`
+        ).bind(stu.id).run();
+      }
+      return jsonResp(req, {
+        ok: true,
+        student: { id: stu.id, name: stu.name || "", slug: stu.slug || "" },
+        channel, unread_before: unreadBefore,
+        messages: rows.map((m) => ({
+          id: m.id, sender: m.sender || "", sender_label: PARENT_MESSAGE_SENDERS[m.sender] || m.sender || "",
+          body: m.body || "", created_at: m.created_at || "",
+        })),
+      });
+    }
+    const rows = (await db.prepare(
+      `SELECT * FROM student_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(stu.id).all()).results || [];
+    const unreadBefore = rows.filter((m) => m.sender === "student" && !m.read_by_mentor).length;
+    if (unreadBefore) {
+      await db.prepare(
+        `UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0`
+      ).bind(stu.id).run();
+    }
+    return jsonResp(req, {
+      ok: true,
+      student: { id: stu.id, name: stu.name || "", slug: stu.slug || "" },
+      channel, unread_before: unreadBefore,
+      messages: rows.map((m) => ({
+        id: m.id, sender: m.sender || "", sender_label: MESSAGE_SENDERS[m.sender] || m.sender || "",
+        body: m.body || "", created_at: m.created_at || "", category: m.category || "",
+      })),
     });
   }
 
