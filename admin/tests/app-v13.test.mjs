@@ -76,19 +76,23 @@ section("A. 数据集：溯源 / 待核实标记 / 课程并集");
 {
   ok(DATASET._meta && DATASET._meta.retrieved === "2026-10-21" && DATASET._meta.sources.length >= 4,
     "_meta 带抓取日期与官方来源清单");
-  const HOSTS = new Set(["csi.cuny.edu", "www.csi.cuny.edu", "csi-undergraduate.catalog.cuny.edu", "cs.csi.cuny.edu", "www.cs.csi.cuny.edu", "coursedog-pdfs-public-prod.s3.us-east-2.amazonaws.com"]);
+  /* v13.1 口径修订：来源域名新增 www.cuny.edu（CUNY 中央 AUR 课程文件）与 csitoday.com（CSI 官方新闻站）；
+   * 专业 8 → 10（新增 Medical Laboratory Science BS、Chemistry BS，均官方目录核实存在）；
+   * 有要求集专业 2 → 3（护理建成完整官方集）；未核实 6 → 7。 */
+  const HOSTS = new Set(["csi.cuny.edu", "www.csi.cuny.edu", "csi-undergraduate.catalog.cuny.edu", "cs.csi.cuny.edu", "www.cs.csi.cuny.edu", "coursedog-pdfs-public-prod.s3.us-east-2.amazonaws.com", "www.cuny.edu", "csitoday.com"]);
   ok(DATASET._meta.sources.every((s) => HOSTS.has(new URL(s.url).host)),
     "全部来源为 CSI/CUNY 官方域名（含目录系统 Coursedog 官方 PDF 托管）");
-  ok(DATASET.majors.length === 8, "专业共 8 个");
+  ok(DATASET.majors.length === 10, "专业共 10 个（v13.1 扩容）");
   const withReq = DATASET.majors.filter((m) => m.requirements.length > 0);
-  ok(withReq.length === 2 && withReq.every((m) => m.verified === true), "2 个专业有要求集且 verified");
+  ok(withReq.length === 3 && withReq.every((m) => m.verified === true), "3 个专业有要求集且 verified（v13.1 护理建成）");
   ok(withReq.every((m) => m.sources.length >= 1 && m.sources.every((u) => DATASET._meta.sources.some((s) => s.url === u))),
     "已核实专业的要求集来源全部登记在 _meta.sources（可溯源）");
   const unver = DATASET.majors.filter((m) => !m.verified);
-  ok(unver.length === 6 && unver.every((m) => m.requirements.length === 0 && /待官方核实/.test(m.note)),
-    "6 个未核实专业只列名、零要求、note 带「待官方核实」");
+  ok(unver.length === 7 && unver.every((m) => m.requirements.length === 0 && /待官方核实/.test(m.note)),
+    "7 个未核实专业只列名、零要求、note 带「待官方核实」");
   const nursing = DATASET.majors.find((m) => m.id === "nursing-bs");
-  ok(nursing && /情景一/.test(nursing.note), "护理专业注明对应既有情景一、不重复灌入");
+  ok(nursing && /情景一/.test(nursing.note) && nursing.requirements.length === 42,
+    "护理已建成 42 条要求集并注明与情景一的同批课程关系（v13.1 取代 v13 的只列名口径）");
   const union = new Set();
   for (const m of DATASET.majors) for (const r of m.requirements) union.add(r.course_code.toUpperCase());
   ok(DATASET.courses.length === union.size && DATASET.courses.every((c) => union.has(c.course_code.toUpperCase())),
@@ -270,8 +274,14 @@ section("D. 专业选择与一键导出");
   w.document.querySelector('[data-tab="plan"]').click();
   await tick(120);
   const sel = $("major-select");
-  ok(sel.options.length === 8, "专业下拉共 8 项");
-  ok(sel.value === "biology-bs", "默认选中第一个专业 Biology BS");
+  ok(sel.options.length === 10, "专业下拉共 10 项（v13.1 扩容）");
+  /* v13.1 口径修订：默认重点专业 = 护理（创始人定版），不再默认第一个专业 */
+  ok(sel.value === "nursing-bs", "默认选中护理（默认重点专业）");
+  ok($("major-body").textContent.includes("已修 2 · 在修 0 · 缺 39 门"),
+    "护理摘要与夹具独立复算一致（夹具 7 门课命中护理要求：已修 2 / 在修 0 / 计划 1 / 缺 39）");
+  sel.value = "biology-bs";
+  sel.dispatchEvent(new w.Event("change"));
+  await tick(30);
   const body = $("major-body");
   ok(body.textContent.includes("已修 4 · 在修 1 · 缺 8 门"), "Biology 摘要与独立复算一致（4/1/8）");
   ok(body.textContent.includes("已修 10 / 已知总 36"), "Biology 学分行一致（10/36，未知 0）");
@@ -288,12 +298,13 @@ section("D. 专业选择与一键导出");
   ok(!md.includes("PRIV-SENTINEL-999"), "★ 导出不含私密层哨兵（IndexedDB 日记原文）");
   ok(!md.includes("EXAM-SCORE-SENTINEL-313"), "★ 导出不含考试分数哨兵（只含方案层）");
   ok($("major-export-msg").textContent.includes("已生成"), "导出后有成功反馈");
-  // 护理：只给情景一指引、不算数
+  // 护理（v13.1 口径修订）：即时计算并三态全量呈现，不再只给情景一指引
   sel.value = "nursing-bs";
   sel.dispatchEvent(new w.Event("change"));
   await tick(30);
-  ok($("major-body").textContent.includes("情景一") && !$("major-body").textContent.includes("缺 8 门"),
-    "护理专业只显示情景一指引、不重复计算");
+  ok($("major-body").textContent.includes("情景一") && $("major-body").textContent.includes("缺课（未修）")
+    && $("major-body").textContent.includes("NRS 424"),
+    "护理选中即出三态全量清单（含与情景一关系说明）");
   // CS：缺口数与数据集一致（17 条要求，MTH 231 为 planned → 缺 16）
   sel.value = "computer-science-bs";
   sel.dispatchEvent(new w.Event("change"));
@@ -307,7 +318,7 @@ section("E. 课程库检索与过滤");
   w.document.querySelector('[data-open="catalog"]').click();
   await tick(80);
   ok(!$("view-catalog").hidden, "课程库视图打开");
-  ok($("catalog-list").querySelectorAll(".course").length === 29, "全部课程 29 门");
+  ok($("catalog-list").querySelectorAll(".course").length === 68, "全部课程 68 门（v13.1 护理 42 条并入并集）");
   const msel = $("catalog-major");
   msel.value = "computer-science-bs";
   msel.dispatchEvent(new w.Event("change"));
@@ -320,7 +331,8 @@ section("E. 课程库检索与过滤");
   q.dispatchEvent(new w.Event("input"));
   await tick(30);
   const codes = [...$("catalog-list").querySelectorAll(".course .code")].map((e) => e.textContent);
-  ok(codes.join(",") === "BIO 170,BIO 171,BIO 180,BIO 181", "搜索 BIO 1 → 4 门生物课");
+  /* v13.1 口径修订：护理集并入后 BIO 1xx 共 9 门（新增 BIO 106/107/146/150/160） */
+  ok(codes.join(",") === "BIO 106,BIO 107,BIO 146,BIO 150,BIO 160,BIO 170,BIO 171,BIO 180,BIO 181", "搜索 BIO 1 → 9 门生物课（v13.1 护理并入）");
   w.document.querySelector('[data-close="view-catalog"]').click();
 }
 

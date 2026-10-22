@@ -5,6 +5,22 @@
   "retrieved": "2026-10-21",
   "sources": [
    {
+    "url": "https://www.csi.cuny.edu/academics-and-research/departments-programs/nursing/four-year-bachelor-science-nursing-program",
+    "retrieved": "2026-10-21"
+   },
+   {
+    "url": "https://www.cuny.edu/wp-content/uploads/sites/4/page-assets/academics/academic-programs/academic-program-resources/academic-reports/fall-2024-and-spring-2025/College-of-Staten-Island-AUR-Items-October-2024.pdf",
+    "retrieved": "2026-10-21"
+   },
+   {
+    "url": "https://www.cuny.edu/wp-content/uploads/sites/4/page-assets/academics/academic-programs/academic-program-resources/academic-reports/fall-2024-and-spring-2025/College-of-Staten-Island-AUR-Items-June-2025-UPDATED.pdf",
+    "retrieved": "2026-10-21"
+   },
+   {
+    "url": "https://csitoday.com/2025/12/csi-announces-new-four-year-nursing-bachelor-of-science-degree/",
+    "retrieved": "2026-10-21"
+   },
+   {
     "url": "https://coursedog-pdfs-public-prod.s3.us-east-2.amazonaws.com/csi01/catalog-pdf/ruWaU1g0EN9UVfQAV7q3/sMJm9FBaDQdn6EfcLHX0Od8Fg/BIO-CSI-2025-09-16-13-47-28.pdf",
     "retrieved": "2026-10-21"
    },
@@ -27,11 +43,593 @@
    {
     "url": "https://csi-undergraduate.catalog.cuny.edu/programs/CSC-BS",
     "retrieved": "2026-10-21"
+   },
+   {
+    "url": "https://csi-undergraduate.catalog.cuny.edu/programs/MDT-BS",
+    "retrieved": "2026-10-21"
+   },
+   {
+    "url": "https://csi-undergraduate.catalog.cuny.edu/programs/CHM-BS",
+    "retrieved": "2026-10-21"
    }
   ],
-  "note": "只收录官方来源可查的要求；verified=false 的专业仅列名、要求待官方核实。课程名称为空表示官方名称未在所引来源中确认。学分 null 表示未确认，匹配引擎单列未知、绝不估算。"
+  "permit_sources": [
+   "https://www.csi.cuny.edu/students/registrar/epermit"
+  ],
+  "ap_source": "https://www.csi.cuny.edu/admissions/applying-csi/advanced-placement-credit",
+  "note": "只收录官方来源可查的要求；verified=false 的专业仅列名、要求待官方核实。要求行 source=ledger 者为学生 intake 台账来源、未经官网复核。课程名称为空表示官方名称未在所引来源中确认。学分 null 表示未确认，匹配引擎单列未知、绝不估算。外修口径：CUNY 体系内可申请 ePermit（CSI Registrar）；SUNY 非 CUNY 体系、无 ePermit，按 CSI 转学分个案评估。AP 口径：CSI 官方 AP 页（≥3 分可换学分，逐门等效查 CUNY Transfer Explorer）。营养学（Nutrition）在 CSI 无独立学士项目（官方目录核实），故未列入。"
  },
  "majors": [
+  {
+   "id": "nursing-bs",
+   "name": "Nursing BS（四年制）",
+   "verified": true,
+   "partial": false,
+   "note": "四年制护理学士（2026 秋首届），学位总学分 120（官方）。本要求集与「情景一」是同一批课程的两种呈现：条目与计数一致（对账见本专业 diff 说明），规划与学位审计仍以情景一（DegreeWorks 台账）为准。标「台账」的行只有学生 intake 台账来源、未经官网复核；其余行均为官方来源。条目学分合计含类别重叠（如 BIO 106 同时算通识与项目第一年课程），不等于学位总学分。",
+   "sources": [
+    "https://www.csi.cuny.edu/academics-and-research/departments-programs/nursing/four-year-bachelor-science-nursing-program",
+    "https://www.cuny.edu/wp-content/uploads/sites/4/page-assets/academics/academic-programs/academic-program-resources/academic-reports/fall-2024-and-spring-2025/College-of-Staten-Island-AUR-Items-October-2024.pdf",
+    "https://www.cuny.edu/wp-content/uploads/sites/4/page-assets/academics/academic-programs/academic-program-resources/academic-reports/fall-2024-and-spring-2025/College-of-Staten-Island-AUR-Items-June-2025-UPDATED.pdf",
+    "https://csitoday.com/2025/12/csi-announces-new-four-year-nursing-bachelor-of-science-degree/",
+    "https://coursedog-pdfs-public-prod.s3.us-east-2.amazonaws.com/csi01/catalog-pdf/ruWaU1g0EN9UVfQAV7q3/sMJm9FBaDQdn6EfcLHX0Od8Fg/BIO-CSI-2025-09-16-13-47-28.pdf"
+   ],
+   "program_rules": [
+    "学位总学分 120；项目 2026 年秋季首届（CSI 官方发布）",
+    "录取门槛：总 GPA ≥ 2.7；第一年 11 门指定课程每门 C+ 以上",
+    "科学课小组 GPA ≥ 3.0：BIO 106、BIO 107、CHM 110、CHM 111、BIO 150",
+    "上述科学课原则上只能尝试一次；超过 5 年须重修（护理系官网）",
+    "BIO 150 与 BIO 160 必须在同一所学校修读",
+    "第一年内须完成一项标准化入学考试并提交官方成绩（考试名称官网未写明，待向护理系核实）",
+    "NRS 核心课实行 C+ 进阶制：后续课程普遍要求前序 NRS 课 C+ 以上",
+    "本项目不参加 Freshman Forgiveness 政策"
+   ],
+   "diff_notes": [
+    "学分：台账 NRS 17 门学分未拆分（单列未知）；本集按 AUR 官方逐门学分计入，核心合计 58 + 选修 6 = 64；台账称序列总 65，差 1 学分待核实（官方逐学期加总与学位总学分 120 恰好吻合，支持官方口径）",
+    "先修链：台账为单线链（如 NRS 208 只挂 NRS 204）；本集按 AUR 官方先修原文（如 NRS 208 须 NRS 101 与 204 均 C+ 以上）",
+    "NRS 101 与 NRS 204：台账记先后，官方为同学期并修",
+    "最低成绩：台账未标注；本集按官方录取与进阶规则标注（第一年课程 C+、科学支持课 C、NRS 课 C+）",
+    "计数对账：42 条要求、已修 13 / 在修 4 / 缺 25，与情景一生产口径完全一致"
+   ],
+   "requirements": [
+    {
+     "block": "prereq",
+     "course_code": "BIO 150",
+     "course_name": "Human Anatomy and Physiology I",
+     "credits": 4,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "term": "Y1S2",
+     "permit": "same_school_pair",
+     "note": "与 BIO 160 必须在同一所学校修读（护理系官网明示）"
+    },
+    {
+     "block": "prereq",
+     "course_code": "BIO 160",
+     "course_name": "Human Anatomy & Physiology II",
+     "credits": 4,
+     "min_grade": "C",
+     "prereq_codes": [
+      "BIO 150"
+     ],
+     "source": "ledger",
+     "permit": "same_school_pair",
+     "term": "Y2S1",
+     "note": "名称/学分据台账；AUR 确认其为第二年第一学期课程且与 BIO 150 同校修读；后续课程要求 C 以上"
+    },
+    {
+     "block": "prereq",
+     "course_code": "PSY 100",
+     "course_name": "Psychology",
+     "credits": 3,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "epermit",
+     "term": "Y1S1"
+    },
+    {
+     "block": "prereq",
+     "course_code": "CHM 110",
+     "course_name": "Principles of Chemistry I",
+     "credits": 3,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "epermit",
+     "term": "Y1S2"
+    },
+    {
+     "block": "prereq",
+     "course_code": "CHM 111",
+     "course_name": "Principles of Chemistry I Laboratory",
+     "credits": 1,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "epermit",
+     "term": "Y1S2"
+    },
+    {
+     "block": "prereq",
+     "course_code": "MTH 113",
+     "course_name": "Introduction to Probability & Statistics",
+     "credits": 4,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "epermit",
+     "term": "Y1S2"
+    },
+    {
+     "block": "prereq",
+     "course_code": "PSY 242",
+     "course_name": "",
+     "credits": 4,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "ledger",
+     "permit": "epermit",
+     "term": "Y3S1",
+     "note": "学分据台账（官方学期学分加总与学位总学分 120 吻合，旁证）；AUR 确认其为 NRS 301/310 并修课、NRS 309 先修要求 C+ 以上；课程全名未在所引官方来源中确认，留空"
+    },
+    {
+     "block": "prereq",
+     "course_code": "CHM 116",
+     "course_name": "",
+     "credits": 3,
+     "min_grade": "C",
+     "prereq_codes": [
+      "CHM 110"
+     ],
+     "source": "ledger",
+     "permit": "epermit",
+     "term": "Y2S1",
+     "note": "名称/学分据台账；AUR 确认其为第二年第一学期课程（NRS 101/204 并修），后续课程要求 C 以上"
+    },
+    {
+     "block": "prereq",
+     "course_code": "CHM 117",
+     "course_name": "",
+     "credits": 1,
+     "min_grade": "C",
+     "prereq_codes": [
+      "CHM 111"
+     ],
+     "source": "ledger",
+     "permit": "epermit",
+     "term": "Y2S1",
+     "note": "名称/学分据台账；AUR 确认其为第二年第一学期课程（NRS 101/204 并修），后续课程要求 C 以上"
+    },
+    {
+     "block": "prereq",
+     "course_code": "BIO 350",
+     "course_name": "Microbiology and Cellular Pathology",
+     "credits": 3,
+     "min_grade": "C",
+     "prereq_codes": [
+      "BIO 160"
+     ],
+     "source": "official",
+     "permit": "epermit",
+     "term": "Y2S2",
+     "note": "名称/学分据官方 BIO 目录；先修 BIO 160 据台账与 AUR 学期编排；NRS 301 要求本课 C 以上"
+    },
+    {
+     "block": "prereq",
+     "course_code": "BIO 351",
+     "course_name": "",
+     "credits": 1,
+     "min_grade": "C",
+     "prereq_codes": [
+      "BIO 350"
+     ],
+     "source": "ledger",
+     "permit": "epermit",
+     "term": "Y2S2",
+     "note": "学分据台账；AUR 确认其为第二年第二学期课程（NRS 208/303/320 并修），NRS 301 要求 C 以上"
+    },
+    {
+     "block": "prereq",
+     "course_code": "BIO 146",
+     "course_name": "",
+     "credits": 3,
+     "min_grade": "C",
+     "prereq_codes": [],
+     "source": "ledger",
+     "permit": "epermit",
+     "term": "Y2S1",
+     "note": "名称/学分据台账；AUR 确认其为第二年第一学期课程（NRS 101/204 并修），后续课程要求 C 以上"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 101",
+     "course_name": "Holistic Self-Care of the Nurse and Nursing Student",
+     "credits": 1,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y2S1",
+     "note": "入学门槛课：须先被四年制护理项目录取，且第一年课程全部 C 以上"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 204",
+     "course_name": "Pharmacology and Medical Dosage Calculations for Nurses",
+     "credits": 3,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y2S1",
+     "note": "与 NRS 101 同学期并修（官方并修关系）"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 208",
+     "course_name": "Foundations of Nursing",
+     "credits": 4,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 101",
+      "NRS 204"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y2S2"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 303",
+     "course_name": "Seminar in Profession",
+     "credits": 3,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 101",
+      "NRS 204"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y2S2",
+     "note": "课程名按 AUR 原文；全称待目录课程页复核"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 320",
+     "course_name": "Health Assessment and Physical Examination",
+     "credits": 3,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 101",
+      "NRS 204"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y2S2"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 301",
+     "course_name": "Adult Health Nursing I",
+     "credits": 5,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 208",
+      "NRS 303",
+      "NRS 320"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y3S1"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 310",
+     "course_name": "Interpersonal Dynamics for Professional Nurses",
+     "credits": 2,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 208",
+      "NRS 303",
+      "NRS 320"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y3S1"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 307",
+     "course_name": "Adult Health Nursing II",
+     "credits": 5,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 301",
+      "NRS 310"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y3S2"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 309",
+     "course_name": "Psychiatric Nursing and Mental Health Wellness",
+     "credits": 4,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 301",
+      "NRS 310",
+      "PSY 242"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y3S2"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 321",
+     "course_name": "Introduction to Research in Nursing",
+     "credits": 3,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y3S2",
+     "note": "与 NRS 307/309 同学期（官方并修）；学分据 AUR 2025-06 文件"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 401",
+     "course_name": "Adult Health Nursing III",
+     "credits": 5,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 307",
+      "NRS 309",
+      "NRS 321"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y4S1"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 410",
+     "course_name": "Community Health Nursing",
+     "credits": 5,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 307",
+      "NRS 309",
+      "NRS 321"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y4S1"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 412",
+     "course_name": "Nursing Leadership, Management, and Care Coordination",
+     "credits": 2,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 307",
+      "NRS 309",
+      "NRS 321"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y4S1"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 414",
+     "course_name": "Family-Centered Maternity and Neonatal Nursing",
+     "credits": 4,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 401",
+      "NRS 410",
+      "NRS 412"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y4S2"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 415",
+     "course_name": "Nursing Care of Children",
+     "credits": 4,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 401",
+      "NRS 410",
+      "NRS 412"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y4S2"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 423",
+     "course_name": "Issues in Health Care and Professional Nursing",
+     "credits": 3,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 401",
+      "NRS 410",
+      "NRS 412"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y4S2"
+    },
+    {
+     "block": "core",
+     "course_code": "NRS 424",
+     "course_name": "Transition to Professional Practice",
+     "credits": 2,
+     "min_grade": "C+",
+     "prereq_codes": [
+      "NRS 401",
+      "NRS 410",
+      "NRS 412"
+     ],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y4S2"
+    },
+    {
+     "block": "gened",
+     "course_code": "ENG 111",
+     "course_name": "Intro to College Writing",
+     "credits": 3,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "epermit",
+     "term": "Y1S1"
+    },
+    {
+     "block": "gened",
+     "course_code": "ENG 151",
+     "course_name": "College Writing",
+     "credits": 3,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "epermit",
+     "term": "Y1S2"
+    },
+    {
+     "block": "gened",
+     "course_code": "PHL 130",
+     "course_name": "Introduction to Ethics",
+     "credits": 3,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "epermit",
+     "term": "Y1S1"
+    },
+    {
+     "block": "gened",
+     "course_code": "MUS 108",
+     "course_name": "Introduction to Jazz History",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": [],
+     "source": "ledger",
+     "permit": "epermit",
+     "note": "她的台账选课（创意表达类）；名称/学分据台账与本人成绩记录"
+    },
+    {
+     "block": "gened",
+     "course_code": "COR 100",
+     "course_name": "US Issues, Ideas & Institutions",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": [],
+     "source": "ledger",
+     "permit": "epermit",
+     "note": "对应官方第一年清单中的「US Experience & Diversity」类别（3 学分）；具体课程据她的台账"
+    },
+    {
+     "block": "gened",
+     "course_code": "BIO 106",
+     "course_name": "Principles of Biology I",
+     "credits": 3,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "epermit",
+     "term": "Y1S1"
+    },
+    {
+     "block": "gened",
+     "course_code": "BIO 107",
+     "course_name": "Principles of Biology I Laboratory",
+     "credits": 1,
+     "min_grade": "C+",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "epermit",
+     "term": "Y1S1"
+    },
+    {
+     "block": "gened",
+     "course_code": "CHN 215",
+     "course_name": "Continuing Mandarin Chinese II",
+     "credits": 4,
+     "min_grade": null,
+     "prereq_codes": [],
+     "source": "ledger",
+     "permit": "epermit",
+     "note": "名称/学分据台账与本人成绩记录"
+    },
+    {
+     "block": "gened",
+     "course_code": "CSC 119",
+     "course_name": "Computer Technology Concepts",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": [],
+     "source": "ledger",
+     "permit": "epermit",
+     "note": "名称/学分据台账与本人成绩记录"
+    },
+    {
+     "block": "gened",
+     "course_code": "MTH 231",
+     "course_name": "Anal Geom–Calc I",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": [],
+     "source": "ledger",
+     "permit": "epermit",
+     "note": "名称/学分据台账与本人成绩记录"
+    },
+    {
+     "block": "gened",
+     "course_code": "FCWG 1000",
+     "course_name": "FC World Cultures & Global Issues",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": [],
+     "source": "ledger",
+     "permit": "epermit",
+     "note": "对应 AUR 并修链中的「World Cultures and Global Issues」类别；具体课程据她的台账"
+    },
+    {
+     "block": "gened",
+     "course_code": "COLLEGE-OPTION",
+     "course_name": "College Option 缺口（200 级以上 SSA/TALA，含 CW 与 P&D 主题）",
+     "credits": 12,
+     "min_grade": null,
+     "prereq_codes": [],
+     "source": "ledger",
+     "permit": "epermit",
+     "note": "DegreeWorks 审计缺口条目（尚缺 12 学分），不是单门课"
+    },
+    {
+     "block": "elective",
+     "course_code": "NRS-ELECT",
+     "course_name": "护理选修（NRS Elective）",
+     "credits": 6,
+     "min_grade": "C",
+     "prereq_codes": [],
+     "source": "official",
+     "permit": "csi_only",
+     "term": "Y4S1+Y4S2",
+     "note": "官方要求两门护理选修（各 3 学分，第四年两学期各一门），可选 NRS 305/319/323/324/325/421/430；台账合并记为一条 6 学分"
+    }
+   ]
+  },
   {
    "id": "biology-bs",
    "name": "Biology BS",
@@ -319,12 +917,14 @@
    ]
   },
   {
-   "id": "nursing-bs",
-   "name": "Nursing BS",
+   "id": "medical-lab-science-bs",
+   "name": "Medical Laboratory Science BS",
    "verified": false,
    "partial": false,
-   "note": "要求待官方核实。本产品内已有该专业的完整台账情景（课程匹配「情景一」：CSI 护理要求 42 条，由导师按官方资料维护），专业匹配请直接看课程匹配区；本数据集不重复灌入，避免两处口径打架。",
-   "sources": [],
+   "note": "要求待官方核实（仅列名）。项目实情（官方目录）：四年制学士，NAACLS 认证、纽约州执照资格项目；三年校内课程 + 两学期全职临床培训（多家附属医院）；毕业可考 ASCP 认证与纽约州 CLT 执照。逐条要求集待按官方目录补建。",
+   "sources": [
+    "https://csi-undergraduate.catalog.cuny.edu/programs/MDT-BS"
+   ],
    "requirements": []
   },
   {
@@ -334,6 +934,17 @@
    "partial": false,
    "note": "要求待官方核实（仅列名，未取得官方要求集）。",
    "sources": [],
+   "requirements": []
+  },
+  {
+   "id": "chemistry-bs",
+   "name": "Chemistry BS（含 Biochemistry 方向）",
+   "verified": false,
+   "partial": false,
+   "note": "要求待官方核实（仅列名）。项目实情（官方目录）：化学系学士，含 Biochemistry 方向（Track One 为 ACS 认证）。逐条要求集待按官方目录补建。",
+   "sources": [
+    "https://csi-undergraduate.catalog.cuny.edu/programs/CHM-BS"
+   ],
    "requirements": []
   },
   {
@@ -375,6 +986,73 @@
  ],
  "courses": [
   {
+   "course_code": "BIO 106",
+   "course_name": "Principles of Biology I",
+   "credits": 3,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "BIO 107",
+   "course_name": "Principles of Biology I Laboratory",
+   "credits": 1,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "BIO 146",
+   "course_name": "",
+   "credits": 3,
+   "min_grade": "C",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "BIO 150",
+   "course_name": "Human Anatomy and Physiology I",
+   "credits": 4,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "same_school_pair",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "BIO 160",
+   "course_name": "Human Anatomy & Physiology II",
+   "credits": 4,
+   "min_grade": "C",
+   "prereq_codes": [
+    "BIO 150"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "same_school_pair",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
    "course_code": "BIO 170",
    "course_name": "General Biology I",
    "credits": 3,
@@ -382,7 +1060,10 @@
    "prereq_codes": [],
    "majors": [
     "biology-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "BIO 171",
@@ -392,7 +1073,10 @@
    "prereq_codes": [],
    "majors": [
     "biology-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "BIO 180",
@@ -404,7 +1088,10 @@
    ],
    "majors": [
     "biology-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "BIO 181",
@@ -414,7 +1101,96 @@
    "prereq_codes": [],
    "majors": [
     "biology-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "BIO 350",
+   "course_name": "Microbiology and Cellular Pathology",
+   "credits": 3,
+   "min_grade": "C",
+   "prereq_codes": [
+    "BIO 160"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "BIO 351",
+   "course_name": "",
+   "credits": 1,
+   "min_grade": "C",
+   "prereq_codes": [
+    "BIO 350"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "CHM 110",
+   "course_name": "Principles of Chemistry I",
+   "credits": 3,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "CHM 111",
+   "course_name": "Principles of Chemistry I Laboratory",
+   "credits": 1,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "CHM 116",
+   "course_name": "",
+   "credits": 3,
+   "min_grade": "C",
+   "prereq_codes": [
+    "CHM 110"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "CHM 117",
+   "course_name": "",
+   "credits": 1,
+   "min_grade": "C",
+   "prereq_codes": [
+    "CHM 111"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CHM 121",
@@ -424,7 +1200,10 @@
    "prereq_codes": [],
    "majors": [
     "biology-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CHM 127",
@@ -434,7 +1213,10 @@
    "prereq_codes": [],
    "majors": [
     "biology-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CHM 141",
@@ -444,7 +1226,10 @@
    "prereq_codes": [],
    "majors": [
     "biology-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CHM 142",
@@ -456,7 +1241,10 @@
    ],
    "majors": [
     "biology-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CHM 250",
@@ -468,7 +1256,10 @@
    ],
    "majors": [
     "biology-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CHM 256",
@@ -480,7 +1271,62 @@
    ],
    "majors": [
     "biology-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "CHN 215",
+   "course_name": "Continuing Mandarin Chinese II",
+   "credits": 4,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "COLLEGE-OPTION",
+   "course_name": "College Option 缺口（200 级以上 SSA/TALA，含 CW 与 P&D 主题）",
+   "credits": 12,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "COR 100",
+   "course_name": "US Issues, Ideas & Institutions",
+   "credits": 3,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "CSC 119",
+   "course_name": "Computer Technology Concepts",
+   "credits": 3,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 126",
@@ -490,7 +1336,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 211",
@@ -500,7 +1349,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 220",
@@ -510,7 +1362,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 228",
@@ -520,7 +1375,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 305",
@@ -530,7 +1388,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 326",
@@ -540,7 +1401,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 330",
@@ -550,7 +1414,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 332",
@@ -560,7 +1427,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 346",
@@ -570,7 +1440,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 347",
@@ -580,7 +1453,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 382",
@@ -590,7 +1466,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 430",
@@ -600,7 +1479,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 446",
@@ -610,7 +1492,10 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "CSC 490",
@@ -620,29 +1505,64 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "ENG 111",
-   "course_name": "",
+   "course_name": "Intro to College Writing",
+   "credits": 3,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs",
+    "biology-bs"
+   ],
+   "permit": "epermit",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "ENG 151",
+   "course_name": "College Writing",
+   "credits": 3,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs",
+    "biology-bs"
+   ],
+   "permit": "epermit",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "FCWG 1000",
+   "course_name": "FC World Cultures & Global Issues",
    "credits": 3,
    "min_grade": null,
    "prereq_codes": [],
    "majors": [
-    "biology-bs"
-   ]
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
-   "course_code": "ENG 151",
-   "course_name": "",
-   "credits": 3,
-   "min_grade": null,
-   "prereq_codes": [
-    "ENG 111"
-   ],
+   "course_code": "MTH 113",
+   "course_name": "Introduction to Probability & Statistics",
+   "credits": 4,
+   "min_grade": "C+",
+   "prereq_codes": [],
    "majors": [
-    "biology-bs"
-   ]
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "MTH 229",
@@ -653,18 +1573,25 @@
    "majors": [
     "biology-bs",
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "MTH 231",
-   "course_name": "Analytic Geometry and Calculus I",
+   "course_name": "Anal Geom–Calc I",
    "credits": 3,
    "min_grade": null,
    "prereq_codes": [],
    "majors": [
+    "nursing-bs",
     "biology-bs",
     "computer-science-bs"
-   ]
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   },
   {
    "course_code": "MTH 232",
@@ -674,7 +1601,348 @@
    "prereq_codes": [],
    "majors": [
     "computer-science-bs"
-   ]
+   ],
+   "permit": null,
+   "source": null,
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "MUS 108",
+   "course_name": "Introduction to Jazz History",
+   "credits": 3,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 101",
+   "course_name": "Holistic Self-Care of the Nurse and Nursing Student",
+   "credits": 1,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 204",
+   "course_name": "Pharmacology and Medical Dosage Calculations for Nurses",
+   "credits": 3,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 208",
+   "course_name": "Foundations of Nursing",
+   "credits": 4,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 101",
+    "NRS 204"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 301",
+   "course_name": "Adult Health Nursing I",
+   "credits": 5,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 208",
+    "NRS 303",
+    "NRS 320"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 303",
+   "course_name": "Seminar in Profession",
+   "credits": 3,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 101",
+    "NRS 204"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 307",
+   "course_name": "Adult Health Nursing II",
+   "credits": 5,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 301",
+    "NRS 310"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 309",
+   "course_name": "Psychiatric Nursing and Mental Health Wellness",
+   "credits": 4,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 301",
+    "NRS 310",
+    "PSY 242"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 310",
+   "course_name": "Interpersonal Dynamics for Professional Nurses",
+   "credits": 2,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 208",
+    "NRS 303",
+    "NRS 320"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 320",
+   "course_name": "Health Assessment and Physical Examination",
+   "credits": 3,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 101",
+    "NRS 204"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 321",
+   "course_name": "Introduction to Research in Nursing",
+   "credits": 3,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 401",
+   "course_name": "Adult Health Nursing III",
+   "credits": 5,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 307",
+    "NRS 309",
+    "NRS 321"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 410",
+   "course_name": "Community Health Nursing",
+   "credits": 5,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 307",
+    "NRS 309",
+    "NRS 321"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 412",
+   "course_name": "Nursing Leadership, Management, and Care Coordination",
+   "credits": 2,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 307",
+    "NRS 309",
+    "NRS 321"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 414",
+   "course_name": "Family-Centered Maternity and Neonatal Nursing",
+   "credits": 4,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 401",
+    "NRS 410",
+    "NRS 412"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 415",
+   "course_name": "Nursing Care of Children",
+   "credits": 4,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 401",
+    "NRS 410",
+    "NRS 412"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 423",
+   "course_name": "Issues in Health Care and Professional Nursing",
+   "credits": 3,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 401",
+    "NRS 410",
+    "NRS 412"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS 424",
+   "course_name": "Transition to Professional Practice",
+   "credits": 2,
+   "min_grade": "C+",
+   "prereq_codes": [
+    "NRS 401",
+    "NRS 410",
+    "NRS 412"
+   ],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "NRS-ELECT",
+   "course_name": "护理选修（NRS Elective）",
+   "credits": 6,
+   "min_grade": "C",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "csi_only",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "PHL 130",
+   "course_name": "Introduction to Ethics",
+   "credits": 3,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "PSY 100",
+   "course_name": "Psychology",
+   "credits": 3,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "official",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
+  },
+  {
+   "course_code": "PSY 242",
+   "course_name": "",
+   "credits": 4,
+   "min_grade": "C+",
+   "prereq_codes": [],
+   "majors": [
+    "nursing-bs"
+   ],
+   "permit": "epermit",
+   "source": "ledger",
+   "ap_note": "AP 替代：CSI 政策为 AP ≥3 分可换学分；具体考试与等效以 CUNY Transfer Explorer 官方查询为准"
   }
  ]
 }

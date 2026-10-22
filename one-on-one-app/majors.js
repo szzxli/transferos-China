@@ -57,6 +57,11 @@
         code: r.course_code || "", name: r.course_name || "", block,
         credits, min_grade: r.min_grade || "", prereq_codes: parsePrereqCodes(r.prereq_codes),
         status: st, course_grade: c ? (c.grade || "") : "", course_term: c ? (c.term || "") : "",
+        /* v13.1 呈现字段（不参与计数口径）：来源 / 官方学期编排 / 外修口径 / 行注 / AP 满足识别。
+         * via_ap 只认学生档案里已登记的 AP 兑换（课程 note 含 AP），不推断她没登记的 AP。 */
+        source: r.source || "", term_hint: r.term || "", permit: r.permit || "",
+        row_note: r.note || "", course_note: c ? (c.note || "") : "",
+        via_ap: !!(c && /AP/.test(c.note || "")),
       };
       items.push(item);
       if (st === "missing") missing.push(item);
@@ -111,6 +116,18 @@
     lines.push("> 以学校官方学位审计为准 / Subject to the official degree audit of the school.");
     lines.push("");
     if (major.note) { lines.push("专业说明：" + major.note); lines.push(""); }
+    if (major.program_rules && major.program_rules.length) {
+      lines.push("## 项目规则（官方）");
+      lines.push("");
+      for (const x of major.program_rules) lines.push("- " + x);
+      lines.push("");
+    }
+    if (major.diff_notes && major.diff_notes.length) {
+      lines.push("## 与台账情景的对账差异");
+      lines.push("");
+      for (const x of major.diff_notes) lines.push("- " + x);
+      lines.push("");
+    }
     if (!major.verified || !match) {
       lines.push("该专业要求集待官方核实，暂无可计算的匹配结果。");
       lines.push("");
@@ -121,15 +138,36 @@
       lines.push("- 要求总数：" + tt.requirements + "（已修 " + tt.done + " / 在修 " + tt.in_progress + " / 计划 " + tt.planned + " / 缺 " + tt.missing + "）");
       lines.push("- 已知学分：已修 " + tt.credits_done + " / 要求 " + tt.credits_total + "（缺口 " + tt.credits_missing + "；学分未标注 " + tt.credits_unknown + " 条单列，不估算）");
       lines.push("");
+      const permitText = (p) => p === "csi_only" ? "须在 CSI 项目内修读"
+        : p === "same_school_pair" ? "有同校修读要求（见行注）"
+        : p === "epermit" ? "可申请 CUNY ePermit 外修（须 CSI 批准）" : "";
+      const itemLine = (x, withStatus) => "- " + x.code + (x.name ? " " + x.name : "") +
+        "（" + x.block + (x.credits !== null && x.credits !== undefined ? "，" + x.credits + " 学分" : "，学分未标注") +
+        (x.min_grade ? "，最低成绩 " + x.min_grade : "") +
+        (x.prereq_codes && x.prereq_codes.length ? "，先修：" + x.prereq_codes.join(", ") : "") +
+        (x.term_hint ? "，建议学期 " + x.term_hint : "") +
+        (permitText(x.permit) ? "，外修：" + permitText(x.permit) : "") +
+        (x.source ? "，来源：" + (x.source === "official" ? "官方" : "台账（未经官网复核）") : "") +
+        (withStatus && x.via_ap ? "，已由 AP 兑换满足" : "") +
+        (withStatus && x.course_grade ? "，成绩 " + x.course_grade : "") +
+        (withStatus && x.course_term ? "，" + x.course_term : "") + "）" +
+        (x.row_note ? " —— " + x.row_note : "");
+      const doneItems = match.items.filter((x) => x.status === "done");
+      const doingItems = match.items.filter((x) => x.status === "in_progress" || x.status === "planned");
+      lines.push("## 已满足（已修）");
+      lines.push("");
+      if (doneItems.length) for (const x of doneItems) lines.push(itemLine(x, true));
+      else lines.push("- 无");
+      lines.push("");
+      lines.push("## 在修");
+      lines.push("");
+      if (doingItems.length) for (const x of doingItems) lines.push(itemLine(x, true));
+      else lines.push("- 无");
+      lines.push("");
       lines.push("## 缺口清单（未修要求）");
       lines.push("");
       if (match.missing.length) {
-        for (const m of match.missing) {
-          lines.push("- " + m.code + (m.name ? " " + m.name : "") +
-            "（" + m.block + (m.credits !== null && m.credits !== undefined ? "，" + m.credits + " 学分" : "，学分未标注") +
-            (m.min_grade ? "，最低成绩 " + m.min_grade : "") +
-            (m.prereq_codes && m.prereq_codes.length ? "，先修：" + m.prereq_codes.join(", ") : "") + "）");
-        }
+        for (const m of match.missing) lines.push(itemLine(m, false));
       } else lines.push("- 无缺口（已建模要求全部覆盖）。");
       lines.push("");
       if (match.grade_warnings.length) {
@@ -157,7 +195,9 @@
         lines.push("- " + c.course_code + (c.course_name ? " " + c.course_name : "") +
           "（" + (c.credits !== null && c.credits !== undefined ? c.credits + " 学分" : "学分未标注") +
           (c.min_grade ? "，最低成绩 " + c.min_grade : "") +
-          (c.prereq_codes && c.prereq_codes.length ? "，先修：" + c.prereq_codes.join(", ") : "") + "）");
+          (c.prereq_codes && c.prereq_codes.length ? "，先修：" + c.prereq_codes.join(", ") : "") +
+          (c.permit === "csi_only" ? "，外修：须在 CSI 项目内修读" : c.permit === "same_school_pair" ? "，外修：有同校修读要求" : c.permit === "epermit" ? "，外修：可申请 CUNY ePermit 外修（须 CSI 批准）" : "") +
+          (c.ap_note ? "；" + c.ap_note : "") + "）");
       }
     } else lines.push("- （要求集待核实，暂无课程清单）");
     lines.push("");

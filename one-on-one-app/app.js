@@ -142,7 +142,18 @@ const I18N = {
     "major.exported": "已生成导出文件",
     "major.loadFail": "专业数据加载失败，稍后再试",
     "major.none": "先在上方选一个专业",
-    "major.nursingHint": "护理专业的完整要求在下方「课程匹配」的情景一里（导师按官方台账维护），这里不重复计算。",
+    "major.nursingHint": "护理要求集已按 CSI 官方来源建成全集，与下方「课程匹配」的情景一是同一批课程的两种呈现，计数一致；规划与学位审计仍以情景一为准。",
+    "major.groupDone": "已修（已满足）",
+    "major.groupDoing": "在修",
+    "major.groupMissing": "缺课（未修）",
+    "major.apSatisfied": "AP 兑换满足",
+    "major.permitEpermit": "可 ePermit 外修",
+    "major.permitCsiOnly": "须在 CSI 修",
+    "major.permitPair": "同校修读要求",
+    "major.term": "建议学期 {x}",
+    "major.srcOfficial": "官方",
+    "major.srcLedger": "台账",
+    "major.rulesTitle": "项目规则（官方）",
     "view.catalog": "课程库",
     "catalog.searchPh": "按课程代码或名称搜索",
     "catalog.allMajors": "全部专业",
@@ -546,7 +557,18 @@ const I18N = {
     "major.exported": "Export file generated",
     "major.loadFail": "Could not load major data — try again later",
     "major.none": "Pick a major above first",
-    "major.nursingHint": "Nursing's full requirements live in Scenario 1 of Course Match below (maintained by your mentor from the official ledger); they are not recomputed here.",
+    "major.nursingHint": "Nursing's requirement set is now built in full from official CSI sources. It presents the same courses as Scenario 1 in Course Match below, with matching counts; planning and the degree audit still follow Scenario 1.",
+    "major.groupDone": "Completed (satisfied)",
+    "major.groupDoing": "In progress",
+    "major.groupMissing": "Missing",
+    "major.apSatisfied": "Satisfied via AP credit",
+    "major.permitEpermit": "ePermit-eligible",
+    "major.permitCsiOnly": "CSI only",
+    "major.permitPair": "Same-institution rule",
+    "major.term": "Planned term {x}",
+    "major.srcOfficial": "Official",
+    "major.srcLedger": "Ledger",
+    "major.rulesTitle": "Program rules (official)",
     "view.catalog": "Course Catalog",
     "catalog.searchPh": "Search by course code or name",
     "catalog.allMajors": "All majors",
@@ -2314,7 +2336,9 @@ async function renderMajor() {
     $("major-export").addEventListener("click", exportMajor);
     let saved = "";
     try { saved = localStorage.getItem("ooo_major") || ""; } catch (e) { /* 忽略 */ }
-    majorSel = majorDataset.majors.some((m) => m.id === saved) ? saved : majorDataset.majors[0].id;
+    /* 默认重点专业 = 护理（创始人定版）；有历史选择时沿用历史选择。 */
+    majorSel = majorDataset.majors.some((m) => m.id === saved) ? saved
+      : (majorDataset.majors.some((m) => m.id === "nursing-bs") ? "nursing-bs" : majorDataset.majors[0].id);
     sel.value = majorSel;
   }
   renderMajorSummary();
@@ -2342,11 +2366,35 @@ function renderMajorSummary() {
     const tt = match.totals;
     html += '<p style="margin:6px 0">' + esc(fmt("major.summary", { a: tt.done, b: tt.in_progress, c: tt.missing })) + "</p>" +
       '<p class="mut" style="margin:0 0 6px">' + esc(fmt("major.credits", { a: tt.credits_done, b: tt.credits_total, u: tt.credits_unknown })) + "</p>";
-    if (match.missing.length) {
-      html += '<h3 class="sub-h">' + esc(t("major.missingTop")) + "</h3>" + match.missing.slice(0, 8).map((x) =>
-        '<div class="course"><span class="code">' + esc(x.code) + '</span><span class="name">' + esc(x.name) +
+    if (m.program_rules && m.program_rules.length) {
+      html += '<h3 class="sub-h">' + esc(t("major.rulesTitle")) + "</h3>" +
+        m.program_rules.map((x) => '<p class="mut" style="margin:0 0 2px">· ' + esc(x) + "</p>").join("");
+    }
+    /* v13.1：三态全量呈现（已修 / 在修 / 缺），每门带学分、先修、建议学期、外修与来源标记，选中即出、无二次点击。 */
+    const permitTag = (x) => x.permit === "csi_only" ? t("major.permitCsiOnly")
+      : x.permit === "same_school_pair" ? t("major.permitPair")
+      : x.permit === "epermit" ? t("major.permitEpermit") : "";
+    const itemRow = (x) => {
+      const tags = [];
+      if (x.via_ap) tags.push(t("major.apSatisfied"));
+      const pt = permitTag(x); if (pt) tags.push(pt);
+      if (x.term_hint) tags.push(fmt("major.term", { x: x.term_hint }));
+      if (x.source) tags.push(x.source === "official" ? t("major.srcOfficial") : t("major.srcLedger"));
+      return '<div class="course"><span class="code">' + esc(x.code) + '</span><span class="name">' + esc(x.name) +
+        (x.prereq_codes && x.prereq_codes.length ? ' <span class="mut">(' + esc(fmt("catalog.prereq", { x: x.prereq_codes.join(", ") })) + ")</span>" : "") +
         '</span><span class="cr">' + (x.credits !== null && x.credits !== undefined
-          ? esc(x.credits) + " " + esc(t("courses.unit")) : esc(t("catalog.creditsUnknown"))) + "</span></div>").join("");
+          ? esc(x.credits) + " " + esc(t("courses.unit")) : esc(t("catalog.creditsUnknown"))) +
+        (x.course_grade ? " · " + esc(x.course_grade) : "") +
+        (tags.length ? " · " + esc(tags.join(" · ")) : "") + "</span></div>";
+    };
+    const groups = [
+      ["major.groupDone", match.items.filter((x) => x.status === "done")],
+      ["major.groupDoing", match.items.filter((x) => x.status === "in_progress" || x.status === "planned")],
+      ["major.groupMissing", match.missing],
+    ];
+    for (const [label, rows] of groups) {
+      html += '<h3 class="sub-h">' + esc(t(label)) + "（" + rows.length + "）</h3>" +
+        (rows.length ? rows.map(itemRow).join("") : '<p class="empty">—</p>');
     }
   }
   html += '<p class="mut" style="margin:10px 0 0">' + esc(t("match.disclaimer")) + "</p>";
@@ -2398,6 +2446,7 @@ function renderCatalog() {
     (c.credits !== null && c.credits !== undefined ? esc(fmt("catalog.credits", { n: c.credits })) : esc(t("catalog.creditsUnknown"))) +
     (c.min_grade ? " · " + esc(fmt("catalog.minGrade", { g: c.min_grade })) : "") +
     (c.prereq_codes && c.prereq_codes.length ? " · " + esc(fmt("catalog.prereq", { x: c.prereq_codes.join(", ") })) : "") +
+    (c.permit === "csi_only" ? " · " + esc(t("major.permitCsiOnly")) : c.permit === "same_school_pair" ? " · " + esc(t("major.permitPair")) : c.permit === "epermit" ? " · " + esc(t("major.permitEpermit")) : "") +
     "</span></div>").join("")
     : '<p class="empty">' + esc(t("catalog.empty")) + "</p>";
 }
