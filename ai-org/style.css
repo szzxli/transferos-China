@@ -311,3 +311,28 @@ section[id]{scroll-margin-top:76px}
   .stage-detail.swap{animation:none}
 }
 @media print{.siteNav{display:none!important}.page-noise{display:none}.js .reveal{opacity:1;transform:none}}
+
+/* v35: hero questions / showroom mapping / stage triage / partner line */
+.hero-signal{grid-template-columns:auto 1fr auto}
+.hero-question{font-size:clamp(19px,2.6vw,27px);line-height:1.35;font-weight:600;color:var(--blue-pale);margin:26px 0 0;letter-spacing:-.01em}
+.hero-questions{margin-top:6px;max-width:700px}
+.hero-questions p{font-size:clamp(17px,2vw,21px);line-height:1.55;color:rgba(255,255,255,.88);margin:0 0 4px;font-weight:600}
+.hero-questions .hq-tail{color:rgba(255,255,255,.6);font-weight:400;margin-top:10px}
+.map-block{margin-top:34px;border:1px solid var(--line-d);border-radius:20px;padding:20px;background:rgba(255,255,255,.03)}
+.map-title{font-size:15.5px;font-weight:700;color:#fff;margin:0 0 12px}
+.map-list{display:grid;gap:0}
+.map-row{display:flex;gap:14px;align-items:baseline;padding:9px 0;border-top:1px dashed rgba(255,255,255,.14);font-size:14px}
+.map-row:first-child{border-top:none}
+.map-row b{flex:none;min-width:86px;color:#fff;font-weight:600}
+.map-row span{color:rgba(255,255,255,.65);line-height:1.6}
+.map-note{font-size:13px;color:rgba(255,255,255,.5);margin:12px 0 0;line-height:1.65}
+.triage{margin:0 0 26px}
+.triage-title{font-size:17px;font-weight:700;margin:0 0 12px}
+.triage-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.triage-btn{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;border:1px solid var(--line-l);border-radius:16px;background:#fff;padding:16px;cursor:pointer;font-family:inherit;transition:border-color .2s ease,transform .2s ease}
+.triage-btn:hover{border-color:var(--blue-strong);transform:translateY(-2px)}
+.triage-sit{font-size:14.5px;font-weight:600;color:#1d1d1f;line-height:1.5}
+.triage-act{font-size:13.5px;font-weight:700;color:var(--blue-strong)}
+.partner-line{margin:18px auto 0;font-size:14px;color:#515154}
+.partner-line a{color:var(--blue-strong);font-weight:600}
+@media(max-width:720px){.triage-row{grid-template-columns:1fr}}
