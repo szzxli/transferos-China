@@ -352,3 +352,10 @@ input[type="number"], select { font-size: 15px; }
 .next-steps b { color: var(--brand2); }
 .btn-ghost-lime { display: inline-block; background: transparent; color: #fff; font-weight: 700; font-size: 15px; padding: 12px 20px; border-radius: 999px; border: 1.5px solid rgba(255, 255, 255, .55); cursor: pointer; font-family: inherit; }
 .btn-ghost-lime:active { transform: scale(.97); }
+
+/* v35: real case (founder's brother) */
+.case-grid{display:grid;grid-template-columns:280px 1fr;gap:22px;align-items:start;margin-top:14px}
+.case-photo{width:100%;height:auto;border-radius:16px;display:block;object-fit:cover}
+.case-body .case-line{font-size:15px;line-height:1.75;margin:0 0 10px;color:#2b2b30}
+.case-body .case-key{font-size:15.5px;line-height:1.75;font-weight:700;margin:14px 0 10px}
+@media(max-width:720px){.case-grid{grid-template-columns:1fr}.case-photo{max-width:340px}}
