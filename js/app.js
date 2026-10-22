@@ -123,7 +123,8 @@ function mailConsult(source, btn) {
   d.innerHTML = '<p>收件人：<b>info@zhuanuc.com</b> <button type="button" class="mini-btn" onclick="togCopy(\'info@zhuanuc.com\', this)">复制邮箱</button></p>' +
     '<p>主题请写：<b>' + esc(subject) + '</b></p>' +
     '<p class="hint">点下面按钮会打开你的邮件应用并自动填好；如果点了没反应，就复制上面的邮箱和主题，手动发一封到这个邮箱。</p>' +
-    '<p><a class="btn" href="' + mailto + '">✉️ 打开邮件应用</a></p>';
+    '<p><a class="btn" href="' + mailto + '">✉️ 打开邮件应用</a></p>' +
+    '<p class="hint">用网页邮箱？<a target="_blank" rel="noopener" href="https://mail.google.com/mail/?view=cm&fs=1&to=info@zhuanuc.com&su=' + encodeURIComponent(subject) + '">用 Gmail 写</a> · <a target="_blank" rel="noopener" href="https://outlook.live.com/mail/0/deeplink/compose?to=info@zhuanuc.com&subject=' + encodeURIComponent(subject) + '">用 Outlook 写</a>（收件人和主题已填好）</p>';
   card.appendChild(d);
   if (d.scrollIntoView) d.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
