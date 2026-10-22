@@ -156,6 +156,11 @@ function chatSend() {
   chatAsk(t);
 }
 function chatHumanCard(note) {
+  var m = document.getElementById("chatMsgs");
+  if (m) {
+    var existing = m.querySelector(".human-card");
+    if (existing) { if (existing.scrollIntoView) existing.scrollIntoView({ behavior: "smooth", block: "nearest" }); return; }
+  }
   chatBotSay(humanCardHTML(note));
 }
 document.addEventListener("DOMContentLoaded", chatInit);
