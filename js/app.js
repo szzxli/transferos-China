@@ -70,6 +70,8 @@ function renderEvalBanner(slotId) {
 
 /* ---- 咨询漏斗 A：总开关（资质结论前保持 false，卡片不渲染） ---- */
 var FUNNEL_OPEN = false;
+/* 咨询卡独立开关（2026-10-22 用户拍板）：只放行咨询口径的承接卡，FUNNEL_OPEN 服务闸不动 */
+var FUNNEL_CONSULT_OPEN = true;
 function funnelCtx() {
   var e = togGet("eval", null), parts = [];
   if (e && e.verdict) {
@@ -88,10 +90,18 @@ function funnelAsk(source) {
   if (typeof chatHumanCard === "function") chatHumanCard(note);
 }
 function funnelShow(id) {
-  if (typeof FUNNEL_OPEN !== "undefined" && FUNNEL_OPEN) {
+  if ((typeof FUNNEL_OPEN !== "undefined" && FUNNEL_OPEN) || (typeof FUNNEL_CONSULT_OPEN !== "undefined" && FUNNEL_CONSULT_OPEN)) {
     var el = document.getElementById(id);
     if (el) el.hidden = false;
   }
+}
+/* 邮件咨询直达：主题自动带来源与评估结论，正文预填三行 */
+function mailConsult(source) {
+  var ctx = funnelCtx();
+  var ref = togGet("ref", "");
+  var subject = "TransferOS咨询·" + source + (ctx ? "·" + ctx : "") + (ref ? "·代理:" + ref : "");
+  var body = "我的情况：\n我想问的问题：\n我的联系方式（微信/电话）：";
+  window.location.href = "mailto:info@zhuanuc.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
 }
 
 /* ---- 步骤式折叠：点一步→展开→提交→✅→下一步 ---- */
