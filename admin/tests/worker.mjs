@@ -162,7 +162,7 @@ const TASK_STATUSES = { todo: "待办", doing: "进行中", done: "已完成" };
 const TASK_TYPES = { task: "任务", proposal: "提案" };
 // v3：状态扩展为 试用/在职/停用待查/已离职或辞退；left 为 v2 旧值，仅作兼容显示
 const STAFF_STATUSES = { probation: "试用", active: "在职", suspended: "停用待查", offboarded: "已离职/辞退", left: "离职（旧）" };
-const STAFF_KINDS = { human: "真人", ai: "AI 员工" };
+const STAFF_KINDS = { human: "真人", ai: "AI 员工", mentor: "外部导师" };
 const REVIEW_TYPES = { exam: "入职测评", regular: "日常考核", annual: "年检" };
 const REVIEW_VERDICTS = { pass: "通过", fail: "不通过", observe: "观察" };
 // 工号职能码（按职能关键词映射，找不到时用英文前两字母，再不行用 GN=通用）
@@ -287,6 +287,21 @@ async function ensureParentKey(db, student) {
   student.parent_key = key;
   return key;
 }
+// genMentorKey: 导师工作台访问密钥（mk_ + 24 位十六进制），与学生/家长密钥独立、互不通用（v13）
+function genMentorKey() {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return "mk_" + [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+// ensureMentorKey: 导师尚无工作台密钥时生成并落库（后台人员页查看/重置），返回当前密钥
+async function ensureMentorKey(db, staff) {
+  if (!staff) return null;
+  if (staff.mentor_key) return staff.mentor_key;
+  const key = genMentorKey();
+  await db.prepare("UPDATE staff SET mentor_key = ? WHERE id = ?").bind(key, staff.id).run();
+  staff.mentor_key = key;
+  return key;
+}
 // slugify: 学生专属名（对外定位符）生成规则——取学生英文名 / pinyin，小写，
 // 仅保留 a-z 0-9，其余字符（含空格、标点、非拉丁字母）折叠为连字符，首尾去连字符，最长 40；
 // 清洗后为空时回退 "student"。重名冲突不在此处理，见 uniqueSlug。
@@ -384,7 +399,9 @@ function normClientExtras(body) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
       return { error: "key_dates[" + i + "].date must be YYYY-MM-DD" };
     }
-    out.keyDates.push({ date, title });
+    const kind = k.kind === undefined || k.kind === null || k.kind === "" ? null : String(k.kind);
+    if (kind && !KEY_DATE_KINDS[kind]) return { error: "key_dates[" + i + "] bad kind" };
+    out.keyDates.push({ date, title, kind });
   }
   const acRaw = Array.isArray(body.actions) ? body.actions : [];
   if (acRaw.length > 100) return { error: "too many actions (max 100)" };
@@ -570,6 +587,130 @@ function matchRequirements(courses, requirements) {
     totals.credits_missing += blocks[b].credits_missing; totals.credits_unknown += blocks[b].credits_unknown;
   }
   return { blocks, items, missing, grade_warnings: gradeWarnings, prereq_breaks: prereqBreaks, totals };
+}
+// ===== v13 新增：家长成就/一句话/日期提醒 + 导师注册/通知发件箱/事件流/导师工作台 =====
+// 心情标签（学生自选枚举，不是情绪原文）：学生给爸妈的一句话可附带一个自选标签，
+// 词表克制四档。字段名用 feeling_tag —— 它是学生主动选择的展示标签，与被红线禁止的
+// mood/emotion（情绪原文记录）有本质区别：前者是学生自愿公开的枚举，后者是私密原文，永不入服务器。
+const FEELING_TAGS = { steady: "平稳", tired: "有点累", happy: "很开心", busy: "有点忙" };
+const KEY_DATE_KINDS = { birthday: "生日", deadline: "截止日", exam: "考试", other: "其他" };
+const MENTOR_STATUSES = { registered: "已登记", verified: "已核验" };
+const NOTIFY_CHANNELS = { email: "邮箱", phone: "电话", wechat: "微信", admin: "后台呈现" };
+const OUTBOX_STATUSES = { queued: "待转达", sent: "已转达", responded: "已回复" };
+const EVENT_TYPES = {
+  action_completed: "完成行动", problem_opened: "提出问题", problem_resolved: "问题解决",
+  problem_escalated: "问题升级导师", message_student: "学生留言", message_mentor: "导师回复",
+  mentor_reply: "导师回复", parent_note_sent: "给爸妈的一句话", parent_note_withdrawn: "撤回一句话",
+  trail_created: "导师轨迹新增", parent_update_published: "家长更新发布",
+};
+const PARENT_NOTE_MAX_LEN = 80;      // 一句话长度上限（码点）
+const PARENT_NOTE_RATE_LIMIT = 3;    // 与留言同窗口：60 秒最多 3 条
+const REMINDER_HORIZON_DAYS = 30;    // 家长端日期提醒窗口（未来 30 天）
+/* 导师可通知判定：已登记/已核验（mentor_status）且至少一项联系方式
+ * （contact_email / contact_phone / contact_wechat / 旧 contact 自由文本任一非空）。
+ * 缺联系方式或未登记者 = 不可通知，学生留言/问题升级指向它时接口明确报错，不落无主收件箱。 */
+function mentorContacts(staff) {
+  if (!staff) return [];
+  const out = [];
+  if (String(staff.contact_email || "").trim()) out.push("email");
+  if (String(staff.contact_phone || "").trim()) out.push("phone");
+  if (String(staff.contact_wechat || "").trim()) out.push("wechat");
+  if (!out.length && String(staff.contact || "").trim()) out.push("admin");
+  return out;
+}
+function mentorNotifiable(staff) {
+  if (!staff) return false;
+  const contacts = mentorContacts(staff);
+  if (!contacts.length) return false;
+  if (MENTOR_STATUSES[staff.mentor_status]) return true;
+  // 存量兼容：注册制之前已留 contact（创始人转达渠道）的档案视为可通知，
+  // 否则创始人的既有员工档案（无 mentor_status）被指为默认导师时学生留言会被误拒。
+  return contacts.includes("admin");
+}
+function mentorChannel(staff) {
+  const pref = String((staff && staff.notify_channel) || "");
+  const have = mentorContacts(staff);
+  if (NOTIFY_CHANNELS[pref] && (pref === "admin" || have.includes(pref))) return pref;
+  return have.length ? have[0] : "admin";
+}
+async function resolveStudentMentor(db, student) {
+  if (!student || !student.mentor_id) return null;
+  return db.prepare(`SELECT * FROM staff WHERE id = ?`).bind(student.mentor_id).first();
+}
+/* 事件流写入（方案层事件 only；summary 为一句摘要，调用方不得放私密正文/标题）。 */
+async function logEvent(db, studentId, eventType, objectId, summary) {
+  try {
+    await db.prepare(
+      `INSERT INTO student_events(student_id, event_type, object_id, summary, created_at) VALUES(?,?,?,?,?)`
+    ).bind(studentId, eventType, objectId || null, clampStr(summary, 200), nowIso()).run();
+  } catch (e) { /* 事件流是追踪层，写入失败不阻断主流程 */ }
+}
+/* 发件箱写入（仅元数据）。channel 按导师通知偏好与实际联系方式解析；
+ * 本期无发送通道：状态只到 queued（待转达），由创始人在后台标 sent、导师回复后自动 responded。 */
+async function pushOutbox(db, mentor, studentId, eventType, summary, refType, refId) {
+  if (!mentor) return null;
+  const ts = nowIso();
+  const r = await db.prepare(
+    `INSERT INTO notifications_outbox(mentor_staff_id, student_id, channel, event_type, summary, status, ref_type, ref_id, created_at, updated_at)
+     VALUES(?,?,?, ?, ?, 'queued', ?, ?, ?, ?)`
+  ).bind(mentor.id, studentId, mentorChannel(mentor), eventType, clampStr(summary, 200), refType || null, refId || null, ts, ts).run();
+  return r.meta.last_row_id;
+}
+/* 家长成就（方案层事实事件）：已完成里程碑（成长时间线条目本身即已发生的事实）+
+ * 已完成行动 + 已解决问题。只出标题与日期文本，绝不带成绩/GPA/课程/考试明细。 */
+function buildAchievements(milestones, doneActions, resolvedProblems) {
+  const out = [];
+  for (const m of milestones || []) {
+    out.push({ kind: "milestone", title: m.title || "", date_text: m.date_text || "" });
+  }
+  for (const a of doneActions || []) {
+    out.push({ kind: "action", title: a.title || "", date_text: String(a.updated_at || a.created_at || "").slice(0, 10) });
+  }
+  for (const p of resolvedProblems || []) {
+    out.push({ kind: "problem", title: p.title || "", date_text: String(p.updated_at || p.created_at || "").slice(0, 10) });
+  }
+  return out.slice(0, 30);
+}
+/* 日期提醒（纯函数，可固定时钟测试）：未来 horizon 天内的关键日期。
+ * 来源仅限日期型字段：key_dates（kind=birthday 按月日周年滚动到下一次）、exams 的考试日期
+ * （只出事项名与日期）、milestones 中 date_text 为 ISO 日期（YYYY-MM-DD 开头）的条目。
+ * 入参 today 为 YYYY-MM-DD（UTC 口径，与 todayStr 一致）。 */
+function computeUpcomingReminders(keyDates, exams, milestones, today, horizonDays) {
+  const horizon = Number.isFinite(horizonDays) ? horizonDays : REMINDER_HORIZON_DAYS;
+  const t0 = Date.parse(today + "T00:00:00Z");
+  if (!Number.isFinite(t0)) return [];
+  const inWindow = (dstr) => {
+    const t = Date.parse(dstr + "T00:00:00Z");
+    return Number.isFinite(t) && t >= t0 && t <= t0 + horizon * 864e5;
+  };
+  const fmt = (t) => new Date(t).toISOString().slice(0, 10);
+  const out = [];
+  for (const k of keyDates || []) {
+    const d = String(k.date || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    if (k.kind === "birthday") {
+      const md = d.slice(5);
+      let occ = String(today).slice(0, 4) + "-" + md;
+      if (occ < today) occ = String(Number(String(today).slice(0, 4)) + 1) + "-" + md;
+      if (inWindow(occ)) out.push({ date: occ, title: k.title || "", kind: "birthday" });
+    } else if (inWindow(d)) {
+      out.push({ date: d, title: k.title || "", kind: KEY_DATE_KINDS[k.kind] ? k.kind : "key_date" });
+    }
+  }
+  for (const e of exams || []) {
+    const d = String(e.exam_date || "");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && inWindow(d)) {
+      out.push({ date: d, title: e.exam_name || "", kind: "exam" });
+    }
+  }
+  for (const m of milestones || []) {
+    const d = String(m.date_text || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && inWindow(d)) {
+      out.push({ date: d, title: m.title || "", kind: "milestone" });
+    }
+  }
+  out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return out.map((r) => ({ ...r, days_left: Math.round((Date.parse(r.date + "T00:00:00Z") - t0) / 864e5), date_fmt: fmt(Date.parse(r.date + "T00:00:00Z")) }));
 }
 /* v12 问题方案同步校验（学生端 POST /api/client/problem 用）：字段白名单归一，
  * 任一不合法返回 { error }；私密字段（diary/journal/mood/emotion 等）不在白名单内，天然丢弃。 */
@@ -838,6 +979,25 @@ const DDL = [
     block TEXT DEFAULT 'prereq', course_code TEXT, course_name TEXT,
     credits REAL, min_grade TEXT, prereq_codes TEXT, sort INTEGER DEFAULT 0,
     created_at TEXT, updated_at TEXT)`,
+  // ===== v13 新增表 =====
+  // 给爸妈的一句话（学生主动分享通道）：只存学生经此通道主动发送的一句话 + 自选心情标签枚举。
+  // 红线：本表不是日记/情绪原文通道——正文是学生写给家长看的一句话（自愿公开），feeling_tag 是学生
+  // 自选的枚举标签（feeling_tag ≠ mood/emotion 原文）；私密层内容永不经此通道。withdrawn_at 非空 = 已撤回。
+  `CREATE TABLE IF NOT EXISTS note_to_parents(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    body TEXT, feeling_tag TEXT, created_at TEXT, withdrawn_at TEXT)`,
+  // 通知发件箱（只记元数据：收件导师/渠道/事件摘要/状态，不含任何私密正文）。
+  // status: queued 待转达 / sent 已转达 / responded 导师已回复。本期无邮件发送通道：
+  // queued 即「已生成待创始人按登记联系方式转达」，不等于已触达导师本人（口径见交付标准附则）。
+  `CREATE TABLE IF NOT EXISTS notifications_outbox(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, mentor_staff_id INTEGER, student_id INTEGER,
+    channel TEXT, event_type TEXT, summary TEXT, status TEXT DEFAULT 'queued',
+    ref_type TEXT, ref_id INTEGER, created_at TEXT, updated_at TEXT)`,
+  // 学生事件时间线（后台追踪 + 导师工作台同源）：只记方案层事件的 类型/时间/对象 id/一句摘要，
+  // 私密层零服务器数据、永不进事件流（连标题都不记）。
+  `CREATE TABLE IF NOT EXISTS student_events(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    event_type TEXT, object_id INTEGER, summary TEXT, created_at TEXT)`,
 ];
 // v10 迁移：students 补愿景（vision_text）与导师寄语（mentor_message / mentor_message_at）列，幂等
 
@@ -882,6 +1042,26 @@ const STUDENT_MIGRATIONS = [
   "ALTER TABLE students ADD COLUMN mentor_message_at TEXT",
   // v11 迁移：students 补 parent_key 列（家长端独立密钥，与 client_key 分列），同样幂等
   "ALTER TABLE students ADD COLUMN parent_key TEXT",
+  // v13 迁移：students 补 mentor_id（默认导师 = staff.id；未分配为 NULL），同样幂等
+  "ALTER TABLE students ADD COLUMN mentor_id INTEGER",
+];
+// v13 迁移：staff 补导师注册字段（专长/三渠道联系方式/通知偏好/导师状态/工作台密钥），幂等
+const STAFF_V13_MIGRATIONS = [
+  "ALTER TABLE staff ADD COLUMN specialty TEXT",
+  "ALTER TABLE staff ADD COLUMN contact_email TEXT",
+  "ALTER TABLE staff ADD COLUMN contact_phone TEXT",
+  "ALTER TABLE staff ADD COLUMN contact_wechat TEXT",
+  "ALTER TABLE staff ADD COLUMN notify_channel TEXT",
+  "ALTER TABLE staff ADD COLUMN mentor_status TEXT",
+  "ALTER TABLE staff ADD COLUMN mentor_key TEXT",
+];
+// v13 迁移：关键日期补 kind（birthday 生日 / deadline 截止 / exam 考试 / other 其他），幂等
+const KEYDATE_MIGRATIONS = [
+  "ALTER TABLE student_key_dates ADD COLUMN kind TEXT",
+];
+// v13 迁移：学生留言补 mentor_id（目标导师 staff.id；存量/未分配导师为 NULL），幂等
+const MESSAGE_MIGRATIONS = [
+  "ALTER TABLE student_messages ADD COLUMN mentor_id INTEGER",
 ];
 let schemaReady = false;
 async function ensureSchema(db) {
@@ -906,6 +1086,15 @@ async function ensureSchema(db) {
     try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
   }
   for (const sql of STUDENT_MIGRATIONS) {
+    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+  }
+  for (const sql of STAFF_V13_MIGRATIONS) {
+    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+  }
+  for (const sql of KEYDATE_MIGRATIONS) {
+    try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
+  }
+  for (const sql of MESSAGE_MIGRATIONS) {
     try { await db.prepare(sql).run(); } catch (e) { /* 列已存在，幂等忽略 */ }
   }
   schemaReady = true;
@@ -1051,6 +1240,11 @@ async function handleApi(req, env, url) {
     const studentRowsW = (await db.prepare(`SELECT stage, stage_since FROM students`).all()).results || [];
     const overdueStudentsW = studentRowsW.filter(
       (s) => ACTIVE_STAGES.includes(s.stage) && isOverdueStage(s.stage_since, Date.now(), STAGE_OVERDUE_DAYS)).length;
+    // v13：导师通知发件箱计数（供创始人每日简报引用；queued = 待创始人按登记联系方式转达，不等于已触达）
+    const outboxRows = (await db.prepare(
+      `SELECT status, COUNT(*) AS n FROM notifications_outbox GROUP BY status`).all()).results || [];
+    const outboxCounts = { queued: 0, sent: 0, responded: 0 };
+    for (const r of outboxRows) if (r.status in outboxCounts) outboxCounts[r.status] = r.n;
     const weekly = {
       new_leads: newLeadsW ? newLeadsW.n : 0,
       leads_by_grade: (byGradeW.results || []).map((r) => ({ grade: r.grade, n: r.n })),
@@ -1072,6 +1266,7 @@ async function handleApi(req, env, url) {
       visits_today: visitsToday ? visitsToday.n : 0,
       unsettled_commission_cents: unsettled ? unsettled.cents : 0,
       weekly,
+      outbox: outboxCounts,
     });
   }
 
@@ -1272,6 +1467,16 @@ async function handleApi(req, env, url) {
     if ([...text].length > MESSAGE_MAX_LEN) {
       return jsonResp(req, { ok: false, error: "message too long (max " + MESSAGE_MAX_LEN + ")" }, 400);
     }
+    // v13：留言必须有主——学生已分配默认导师时，目标导师必须已注册且可通知；
+    // 指向未注册/不可通知导师 → 明确 409，不落库、不进无主收件箱。
+    // 未分配导师（存量学生）沿用旧口径落库（mentor_id 为 NULL、无发件箱），后台补分配后即纳入通知链。
+    let mentor = null;
+    if (student.mentor_id) {
+      mentor = await resolveStudentMentor(db, student);
+      if (!mentorNotifiable(mentor)) {
+        return jsonResp(req, { ok: false, error: "mentor_not_notifiable" }, 409);
+      }
+    }
     const since = new Date(Date.now() - MESSAGE_RATE_WINDOW_MS).toISOString();
     const recent = await db.prepare(
       `SELECT COUNT(*) AS n FROM student_messages WHERE student_id = ? AND sender = 'student' AND created_at >= ?`
@@ -1281,9 +1486,14 @@ async function handleApi(req, env, url) {
     }
     const ts = nowIso();
     const r = await db.prepare(
-      `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor)
-       VALUES(?, 'student', ?, ?, 1, 0)`
-    ).bind(student.id, text, ts).run();
+      `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor, mentor_id)
+       VALUES(?, 'student', ?, ?, 1, 0, ?)`
+    ).bind(student.id, text, ts, mentor ? mentor.id : null).run();
+    await logEvent(db, student.id, "message_student", r.meta.last_row_id, "学生给导师留言");
+    if (mentor) {
+      await pushOutbox(db, mentor, student.id, "student_message",
+        (student.name || "学生") + " 发来一条留言", "message", r.meta.last_row_id);
+    }
     return jsonResp(req, {
       ok: true,
       message: { id: r.meta.last_row_id, sender: "student", body: text, created_at: ts },
@@ -1347,6 +1557,7 @@ async function handleApi(req, env, url) {
     ).bind(student.id, norm.domain, norm.title, norm.desired_outcome, norm.strategy_summary,
       actionsText, norm.support_needed, flag, norm.source_local_id, ts, ts).run();
     const row = await db.prepare(`SELECT * FROM student_problem_shares WHERE id = ?`).bind(r.meta.last_row_id).first();
+    await logEvent(db, student.id, "problem_opened", r.meta.last_row_id, "提出问题：" + norm.title);
     return jsonResp(req, { ok: true, problem: problemOut(row) });
   }
   // 问题进度回写（阶段 C）：学生把某个已同步问题标为推进中 / 已解决 / 已升级导师；resolved 时可附解决小结。
@@ -1363,10 +1574,28 @@ async function handleApi(req, env, url) {
     const row = await db.prepare(
       `SELECT * FROM student_problem_shares WHERE id = ? AND student_id = ?`).bind(pid, student.id).first();
     if (!row) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    // v13：升级导师必须有主——已分配导师但未注册/不可通知 → 明确 409，不改状态、不落无主收件箱。
+    let mentor = null;
+    if (progress === "escalated" && student.mentor_id) {
+      mentor = await resolveStudentMentor(db, student);
+      if (!mentorNotifiable(mentor)) {
+        return jsonResp(req, { ok: false, error: "mentor_not_notifiable" }, 409);
+      }
+    }
     const note = progress === "resolved" ? clampStr(body.resolved_note, 500) : (row.resolved_note || "");
     await db.prepare(
       `UPDATE student_problem_shares SET progress = ?, resolved_note = ?, updated_at = ? WHERE id = ?`
     ).bind(progress, note, nowIso(), pid).run();
+    if (progress === "resolved" && row.progress !== "resolved") {
+      await logEvent(db, student.id, "problem_resolved", pid, "问题解决：" + (row.title || ""));
+    }
+    if (progress === "escalated" && row.progress !== "escalated") {
+      await logEvent(db, student.id, "problem_escalated", pid, "问题升级导师：" + (row.title || ""));
+      if (mentor) {
+        await pushOutbox(db, mentor, student.id, "problem_escalated",
+          (student.name || "学生") + " 把问题升级给你：" + (row.title || ""), "problem", pid);
+      }
+    }
     const upd = await db.prepare(`SELECT * FROM student_problem_shares WHERE id = ?`).bind(pid).first();
     return jsonResp(req, { ok: true, problem: problemOut(upd) });
   }
@@ -1411,6 +1640,16 @@ async function handleApi(req, env, url) {
         e.takeaway_local ? null : (e.student_takeaway || null), e.takeaway_local, e.followup_actions,
         due, ts, ts).run();
       await insertTrailFollowups(db, student.id, e.followup_actions, ts);
+      // v13：轨迹新增记事件流；待回看生成导师通知（已分配且可通知时）
+      await logEvent(db, student.id, "trail_created", r.meta.last_row_id,
+        "导师轨迹新增：" + (e.spirit_line || e.mentor_name || ""));
+      if (student.mentor_id) {
+        const mentor = await resolveStudentMentor(db, student);
+        if (mentorNotifiable(mentor)) {
+          await pushOutbox(db, mentor, student.id, "trail_revisit",
+            (student.name || "学生") + " 新增导师轨迹待回看：" + (e.spirit_line || e.mentor_name || ""), "trail", r.meta.last_row_id);
+        }
+      }
       return jsonResp(req, { ok: true, id: r.meta.last_row_id });
     }
     if (act === "takeaway" || act === "revisit") {
@@ -1439,6 +1678,63 @@ async function handleApi(req, env, url) {
       return jsonResp(req, { ok: true, id: eid });
     }
     return jsonResp(req, { ok: false, error: "bad action" }, 400);
+  }
+
+  // ===== v13 新增：给爸妈的一句话（学生主动分享通道）=====
+  // POST /api/client/parent-note { s, key, body, feeling_tag? }：学生主动写一句话给家长，
+  // 可附一个自选心情标签（FEELING_TAGS 枚举）。只存经此通道主动发送的内容；
+  // 私密层/日记/原始留言永不经此通道——请求体夹带的 diary/journal/mood/emotion 字段不读不存不回传
+  // （feeling_tag 是学生自选的枚举展示标签，不是情绪原文，见 FEELING_TAGS 上方口径注释）。
+  // 家长 key 对此通道只读：本接口只认 client_key，拿 parent_key 来写一律 404。
+  if (p === "/api/client/parent-note") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const student = await findClientStudent(body);
+    if (!student) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const text = String((body && body.body) || "").trim();
+    if (!text) return jsonResp(req, { ok: false, error: "note required" }, 400);
+    if ([...text].length > PARENT_NOTE_MAX_LEN) {
+      return jsonResp(req, { ok: false, error: "note too long (max " + PARENT_NOTE_MAX_LEN + ")" }, 400);
+    }
+    let tag = String((body && body.feeling_tag) || "");
+    if (tag && !FEELING_TAGS[tag]) return jsonResp(req, { ok: false, error: "bad feeling_tag" }, 400);
+    if (!tag) tag = null;
+    const since = new Date(Date.now() - MESSAGE_RATE_WINDOW_MS).toISOString();
+    const recent = await db.prepare(
+      `SELECT COUNT(*) AS n FROM note_to_parents WHERE student_id = ? AND created_at >= ?`
+    ).bind(student.id, since).first();
+    if (recent && recent.n >= PARENT_NOTE_RATE_LIMIT) {
+      return jsonResp(req, { ok: false, error: "too frequent, retry in a minute" }, 429);
+    }
+    const ts = nowIso();
+    const r = await db.prepare(
+      `INSERT INTO note_to_parents(student_id, body, feeling_tag, created_at, withdrawn_at) VALUES(?,?,?, ?, NULL)`
+    ).bind(student.id, text, tag, ts).run();
+    await logEvent(db, student.id, "parent_note_sent", r.meta.last_row_id, "给爸妈的一句话已推送");
+    return jsonResp(req, {
+      ok: true,
+      note: { id: r.meta.last_row_id, body: text, feeling_tag: tag || "", feeling_tag_label: tag ? FEELING_TAGS[tag] : "", created_at: ts },
+    });
+  }
+  // POST /api/client/parent-note/withdraw { s, key, id }：学生撤回自己发的一句话（软删除，
+  // withdrawn_at 置时；家长端与学生端列表都不再展示）。只能撤自己的、未撤回的条目。
+  if (p === "/api/client/parent-note/withdraw") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const student = await findClientStudent(body);
+    if (!student) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const nid = toInt(body && body.id, 0);
+    const row = nid ? await db.prepare(
+      `SELECT * FROM note_to_parents WHERE id = ? AND student_id = ?`).bind(nid, student.id).first() : null;
+    if (!row || row.withdrawn_at) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    await db.prepare(
+      `UPDATE note_to_parents SET withdrawn_at = ? WHERE id = ?`).bind(nowIso(), nid).run();
+    await logEvent(db, student.id, "parent_note_withdrawn", nid, "撤回给爸妈的一句话");
+    return jsonResp(req, { ok: true, id: nid });
   }
 
   // 学生端只读接口（v7，一对一专属客户端 APP 专用；v8 起定位符同时支持 slug）：
@@ -1498,6 +1794,9 @@ async function handleApi(req, env, url) {
     // —— v12 新模块：问题方案层 / 导师轨迹 / 课程要求集与匹配（全部为方案层数据，私密层永不经此接口）——
     const problemRows = (await db.prepare(
       `SELECT * FROM student_problem_shares WHERE student_id = ? ORDER BY id DESC LIMIT 100`).bind(sid).all()).results || [];
+    // —— v13：学生自己发出的一句话（未撤回）——
+    const parentNoteRows = (await db.prepare(
+      `SELECT * FROM note_to_parents WHERE student_id = ? AND withdrawn_at IS NULL ORDER BY id DESC LIMIT 20`).bind(sid).all()).results || [];
     const trailRows = (await db.prepare(
       `SELECT t.*, m.meeting_date AS m_date, m.topic AS m_topic FROM mentor_trail_entries t
        LEFT JOIN student_meetings m ON m.id = t.meeting_id
@@ -1606,6 +1905,12 @@ async function handleApi(req, env, url) {
         created_at: r.created_at || "", updated_at: r.updated_at || "",
       })),
       course_match: courseMatch,
+      // —— v13 ——
+      parent_notes: parentNoteRows.map((n) => ({
+        id: n.id, body: n.body || "", feeling_tag: n.feeling_tag || "",
+        feeling_tag_label: n.feeling_tag ? (FEELING_TAGS[n.feeling_tag] || n.feeling_tag) : "",
+        created_at: n.created_at || "",
+      })),
     });
   }
 
@@ -1687,6 +1992,22 @@ async function handleApi(req, env, url) {
         `UPDATE parent_messages SET read_by_parent = 1 WHERE student_id = ? AND sender = 'mentor' AND read_by_parent = 0`
       ).bind(psid).run();
     }
+    // —— v13：成就（方案层事实）/ 学生一句话（主动分享）/ 未来 30 天日期提醒 ——
+    // 成就数据源只查里程碑/行动/问题三表的标题与日期文本，不查成绩、课程、考试明细。
+    const achMilestones = (await db.prepare(
+      `SELECT title, date_text FROM student_milestones WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 30`).bind(psid).all()).results || [];
+    const achActions = (await db.prepare(
+      `SELECT title, created_at, updated_at FROM student_actions WHERE student_id = ? AND status = 'done' ORDER BY updated_at DESC, id DESC LIMIT 30`).bind(psid).all()).results || [];
+    const achProblems = (await db.prepare(
+      `SELECT title, created_at, updated_at FROM student_problem_shares WHERE student_id = ? AND progress = 'resolved' ORDER BY updated_at DESC, id DESC LIMIT 30`).bind(psid).all()).results || [];
+    const achievements = buildAchievements(achMilestones, achActions, achProblems);
+    const studentNoteRows = (await db.prepare(
+      `SELECT * FROM note_to_parents WHERE student_id = ? AND withdrawn_at IS NULL ORDER BY id DESC LIMIT 10`).bind(psid).all()).results || [];
+    const kdRows = (await db.prepare(
+      `SELECT * FROM student_key_dates WHERE student_id = ? ORDER BY date ASC, id ASC LIMIT 100`).bind(psid).all()).results || [];
+    const examRows = (await db.prepare(
+      `SELECT exam_name, exam_date FROM student_exams WHERE student_id = ? LIMIT 200`).bind(psid).all()).results || [];
+    const upcomingReminders = computeUpcomingReminders(kdRows, examRows, achMilestones, todayStr(), REMINDER_HORIZON_DAYS);
     const studentOut = {
       name: student.name || "", slug: student.slug || "",
       stage: student.stage || "", stage_label: DELIVERY_STAGES[student.stage] || student.stage || "",
@@ -1710,6 +2031,119 @@ async function handleApi(req, env, url) {
         body: m.body || "", created_at: m.created_at || "",
       })),
       unread_mentor_parent: unreadMentorParent,
+      // —— v13 ——
+      achievements,
+      student_notes: studentNoteRows.map((n) => ({
+        id: n.id, body: n.body || "", feeling_tag: n.feeling_tag || "",
+        feeling_tag_label: n.feeling_tag ? (FEELING_TAGS[n.feeling_tag] || n.feeling_tag) : "",
+        created_at: n.created_at || "",
+      })),
+      upcoming_reminders: upcomingReminders,
+    });
+  }
+
+  // ===== v13 导师工作台 API =====
+  // 本期口径：每位导师一个专属密钥链接（staff.mentor_key，后台人员页查看/重置），不做账号体系。
+  // GET /api/mentor/<staff id 或 emp_no>?key=<mentor_key>：只返回其名下学生（students.mentor_id = staff.id）
+  // 的方案层内容：一屏三块（近期动态 / 她的需求 / 待回复）。交叉密钥（client_key/parent_key）一律 404；
+  // 响应不含私密层（本就零服务器数据）、不含家长一句话与家长留言。
+  const findMentor = async (locator, key) => {
+    const staff = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM staff WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : (locator ? await db.prepare(`SELECT * FROM staff WHERE emp_no = ?`).bind(locator).first() : null);
+    if (!staff || !staff.mentor_key || !timingSafeEq(String(key || ""), String(staff.mentor_key))) return null;
+    return staff;
+  };
+  const mentorApiMatch = p.match(/^\/api\/mentor\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
+  if (mentorApiMatch && mentorApiMatch[1] !== "reply") {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    await ensureSchema(db);
+    const staff = await findMentor(mentorApiMatch[1], url.searchParams.get("key") || "");
+    if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const myStudents = (await db.prepare(
+      `SELECT * FROM students WHERE mentor_id = ? ORDER BY id ASC LIMIT 50`).bind(staff.id).all()).results || [];
+    const studentBlocks = [];
+    for (const stu of myStudents) {
+      const evRows = (await db.prepare(
+        `SELECT * FROM student_events WHERE student_id = ? ORDER BY id DESC LIMIT 15`).bind(stu.id).all()).results || [];
+      const openProblems = (await db.prepare(
+        `SELECT * FROM student_problem_shares WHERE student_id = ? AND progress != 'resolved' ORDER BY id DESC LIMIT 20`).bind(stu.id).all()).results || [];
+      const pendingActions = (await db.prepare(
+        `SELECT * FROM student_actions WHERE student_id = ? AND status = 'todo' ORDER BY sort ASC, id ASC LIMIT 10`).bind(stu.id).all()).results || [];
+      const revisitRows = (await db.prepare(
+        `SELECT COUNT(*) AS n FROM mentor_trail_entries WHERE student_id = ? AND (revisit_result IS NULL OR revisit_result = '')`).bind(stu.id).first());
+      const unreadMsgs = (await db.prepare(
+        `SELECT * FROM student_messages WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0 ORDER BY id ASC LIMIT 50`).bind(stu.id).all()).results || [];
+      studentBlocks.push({
+        student: { id: stu.id, name: stu.name || "", slug: stu.slug || "", stage: stu.stage || "", stage_label: DELIVERY_STAGES[stu.stage] || stu.stage || "" },
+        recent_events: evRows.map((e) => ({
+          id: e.id, event_type: e.event_type || "", event_label: EVENT_TYPES[e.event_type] || e.event_type || "",
+          summary: e.summary || "", created_at: e.created_at || "",
+        })),
+        open_problems: openProblems.map((pr) => ({
+          id: pr.id, title: pr.title || "", domain: pr.domain || "",
+          domain_label: PROBLEM_DOMAINS[pr.domain] || pr.domain || "",
+          stuck_summary: String(pr.strategy_summary || "").slice(0, 200),
+          support_needed: pr.support_needed || "", progress: pr.progress || "open",
+          progress_label: PROBLEM_PROGRESS[pr.progress] || pr.progress || "",
+          created_at: pr.created_at || "",
+        })),
+        pending_actions: pendingActions.map((a) => ({
+          id: a.id, title: a.title || "", detail: a.detail || "", due_text: a.due_text || "",
+        })),
+        trail_revisit_pending: revisitRows ? revisitRows.n : 0,
+        unread_messages: unreadMsgs.map((m) => ({
+          id: m.id, body: m.body || "", created_at: m.created_at || "",
+        })),
+      });
+    }
+    return jsonResp(req, {
+      ok: true,
+      mentor: {
+        id: staff.id, name: staff.name || "", emp_no: staff.emp_no || "",
+        kind: staff.kind || "", mentor_status: staff.mentor_status || "",
+        mentor_status_label: MENTOR_STATUSES[staff.mentor_status] || "",
+        notifiable: mentorNotifiable(staff),
+      },
+      students: studentBlocks,
+    });
+  }
+  // POST /api/mentor/reply { s: <staff id 或 emp_no>, key, student_id, body }：导师在工作台直接回复。
+  // 回复只进既有留言通道（student_messages, sender='mentor'）；同时把该学生名下 queued 的
+  // student_message 发件箱记录推进到 responded，并把该学生未读留言标已读；回复记入事件流。
+  // student_id 必须是该导师名下学生，否则 404（不暴露存在性）。
+  if (p === "/api/mentor/reply") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const staff = await findMentor(String((body && body.s) || "").trim(), String((body && body.key) || ""));
+    if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const sid = toInt(body && body.student_id, 0);
+    const stu = sid ? await db.prepare(
+      `SELECT * FROM students WHERE id = ? AND mentor_id = ?`).bind(sid, staff.id).first() : null;
+    if (!stu) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const text = String((body && body.body) || "").trim();
+    if (!text) return jsonResp(req, { ok: false, error: "message required" }, 400);
+    if ([...text].length > MESSAGE_MAX_LEN) {
+      return jsonResp(req, { ok: false, error: "message too long (max " + MESSAGE_MAX_LEN + ")" }, 400);
+    }
+    const ts = nowIso();
+    const r = await db.prepare(
+      `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor, mentor_id)
+       VALUES(?, 'mentor', ?, ?, 0, 1, ?)`
+    ).bind(stu.id, text, ts, staff.id).run();
+    await db.prepare(
+      `UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0`
+    ).bind(stu.id).run();
+    await db.prepare(
+      `UPDATE notifications_outbox SET status = 'responded', updated_at = ?
+       WHERE mentor_staff_id = ? AND student_id = ? AND event_type = 'student_message' AND status IN ('queued','sent')`
+    ).bind(ts, staff.id, stu.id).run();
+    await logEvent(db, stu.id, "mentor_reply", r.meta.last_row_id, "导师回复留言");
+    return jsonResp(req, {
+      ok: true,
+      message: { id: r.meta.last_row_id, sender: "mentor", body: text, created_at: ts },
     });
   }
 
@@ -1897,9 +2331,9 @@ async function handleApi(req, env, url) {
     }
     for (const k of extras.keyDates) {
       await db.prepare(
-        `INSERT INTO student_key_dates(student_id, date, title, created_at, updated_at)
-         VALUES(?,?,?,?,?)`
-      ).bind(sid, k.date, k.title, now, now).run();
+        `INSERT INTO student_key_dates(student_id, date, title, kind, created_at, updated_at)
+         VALUES(?,?,?,?,?,?)`
+      ).bind(sid, k.date, k.title, k.kind, now, now).run();
     }
     for (const a of extras.actions) {
       await db.prepare(
@@ -1986,6 +2420,22 @@ async function handleApi(req, env, url) {
       }
       counts.patched++;
     }
+    // —— v13：默认导师分配（按 emp_no / 姓名 / id 解析 staff；解析不到整单 400，不静默）——
+    if (patch.mentor_emp_no || patch.mentor_name || patch.mentor_id) {
+      let staff = null;
+      if (patch.mentor_id) {
+        staff = await db.prepare(`SELECT * FROM staff WHERE id = ?`).bind(toInt(patch.mentor_id, 0)).first();
+      } else if (patch.mentor_emp_no) {
+        staff = await db.prepare(`SELECT * FROM staff WHERE emp_no = ?`).bind(clampStr(patch.mentor_emp_no, 24)).first();
+      } else {
+        staff = await db.prepare(`SELECT * FROM staff WHERE name = ? ORDER BY id ASC`).bind(clampStr(patch.mentor_name, 60)).first();
+      }
+      if (!staff) return bad("mentor not found (mentor_emp_no / mentor_name / mentor_id)");
+      await db.prepare(`UPDATE students SET mentor_id = ?, updated_at = ? WHERE id = ?`)
+        .bind(staff.id, now, sid).run();
+      counts.mentor = { staff_id: staff.id, name: staff.name || "", notifiable: mentorNotifiable(staff) };
+      counts.patched++;
+    }
     // —— 人生线改名（按旧名精确匹配，可附带替换 next_step 说明，改完计数）——
     const renames = Array.isArray(body.goal_line_renames) ? body.goal_line_renames : [];
     if (renames.length > 20) return bad("too many goal_line_renames (max 20)");
@@ -2021,8 +2471,8 @@ async function handleApi(req, env, url) {
       const dup = await db.prepare(`SELECT id FROM student_key_dates WHERE student_id = ? AND date = ? AND title = ?`).bind(sid, k.date, k.title).first();
       if (dup) { counts.key_dates.skipped++; continue; }
       await db.prepare(
-        `INSERT INTO student_key_dates(student_id, date, title, created_at, updated_at) VALUES(?,?,?,?,?)`
-      ).bind(sid, k.date, k.title, now, now).run();
+        `INSERT INTO student_key_dates(student_id, date, title, kind, created_at, updated_at) VALUES(?,?,?,?,?,?)`
+      ).bind(sid, k.date, k.title, k.kind, now, now).run();
       counts.key_dates.inserted++;
     }
     for (const a of extras.actions) {
@@ -2089,6 +2539,7 @@ async function handleApi(req, env, url) {
          VALUES(?,?,?,?,?,?,?,?)`
       ).bind(sid, u.update_date, u.title, u.body, u.current_focus, u.next_step, now, now).run();
       counts.parent_updates.inserted++;
+      await logEvent(db, sid, "parent_update_published", null, "家长更新发布：" + u.title);
     }
     for (const a of pExtras.parentSupport) {
       const dup = await db.prepare(`SELECT id FROM parent_support_actions WHERE student_id = ? AND title = ?`).bind(sid, a.title).first();
@@ -2127,6 +2578,7 @@ async function handleApi(req, env, url) {
         e.revisit_result, due, e.visibility, e.source, now, now).run();
       counts.trail_entries.inserted++;
       await insertTrailFollowups(db, sid, e.followup_actions, now);
+      await logEvent(db, sid, "trail_created", null, "导师轨迹新增：" + (e.spirit_line || e.mentor_name || ""));
     }
     for (const s of rExtras.sets) {
       let setRow = await db.prepare(
@@ -2200,7 +2652,7 @@ function layout(title, active, body) {
   const tabs = [
     ["/admin", "首页"], ["/admin/leads", "线索"], ["/admin/delivery", "交付"],
     ["/admin/agents", "代理"], ["/admin/orders", "订单"], ["/admin/content", "内容"],
-    ["/admin/tasks", "任务"], ["/admin/staff", "人员"], ["/admin/knowledge", "知识库"],
+    ["/admin/tasks", "任务"], ["/admin/staff", "人员"], ["/admin/outbox", "导师通知"], ["/admin/knowledge", "知识库"],
   ];
   const nav = tabs.map(([href, label]) =>
     `<a href="${href}" class="${active === href ? "on" : ""}">${label}</a>`).join("");
@@ -2554,6 +3006,10 @@ async function postDelivery(req, env) {
     await db.prepare("DELETE FROM mentor_trail_entries WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM course_requirements WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM course_requirement_sets WHERE student_id=?").bind(delId).run();
+    // v13：一句话 / 发件箱 / 事件流一并清理
+    await db.prepare("DELETE FROM note_to_parents WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM notifications_outbox WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_events WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM students WHERE id=?").bind(delId).run();
     return redirect("/admin/delivery");
   }
@@ -3171,7 +3627,17 @@ async function pageStaff(env, url) {
     .map((r) => r.platform);
   const editId = toInt(sp.get("edit"), 0);
   const edit = editId ? await db.prepare("SELECT * FROM staff WHERE id=?").bind(editId).first() : null;
-  const f = edit || { name: "", kind: "human", emp_no: "", platform: "", job_function: "", persona: "", accountable: "", role: "", contact: "", start_date: "", status: "active", note: "" };
+  // v13：编辑导师档案时补齐工作台密钥，页面展示工作台链接（可重置）
+  if (edit) await ensureMentorKey(db, edit);
+  const f = edit || { name: "", kind: "human", emp_no: "", platform: "", job_function: "", persona: "", accountable: "", role: "", contact: "", start_date: "", status: "active", note: "", specialty: "", contact_email: "", contact_phone: "", contact_wechat: "", notify_channel: "", mentor_status: "" };
+  const mentorKeyBlock = edit ? `
+  <div class="card"><h2>导师工作台（v13）</h2>
+  <p class="mut">本期口径：每位导师一个专属密钥链接（与学生/家长密钥互不通用，交叉访问 404），不做账号体系。
+  工作台链接：<code>/one-on-one-app/mentor.html?s=${esc(edit.emp_no || String(edit.id))}&amp;k=${esc(edit.mentor_key || "")}</code>
+  ｜ 导师通知状态：${mentorNotifiable(edit) ? '<span class="ok">可通知</span>' : '<span class="bad">不可通知</span>（未登记/未核验或缺联系方式）'}</p>
+  <form method="post" onsubmit="return confirm('重置后旧工作台链接立即失效，确定？')">
+    <input type="hidden" name="action" value="mentor_key_rotate"><input type="hidden" name="id" value="${edit.id}">
+    <button class="small danger" type="submit">重置工作台密钥</button></form></div>` : "";
   // 考核区（选中某员工时展开）
   const reviewsId = toInt(sp.get("reviews"), 0);
   const rStaff = reviewsId ? await db.prepare("SELECT * FROM staff WHERE id=?").bind(reviewsId).first() : null;
@@ -3222,6 +3688,7 @@ async function pageStaff(env, url) {
     <td>${esc(s.contact || "")}</td>
     <td>${esc(s.start_date || "—")}</td>
     <td>${staffStatusHtml(s.status)}</td>
+    <td>${(s.mentor_status || s.kind === "mentor") ? (mentorNotifiable(s) ? '<span class="ok">导师·可通知</span>' : '<span class="bad">不可通知</span>') : '<span class="mut">—</span>'}</td>
     <td>${esc((s.note || "").slice(0, 40))}</td>
     <td><a href="/admin/staff?reviews=${s.id}">考核</a></td>
     <td><a href="/admin/staff?edit=${s.id}">编辑</a></td>
@@ -3230,6 +3697,7 @@ async function pageStaff(env, url) {
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const body = `
   ${reviewsHtml}
+  ${mentorKeyBlock}
   <div class="card"><h2>${edit ? "编辑人员 #" + edit.id : "新增人员"}</h2>
   <form method="post">
     <input type="hidden" name="action" value="${edit ? "update" : "add"}">
@@ -3254,6 +3722,17 @@ async function pageStaff(env, url) {
       <div><label>状态</label><select name="status">${opts(STAFF_STATUSES, f.status)}</select></div>
     </div>
     <label>备注</label><textarea name="note" maxlength="2000">${esc(f.note)}</textarea>
+    <h3>导师注册（v13：仅导师填写；姓名必填、联系方式至少一项，否则标「不可通知」）</h3>
+    <div class="row">
+      <div style="flex:2"><label>专长标签</label><input name="specialty" maxlength="120" value="${esc(f.specialty || "")}" placeholder="如 护理 / 考试策略 / 创业"></div>
+      <div><label>导师状态</label><select name="mentor_status"><option value="">未登记</option>${opts(MENTOR_STATUSES, f.mentor_status || "")}</select></div>
+      <div><label>通知偏好渠道</label><select name="notify_channel"><option value="">未定</option>${opts(NOTIFY_CHANNELS, f.notify_channel || "")}</select></div>
+    </div>
+    <div class="row">
+      <div><label>导师邮箱</label><input name="contact_email" maxlength="80" value="${esc(f.contact_email || "")}"></div>
+      <div><label>导师电话</label><input name="contact_phone" maxlength="40" value="${esc(f.contact_phone || "")}"></div>
+      <div><label>导师微信</label><input name="contact_wechat" maxlength="60" value="${esc(f.contact_wechat || "")}"></div>
+    </div>
     <button type="submit">${edit ? "保存修改" : "添加人员"}</button>
     ${edit ? `<a class="btn ghost" href="/admin/staff">取消编辑</a>` : ""}
   </form></div>
@@ -3266,8 +3745,8 @@ async function pageStaff(env, url) {
     <div><label>&nbsp;</label><button type="submit">筛选</button></div>
   </form>
   <div class="wrap">
-  <table><tr><th>工号</th><th>姓名</th><th>体系</th><th>职能</th><th>责任人</th><th>联系方式</th><th>入职日期</th><th>状态</th><th>备注</th><th></th><th></th><th></th></tr>
-  ${rowHtml || `<tr><td colspan="12" class="mut">暂无人员档案</td></tr>`}</table></div></div>`;
+  <table><tr><th>工号</th><th>姓名</th><th>体系</th><th>职能</th><th>责任人</th><th>联系方式</th><th>入职日期</th><th>状态</th><th>导师</th><th>备注</th><th></th><th></th><th></th></tr>
+  ${rowHtml || `<tr><td colspan="13" class="mut">暂无人员档案</td></tr>`}</table></div></div>`;
   return htmlResp(layout("人员", "/admin/staff", body));
 }
 async function postStaff(req, env) {
@@ -3277,6 +3756,14 @@ async function postStaff(req, env) {
   if (action === "delete") {
     await db.prepare("DELETE FROM staff WHERE id=?").bind(toInt(fd.get("id"), 0)).run();
     return redirect("/admin/staff");
+  }
+  // v13：导师工作台密钥重置（旧链接立即失效）；查看/生成走人员页渲染时 ensureMentorKey
+  if (action === "mentor_key_rotate") {
+    const id = toInt(fd.get("id"), 0);
+    if (id) {
+      await db.prepare("UPDATE staff SET mentor_key = ? WHERE id = ?").bind(genMentorKey(), id).run();
+    }
+    return redirect("/admin/staff?edit=" + id);
   }
   if (action === "delete_review") {
     await db.prepare("DELETE FROM staff_reviews WHERE id=?").bind(toInt(fd.get("id"), 0)).run();
@@ -3323,18 +3810,102 @@ async function postStaff(req, env) {
   const note = clampStr(fd.get("note"), 2000);
   const persona = kind === "ai" ? clampStr(fd.get("persona"), 1000) || null : null;
   const accountable = kind === "ai" ? clampStr(fd.get("accountable"), 40) || null : null;
+  // v13 导师注册字段（仅 kind=mentor 或显式填报导师状态时写入；其余归集到 staff 表新列，空 = 未登记）
+  const specialty = clampStr(fd.get("specialty"), 120) || null;
+  const contactEmail = clampStr(fd.get("contact_email"), 80) || null;
+  const contactPhone = clampStr(fd.get("contact_phone"), 40) || null;
+  const contactWechat = clampStr(fd.get("contact_wechat"), 60) || null;
+  const notifyChannel = NOTIFY_CHANNELS[fd.get("notify_channel")] ? String(fd.get("notify_channel")) : null;
+  const mentorStatus = MENTOR_STATUSES[fd.get("mentor_status")] ? String(fd.get("mentor_status")) : null;
   if (action === "update") {
     const id = toInt(fd.get("id"), 0);
     const existing = id ? await db.prepare("SELECT emp_no FROM staff WHERE id=?").bind(id).first() : null;
     if (!empNo) empNo = (existing && existing.emp_no) || (await nextEmpNo(db, kind, jobFunction));
-    await db.prepare("UPDATE staff SET name=?, kind=?, emp_no=?, platform=?, job_function=?, role=?, contact=?, start_date=?, status=?, note=?, persona=?, accountable=? WHERE id=?")
-      .bind(name, kind, empNo, platform, jobFunction, role, contact, startDate, status, note, persona, accountable, id).run();
+    await db.prepare("UPDATE staff SET name=?, kind=?, emp_no=?, platform=?, job_function=?, role=?, contact=?, start_date=?, status=?, note=?, persona=?, accountable=?, specialty=?, contact_email=?, contact_phone=?, contact_wechat=?, notify_channel=?, mentor_status=? WHERE id=?")
+      .bind(name, kind, empNo, platform, jobFunction, role, contact, startDate, status, note, persona, accountable,
+        specialty, contactEmail, contactPhone, contactWechat, notifyChannel, mentorStatus, id).run();
   } else {
     if (!empNo) empNo = await nextEmpNo(db, kind, jobFunction);
-    await db.prepare("INSERT INTO staff(name, kind, emp_no, platform, job_function, role, contact, start_date, status, note, persona, accountable, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .bind(name, kind, empNo, platform, jobFunction, role, contact, startDate, status, note, persona, accountable, nowIso()).run();
+    await db.prepare("INSERT INTO staff(name, kind, emp_no, platform, job_function, role, contact, start_date, status, note, persona, accountable, created_at, specialty, contact_email, contact_phone, contact_wechat, notify_channel, mentor_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(name, kind, empNo, platform, jobFunction, role, contact, startDate, status, note, persona, accountable, nowIso(),
+        specialty, contactEmail, contactPhone, contactWechat, notifyChannel, mentorStatus).run();
   }
   return redirect("/admin/staff");
+}
+
+// ===== 导师通知发件箱（v13）=====
+/* 诚实口径：当前未配置邮件发送通道，通知实际触达 = 本发件箱队列 + 后台醒目呈现 +
+ * 创始人每日简报（含 summary.outbox 计数），由创始人用登记的联系方式转达。
+ * 状态：queued 待转达 / sent 创始人已转达（手动标记）/ responded 导师已回复（系统自动推进）。
+ * 本页与 summaries 只记元数据（收件导师、渠道、事件摘要、时间），不含私密正文。 */
+async function pageOutbox(env, url) {
+  const db = env.DB;
+  const counts = { queued: 0, sent: 0, responded: 0 };
+  const cRows = (await db.prepare(
+    `SELECT status, COUNT(*) AS n FROM notifications_outbox GROUP BY status`).all()).results || [];
+  for (const r of cRows) if (r.status in counts) counts[r.status] = r.n;
+  const rows = (await db.prepare(
+    `SELECT o.*, s.name AS mentor_name, s.emp_no AS mentor_emp_no, st.name AS student_name
+     FROM notifications_outbox o
+     LEFT JOIN staff s ON s.id = o.mentor_staff_id
+     LEFT JOIN students st ON st.id = o.student_id
+     ORDER BY o.id DESC LIMIT 200`).all()).results || [];
+  const rowHtml = rows.map((o) => `<tr>
+    <td>${o.id}</td><td>${esc(o.created_at || "")}</td>
+    <td>${esc(o.mentor_name || "—")}（${esc(o.mentor_emp_no || "")}）</td>
+    <td>${esc(o.student_name || ("#" + o.student_id))}</td>
+    <td>${esc(NOTIFY_CHANNELS[o.channel] || o.channel || "—")}</td>
+    <td>${esc(EVENT_TYPES[o.event_type] || o.event_type || "")}</td>
+    <td>${esc(o.summary || "")}</td>
+    <td>${o.status === "queued" ? '<span class="warn">待转达</span>' : o.status === "sent" ? '<span class="ok">已转达</span>' : '<span class="ok">已回复</span>'}</td>
+    <td>${o.status === "queued" ? `<form method="post" style="margin:0">
+      <input type="hidden" name="action" value="outbox_mark_sent"><input type="hidden" name="id" value="${o.id}">
+      <button class="small" type="submit">标记已转达</button></form>` : ""}</td></tr>`).join("");
+  // —— 导师维度汇总：名下学生 / 未回复留言数 / 待回看数 ——
+  const mentors = (await db.prepare(
+    `SELECT * FROM staff WHERE mentor_status IS NOT NULL AND mentor_status != '' OR kind = 'mentor' ORDER BY id ASC LIMIT 100`).all()).results || [];
+  const mentorRows = [];
+  for (const m of mentors) {
+    const stuRows = (await db.prepare(
+      `SELECT id, name FROM students WHERE mentor_id = ? ORDER BY id ASC`).bind(m.id).all()).results || [];
+    let unread = 0, revisit = 0, queued = 0;
+    for (const s of stuRows) {
+      const u = await db.prepare(
+        `SELECT COUNT(*) AS n FROM student_messages WHERE student_id = ? AND sender='student' AND read_by_mentor = 0`).bind(s.id).first();
+      unread += u ? u.n : 0;
+      const rv = await db.prepare(
+        `SELECT COUNT(*) AS n FROM mentor_trail_entries WHERE student_id = ? AND (revisit_result IS NULL OR revisit_result = '')`).bind(s.id).first();
+      revisit += rv ? rv.n : 0;
+    }
+    const q = await db.prepare(
+      `SELECT COUNT(*) AS n FROM notifications_outbox WHERE mentor_staff_id = ? AND status = 'queued'`).bind(m.id).first();
+    queued = q ? q.n : 0;
+    mentorRows.push(`<tr><td>${esc(m.name || "")}（${esc(m.emp_no || "")}）</td>
+      <td>${mentorNotifiable(m) ? '<span class="ok">可通知</span>' : '<span class="bad">不可通知</span>'}</td>
+      <td>${stuRows.map((s) => esc(s.name || ("#" + s.id))).join("、") || "—"}</td>
+      <td>${unread}</td><td>${revisit}</td><td>${queued}</td></tr>`);
+  }
+  const body = `
+  <div class="card"><h2>导师通知发件箱（v13）</h2>
+  <p class="mut">现状触达：未配置邮件发送通道——通知 = 发件箱队列 + 本页呈现 + 创始人每日简报计数，创始人按登记联系方式转达后手动标记「已转达」。
+  queued 表示待转达，不等于已通知到人。导师在工作台或后台回复后自动推进为「已回复」。</p>
+  <p>待转达 <b>${counts.queued}</b> ｜ 已转达 <b>${counts.sent}</b> ｜ 已回复 <b>${counts.responded}</b></p>
+  <div class="wrap"><table><tr><th>#</th><th>时间</th><th>收件导师</th><th>学生</th><th>渠道</th><th>事件</th><th>摘要</th><th>状态</th><th></th></tr>
+  ${rowHtml || `<tr><td colspan="9" class="mut">暂无通知记录</td></tr>`}</table></div></div>
+  <div class="card"><h2>导师汇总</h2>
+  <div class="wrap"><table><tr><th>导师</th><th>通知状态</th><th>名下学生</th><th>未回复留言</th><th>待回看轨迹</th><th>待转达通知</th></tr>
+  ${mentorRows.join("") || `<tr><td colspan="6" class="mut">暂无已登记导师</td></tr>`}</table></div></div>`;
+  return htmlResp(layout("导师通知", "/admin/outbox", body));
+}
+async function postOutbox(req, env) {
+  const db = env.DB;
+  const fd = await req.formData();
+  if (String(fd.get("action") || "") === "outbox_mark_sent") {
+    await db.prepare(
+      `UPDATE notifications_outbox SET status = 'sent', updated_at = ? WHERE id = ? AND status = 'queued'`
+    ).bind(nowIso(), toInt(fd.get("id"), 0)).run();
+  }
+  return redirect("/admin/outbox");
 }
 
 // ===== 知识库（v10：全局知识卡，导师维护，学生端按主题匹配下发）=====
@@ -3411,6 +3982,31 @@ async function pageClient(env, url, sid) {
       `<div class="card"><h2>学生专属客户端</h2><p class="mut">未找到该学生（学生 #${sid} 不存在）。<a href="/admin/delivery">返回交付页</a></p></div>`));
   }
   if (!student.slug) student.slug = await ensureStudentSlug(db, student); // v8：打开页面时补齐专属名
+  // v13：默认导师 + 事件时间线数据（时间线只含方案层事件的 类型/时间/摘要，私密层零服务器数据不进流）
+  const curMentor = student.mentor_id
+    ? await db.prepare("SELECT * FROM staff WHERE id=?").bind(student.mentor_id).first() : null;
+  const mentorOptions = (await db.prepare(
+    "SELECT * FROM staff WHERE status NOT IN ('offboarded','left') ORDER BY id ASC LIMIT 200").all()).results || [];
+  const mentorCardHtml = `
+  <div class="card"><h2>默认导师（v13）</h2>
+  <p class="mut">学生端留言与问题升级的目标导师。当前：${curMentor
+    ? esc(curMentor.name || "") + "（" + esc(curMentor.emp_no || "") + "）" +
+      (mentorNotifiable(curMentor) ? ' <span class="ok">可通知</span>' : ' <span class="bad">不可通知</span>（未登记/未核验或缺联系方式，学生留言会被拒绝）')
+    : '<span class="warn">未分配</span>（存量口径：留言落库但无导师通知）'}</p>
+  <form method="post"><input type="hidden" name="action" value="student_mentor_set">
+    <div class="row"><div style="flex:2"><label>选择导师</label><select name="mentor_staff_id">
+      <option value="0">（不分配）</option>
+      ${mentorOptions.map((m) => `<option value="${m.id}"${student.mentor_id === m.id ? " selected" : ""}>${esc(m.name || "")}（${esc(m.emp_no || "")}）${mentorNotifiable(m) ? "" : " · 不可通知"}</option>`).join("")}
+    </select></div><div><label>&nbsp;</label><button type="submit">保存导师</button></div></div>
+  </form></div>`;
+  const evRows13 = (await db.prepare(
+    `SELECT * FROM student_events WHERE student_id = ? ORDER BY id DESC LIMIT 100`).bind(sid).all()).results || [];
+  const timelineHtml = `
+  <div class="card"><h2>事件时间线（v13 · 方案层）</h2>
+  <p class="mut">只记事件类型、时间与一句摘要；私密层内容（本地私密空间）零服务器数据，永不进入本流。</p>
+  <div class="wrap"><table><tr><th>时间</th><th>事件</th><th>摘要</th><th>对象</th></tr>
+  ${evRows13.map((e) => `<tr><td>${esc(e.created_at || "")}</td><td>${esc(EVENT_TYPES[e.event_type] || e.event_type || "")}</td><td>${esc(e.summary || "")}</td><td>#${e.object_id === null || e.object_id === undefined ? "—" : e.object_id}</td></tr>`).join("") || `<tr><td colspan="4" class="mut">暂无事件</td></tr>`}
+  </table></div></div>`;
   const nowMs = Date.now();
   const stageDays = daysInStage(student.stage_since, nowMs);
   const goal = await db.prepare("SELECT * FROM student_goals WHERE student_id=?").bind(sid).first();
@@ -3799,6 +4395,7 @@ async function pageClient(env, url, sid) {
     <div class="row">
       <div><label>日期 *</label><input name="date" type="date" required value="${esc(kdf.date || "")}"></div>
       <div style="flex:2"><label>标题 *</label><input name="title" required maxlength="120" value="${esc(kdf.title || "")}" placeholder="如 护理项目申请截止"></div>
+      <div><label>类型（v13）</label><select name="kind"><option value="">普通日期</option>${opts(KEY_DATE_KINDS, kdf.kind || "")}</select></div>
     </div>
     <button type="submit">${editKd ? "保存修改" : "添加关键日期"}</button>
     ${editKd ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
@@ -4035,8 +4632,8 @@ async function pageClient(env, url, sid) {
   </form>
   </div>`;
   return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery",
-    hero + goalCard + statusCard + examCard + courseCard + meetingCard + trailCard +
-    milestoneCard + keyDateCard + actionCard + adviceCard + problemCard + reqsetCard + messageCard + parentCard));
+    hero + mentorCardHtml + goalCard + statusCard + examCard + courseCard + meetingCard + trailCard +
+    milestoneCard + keyDateCard + actionCard + adviceCard + problemCard + reqsetCard + messageCard + parentCard + timelineHtml));
 }
 async function postClient(req, env, sidFromPath) {
   const db = env.DB;
@@ -4046,6 +4643,15 @@ async function postClient(req, env, sidFromPath) {
   const student = sid ? await db.prepare("SELECT id FROM students WHERE id=?").bind(sid).first() : null;
   if (!student) return redirect("/admin/delivery");
   const back = "/admin/client/" + sid;
+  // v13：默认导师指派（0 = 取消分配；指向不可通知导师也允许保存，但客户端页会标红提示）
+  if (action === "student_mentor_set") {
+    const mid = toInt(fd.get("mentor_staff_id"), 0);
+    if (mid === 0 || await db.prepare("SELECT id FROM staff WHERE id=?").bind(mid).first()) {
+      await db.prepare("UPDATE students SET mentor_id = ?, updated_at = ? WHERE id = ?")
+        .bind(mid || null, nowIso(), sid).run();
+    }
+    return redirect(back);
+  }
   if (action === "key_rotate") {
     // v7：生成/重置学生端 APP 访问密钥（旧密钥立即失效）
     await db.prepare("UPDATE students SET client_key = ?, updated_at = ? WHERE id = ?")
@@ -4236,12 +4842,13 @@ async function postClient(req, env, sidFromPath) {
     const title = clampStr(fd.get("title"), 120);
     const date = clampStr(fd.get("date"), 10);
     if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return redirect(back);
+    const kdKind = KEY_DATE_KINDS[fd.get("kind")] ? String(fd.get("kind")) : null;
     if (action === "keydate_update") {
-      await db.prepare("UPDATE student_key_dates SET date=?, title=?, updated_at=? WHERE id=? AND student_id=?")
-        .bind(date, title, nowIso(), toInt(fd.get("id"), 0), sid).run();
+      await db.prepare("UPDATE student_key_dates SET date=?, title=?, kind=?, updated_at=? WHERE id=? AND student_id=?")
+        .bind(date, title, kdKind, nowIso(), toInt(fd.get("id"), 0), sid).run();
     } else {
-      await db.prepare("INSERT INTO student_key_dates(student_id, date, title, created_at, updated_at) VALUES(?,?,?,?,?)")
-        .bind(sid, date, title, nowIso(), nowIso()).run();
+      await db.prepare("INSERT INTO student_key_dates(student_id, date, title, kind, created_at, updated_at) VALUES(?,?,?,?,?,?)")
+        .bind(sid, date, title, kdKind, nowIso(), nowIso()).run();
     }
     return redirect(back);
   }
@@ -4258,14 +4865,23 @@ async function postClient(req, env, sidFromPath) {
     const status = ACTION_STATUSES[fd.get("status")] ? String(fd.get("status")) : "todo";
     const sort = toInt(fd.get("sort"), 0);
     if (action === "action_update") {
+      const prev = await db.prepare("SELECT status FROM student_actions WHERE id=? AND student_id=?")
+        .bind(toInt(fd.get("id"), 0), sid).first();
       await db.prepare(
         `UPDATE student_actions SET title=?, detail=?, due_text=?, status=?, sort=?, updated_at=? WHERE id=? AND student_id=?`
       ).bind(title, detail, dueText, status, sort, nowIso(), toInt(fd.get("id"), 0), sid).run();
+      // v13：行动由未完成 → 已完成时记事件（成就与时间线同源）
+      if (status === "done" && prev && prev.status !== "done") {
+        await logEvent(db, sid, "action_completed", toInt(fd.get("id"), 0), "完成行动：" + title);
+      }
     } else {
-      await db.prepare(
+      const ins = await db.prepare(
         `INSERT INTO student_actions(student_id, title, detail, due_text, status, sort, created_at, updated_at)
          VALUES(?,?,?,?,?,?,?,?)`
       ).bind(sid, title, detail, dueText, status, sort, nowIso(), nowIso()).run();
+      if (status === "done") {
+        await logEvent(db, sid, "action_completed", ins.meta.last_row_id, "完成行动：" + title);
+      }
     }
     return redirect(back);
   }
@@ -4296,10 +4912,19 @@ async function postClient(req, env, sidFromPath) {
   if (action === "message_reply") {
     const text = clampStr(fd.get("body"), 2000);
     if (!text) return redirect(back);
-    await db.prepare(
-      `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor)
-       VALUES(?, 'mentor', ?, ?, 0, 1)`
-    ).bind(sid, text, nowIso()).run();
+    const stuRow = await db.prepare("SELECT mentor_id FROM students WHERE id=?").bind(sid).first();
+    const ins = await db.prepare(
+      `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor, mentor_id)
+       VALUES(?, 'mentor', ?, ?, 0, 1, ?)`
+    ).bind(sid, text, nowIso(), stuRow && stuRow.mentor_id ? stuRow.mentor_id : null).run();
+    // v13：导师回复记事件，并把该学生 queued 的留言通知推进到 responded
+    await logEvent(db, sid, "message_mentor", ins.meta.last_row_id, "导师回复留言");
+    if (stuRow && stuRow.mentor_id) {
+      await db.prepare(
+        `UPDATE notifications_outbox SET status = 'responded', updated_at = ?
+         WHERE mentor_staff_id = ? AND student_id = ? AND event_type = 'student_message' AND status IN ('queued','sent')`
+      ).bind(nowIso(), stuRow.mentor_id, sid).run();
+    }
     return redirect(back);
   }
   // —— v11 家长端 ——
@@ -4322,10 +4947,12 @@ async function postClient(req, env, sidFromPath) {
         `UPDATE parent_updates SET update_date=?, title=?, body=?, current_focus=?, next_step=?, updated_at=? WHERE id=? AND student_id=?`
       ).bind(updDate, title, uBody, focus, nextStep, nowIso(), toInt(fd.get("id"), 0), sid).run();
     } else {
-      await db.prepare(
+      const ins = await db.prepare(
         `INSERT INTO parent_updates(student_id, update_date, title, body, current_focus, next_step, created_at, updated_at)
          VALUES(?,?,?,?,?,?,?,?)`
       ).bind(sid, updDate, title, uBody, focus, nextStep, nowIso(), nowIso()).run();
+      // v13：家长更新发布记事件
+      await logEvent(db, sid, "parent_update_published", ins.meta.last_row_id, "家长更新发布：" + title);
     }
     return redirect(back);
   }
@@ -4379,7 +5006,7 @@ async function postClient(req, env, sidFromPath) {
     const due = /^\d{4}-\d{2}-\d{2}$/.test(dueRaw) ? dueRaw
       : new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
     const followups = clampStr(fd.get("followup_actions"), 2000);
-    await db.prepare(
+    const tr = await db.prepare(
       `INSERT INTO mentor_trail_entries(student_id, meeting_id, mentor_name, mentor_role, spirit_line,
         key_judgments, student_takeaway, takeaway_local, followup_actions, revisit_result, revisit_due,
         visibility, source, created_at, updated_at)
@@ -4387,6 +5014,17 @@ async function postClient(req, env, sidFromPath) {
     ).bind(sid, meetingId, mentorName, role, spirit, clampStr(fd.get("key_judgments"), 2000),
       followups, due, nowIso(), nowIso()).run();
     await insertTrailFollowups(db, sid, followups, nowIso());
+    // v13：轨迹新增记事件 + 待回看通知（学生已分配且导师可通知时）
+    await logEvent(db, sid, "trail_created", tr.meta.last_row_id, "导师轨迹新增：" + spirit);
+    const stuM = await db.prepare("SELECT mentor_id FROM students WHERE id=?").bind(sid).first();
+    if (stuM && stuM.mentor_id) {
+      const mentor = await db.prepare("SELECT * FROM staff WHERE id=?").bind(stuM.mentor_id).first();
+      if (mentorNotifiable(mentor)) {
+        const stuName = await db.prepare("SELECT name FROM students WHERE id=?").bind(sid).first();
+        await pushOutbox(db, mentor, sid, "trail_revisit",
+          ((stuName && stuName.name) || "学生") + " 新增导师轨迹待回看：" + spirit, "trail", tr.meta.last_row_id);
+      }
+    }
     return redirect(back);
   }
   if (action === "trail_delete") {
@@ -4396,8 +5034,18 @@ async function postClient(req, env, sidFromPath) {
   }
   if (action === "problem_progress") {
     const progress = PROBLEM_PROGRESS[fd.get("progress")] ? String(fd.get("progress")) : "open";
+    const prevP = await db.prepare("SELECT progress, title FROM student_problem_shares WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).first();
     await db.prepare("UPDATE student_problem_shares SET progress=?, updated_at=? WHERE id=? AND student_id=?")
       .bind(progress, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    // v13：导师侧改问题状态也记事件（解决/升级）
+    if (prevP && progress !== prevP.progress) {
+      if (progress === "resolved") {
+        await logEvent(db, sid, "problem_resolved", toInt(fd.get("id"), 0), "问题解决：" + (prevP.title || ""));
+      } else if (progress === "escalated") {
+        await logEvent(db, sid, "problem_escalated", toInt(fd.get("id"), 0), "问题升级导师：" + (prevP.title || ""));
+      }
+    }
     return redirect(back);
   }
   if (action === "problem_delete") {
@@ -4464,6 +5112,7 @@ async function handleAdmin(req, env, url) {
     if (p === "/admin/content") return postContent(req, env);
     if (p === "/admin/tasks") return postTasks(req, env);
     if (p === "/admin/staff") return postStaff(req, env);
+    if (p === "/admin/outbox") return postOutbox(req, env);
     if (p === "/admin/knowledge") return postKnowledge(req, env);
     return redirect("/admin");
   }
@@ -4477,6 +5126,7 @@ async function handleAdmin(req, env, url) {
   if (p === "/admin/content") return pageContent(env, url);
   if (p === "/admin/tasks") return pageTasks(env, url);
   if (p === "/admin/staff") return pageStaff(env, url);
+  if (p === "/admin/outbox") return pageOutbox(env, url);
   if (p === "/admin/knowledge") return pageKnowledge(env, url);
   return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
 }
@@ -4515,4 +5165,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, complianceFlag, gradePoints, normCourseCode, parsePrereqCodes, matchRequirements, normProblemInput, normTrailExtras, normRequirementSets, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT, PROBLEM_DOMAINS, PROBLEM_PROGRESS, PROBLEM_RATE_LIMIT, TRAIL_ROLES, TRAIL_SOURCES, REQ_BLOCKS };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, complianceFlag, gradePoints, normCourseCode, parsePrereqCodes, matchRequirements, normProblemInput, normTrailExtras, normRequirementSets, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT, PROBLEM_DOMAINS, PROBLEM_PROGRESS, PROBLEM_RATE_LIMIT, TRAIL_ROLES, TRAIL_SOURCES, REQ_BLOCKS, FEELING_TAGS, KEY_DATE_KINDS, MENTOR_STATUSES, NOTIFY_CHANNELS, OUTBOX_STATUSES, EVENT_TYPES, PARENT_NOTE_MAX_LEN, genMentorKey, mentorNotifiable, mentorContacts, computeUpcomingReminders, buildAchievements };

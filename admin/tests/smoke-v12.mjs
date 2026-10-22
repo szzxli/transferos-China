@@ -287,10 +287,13 @@ section("GET /api/client：v12 字段与课程匹配");
 section("家长端边界：v12 数据不可见 + 密钥交叉 404");
 {
   const raw = await (await getParentRaw("v12-fix", pkey)).text();
-  for (const probe of ["入学考试规则不清", "先保住资格门", "王老师", "FIX 本校情景", "course_match", "mentor_trail",
+  // v13 口径修订（创始人定版）：已解决问题「标题」作为成就进家长端是合法的（方案层事实）；
+  // 但问题的期望结果/策略摘要/解决小结/期望帮助等细节仍不得出现在家长响应中。
+  for (const probe of ["弄清官方规则", "先查官网原文", "已查官网确认", "导师确认", "先保住资格门", "王老师", "FIX 本校情景", "course_match", "mentor_trail",
                        '"problems"', "NRS 101", "SENTINEL"]) {
     ok(!raw.includes(probe), "家长响应不含：" + probe);
   }
+  ok(raw.includes("入学考试规则不清"), "v13：已解决问题的标题作为成就出现在家长端（创始人定版）");
   ok((await getParentRaw("v12-fix", ckey)).status === 404, "学生 key 查家长接口 → 404");
   const pd = JSON.parse(raw);
   ok(pd.ok === true && Array.isArray(pd.updates) && Array.isArray(pd.support_actions), "家长接口结构不变（v11 口径）");

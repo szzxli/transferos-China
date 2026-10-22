@@ -67,6 +67,17 @@ const I18N = {
     "msg.errFreq": "发送太频繁，请过一分钟再试",
     "msg.errGone": "链接已失效，请向导师索取最新家长链接",
     "msg.errNet": "发送失败，请检查网络后重试",
+    "note.title": "孩子想对您说",
+    "note.empty": "孩子还没有发来一句话；她主动分享时，会出现在这里。",
+    "ach.title": "最近的成就",
+    "ach.empty": "还没有可展示的成就，新的进展会出现在这里。",
+    "ach.kind.milestone": "完成里程碑",
+    "ach.kind.action": "完成了一件事",
+    "ach.kind.problem": "解决了一个问题",
+    "rem.title": "近期重要日子",
+    "rem.empty": "未来 30 天没有特别的日子。",
+    "rem.inDays": "{n} 天后",
+    "rem.today": "就是今天",
   },
   en: {
     "app.title": "Parent Updates",
@@ -120,6 +131,17 @@ const I18N = {
     "msg.errFreq": "Sending too fast — please wait a minute",
     "msg.errGone": "This link has expired — please ask your mentor for the latest parent link",
     "msg.errNet": "Send failed — please check your connection and retry",
+    "note.title": "A Line From Your Child",
+    "note.empty": "No line from your child yet — when she chooses to share one, it will appear here.",
+    "ach.title": "Recent Achievements",
+    "ach.empty": "No achievements to show yet — new milestones will appear here.",
+    "ach.kind.milestone": "Milestone reached",
+    "ach.kind.action": "Completed a task",
+    "ach.kind.problem": "Solved a problem",
+    "rem.title": "Coming Up",
+    "rem.empty": "No special dates in the next 30 days.",
+    "rem.inDays": "in {n} days",
+    "rem.today": "Today",
   },
 };
 let LANG = "zh";
@@ -288,6 +310,42 @@ function renderHome(d) {
   $("latest-body").innerHTML = latest
     ? '<div class="tl-title">' + esc(latest.title || "") + "</div>" + updateBodyHtml(latest)
     : '<p class="empty">' + esc(t("latest.empty")) + "</p>";
+  renderParentExtras(d);
+}
+
+/* —— v13：孩子的一句话 / 成就 / 重要日子（数据源均为方案层事实，见后台口径） —— */
+function fmtRemDate(isoStr) {
+  const m = String(isoStr || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return String(isoStr || "");
+  return LANG === "en"
+    ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m[2]) - 1] + " " + Number(m[3])
+    : Number(m[2]) + " 月 " + Number(m[3]) + " 日";
+}
+function renderParentExtras(d) {
+  // 一句话：只展示学生主动发出、未撤回的
+  const notes = d.student_notes || [];
+  $("note-body").innerHTML = notes.length
+    ? notes.slice(0, 3).map((n) =>
+        '<div class="pnote-item"><div class="pnote-main"><span>「' + esc(n.body) + "」</span>" +
+        (n.feeling_tag_label ? ' <span class="pill">' + esc(n.feeling_tag_label) + "</span>" : "") +
+        ' <span class="mut">' + esc(String(n.created_at || "").slice(0, 10)) + "</span></div></div>").join("")
+    : '<p class="empty">' + esc(t("note.empty")) + "</p>";
+  // 成就：方案层事实（里程碑/已完成行动/已解决的问题），按日期倒序展示（无日期排后）
+  const ach = (d.achievements || []).slice().sort((a, b) => String(b.date_text || "").localeCompare(String(a.date_text || "")));
+  $("ach-body").innerHTML = ach.length
+    ? ach.slice(0, 10).map((a) =>
+        '<div class="tl-item"><span class="tl-dot"></span><div class="tl-body">' +
+        '<div class="tl-date">' + esc(t("ach.kind." + a.kind)) + (a.date_text ? " · " + esc(a.date_text) : "") + "</div>" +
+        '<div class="tl-title">' + esc(a.title || "") + "</div></div></div>").join("")
+    : '<p class="empty">' + esc(t("ach.empty")) + "</p>";
+  // 重要日子：未来 30 天（服务端已算好窗口与 days_left），温和提醒文案
+  const rems = d.upcoming_reminders || [];
+  $("rem-body").innerHTML = rems.length
+    ? rems.map((r) =>
+        '<div class="cd-item"><div class="cd-main"><div class="cd-title">' + esc(r.title || "") + "</div>" +
+        '<div class="cd-date">' + esc(fmtRemDate(r.date)) + '</div></div><div class="cd-days">' +
+        esc(r.days_left === 0 ? t("rem.today") : fmt("rem.inDays", { n: r.days_left })) + "</div></div>").join("")
+    : '<p class="empty">' + esc(t("rem.empty")) + "</p>";
 }
 
 /* —— 页2 进展 —— */

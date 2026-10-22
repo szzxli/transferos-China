@@ -13,6 +13,7 @@ const HTML = readFileSync(new URL("../../one-on-one-app/index.html", import.meta
 const APP = readFileSync(new URL("../../one-on-one-app/app.js", import.meta.url), "utf8");
 const PRIV = readFileSync(new URL("../../one-on-one-app/private.js", import.meta.url), "utf8");
 const PROB = readFileSync(new URL("../../one-on-one-app/problems.js", import.meta.url), "utf8");
+const MAJORS_JS = readFileSync(new URL("../../one-on-one-app/majors.js", import.meta.url), "utf8");
 
 let pass = 0, fail = 0;
 function ok(cond, label) {
@@ -279,7 +280,7 @@ function makeWindow(opts) {
   };
   // 三个脚本按 index.html 的顺序拼成一次求值：真实浏览器里多个 <script> 共享全局词法作用域，
   // 而 jsdom 的多次 w.eval 之间顶层 const 不互见，拼接求值与浏览器语义一致。
-  w.eval(PRIV + "\n" + PROB + "\n" + APP);
+  w.eval(PRIV + "\n" + PROB + "\n" + MAJORS_JS + "\n" + APP);
   return { w, requests, blobs, canvasCalls, fake };
 }
 let W = null;

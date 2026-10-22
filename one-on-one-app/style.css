@@ -509,3 +509,9 @@ fieldset.fld{border:0;padding:0}
 .share-checks{margin:12px 0}
 .share-checks .chk{display:flex;margin:8px 0}
 #share-preview{width:100%;height:auto;border-radius:12px;margin-top:12px;border:1px solid var(--line)}
+/* v13：手风琴收缩 + 给爸妈的一句话 */
+.acc-toggle{float:right;border:0;background:transparent;font-size:15px;color:var(--mut);cursor:pointer;padding:2px 6px;line-height:1}
+.acc-closed h2{margin-bottom:0}
+.pnote-item{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.pnote-item .btn-ghost{flex:none;padding:4px 10px;font-size:13px}
+.pnote-main{line-height:1.55}

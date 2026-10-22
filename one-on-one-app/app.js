@@ -128,6 +128,46 @@ const I18N = {
     "match.watch": "{code} 成绩 {g}——通用提示：不少护理项目要求先修课 B 或以上，此为通用提示、非官方线，待官方核实",
     "match.break": "{code} 的先修 {p} 还没有已修 / 在修课程承接",
     "match.none": "无",
+    "card.major": "专业选择",
+    "major.desc": "选一个在读学校的专业，立刻按你已修 / 在修的课算匹配与缺口。数据只用学校官方来源；标「待核实」的专业只列名、不编要求。",
+    "major.pick": "选择专业",
+    "major.unverifiedTag": "要求待官方核实",
+    "major.partialTag": "部分要求集",
+    "major.verifiedTag": "官方已核实",
+    "major.summary": "已修 {a} · 在修 {b} · 缺 {c} 门",
+    "major.credits": "学分：已修 {a} / 已知总 {b}（另有 {u} 条学分未标注，单列不估算）",
+    "major.missingTop": "主要缺口",
+    "major.openCatalog": "打开课程库",
+    "major.export": "一键导出（Markdown）",
+    "major.exported": "已生成导出文件",
+    "major.loadFail": "专业数据加载失败，稍后再试",
+    "major.none": "先在上方选一个专业",
+    "major.nursingHint": "护理专业的完整要求在下方「课程匹配」的情景一里（导师按官方台账维护），这里不重复计算。",
+    "view.catalog": "课程库",
+    "catalog.searchPh": "按课程代码或名称搜索",
+    "catalog.allMajors": "全部专业",
+    "catalog.credits": "{n} 学分",
+    "catalog.creditsUnknown": "学分未标注",
+    "catalog.prereq": "先修：{x}",
+    "catalog.minGrade": "最低成绩 {g}",
+    "catalog.empty": "没有符合的课程",
+    "catalog.count": "共 {n} 门课（由已建模专业的要求集汇总）",
+    "card.parentNote": "给爸妈的一句话",
+    "pnote.desc": "写一句话主动发给爸妈看（可附一个心情标签）。只有你主动发出的这一句会出现在家长页；日记和私密空间的内容永远不会发过去。",
+    "pnote.ph": "想对爸妈说的一句话（80 字内）",
+    "pnote.send": "发给爸妈",
+    "pnote.sent": "已发送，爸妈能看到了",
+    "pnote.withdraw": "撤回",
+    "pnote.withdrawn": "已撤回",
+    "pnote.none": "还没有发过一句话",
+    "pnote.errEmpty": "先写一句话",
+    "pnote.errFreq": "发得太频繁，稍等一分钟",
+    "pnote.errFail": "发送失败，稍后再试",
+    "pnote.tag.steady": "平稳",
+    "pnote.tag.tired": "有点累",
+    "pnote.tag.happy": "很开心",
+    "pnote.tag.busy": "有点忙",
+    "pnote.tag.none": "不加标签",
     "share.warnPrivate": "这条原本只有你能看到，分享后就是公开的。",
     "share.textLabel": "分享文案（可改）", "share.checkTitle": "导出前请逐项确认",
     "share.c1": "不含真实姓名", "share.c2": "不含学校名称", "share.c3": "不含成绩 / 分数", "share.c4": "不含身份信息",
@@ -492,6 +532,46 @@ const I18N = {
     "match.watch": "{code} grade {g} — general note: many nursing programs require B or above in prerequisites; this is a general note, not an official line, pending official verification",
     "match.break": "{code}'s prerequisite {p} has no completed / in-progress course behind it",
     "match.none": "None",
+    "card.major": "Major Picker",
+    "major.desc": "Pick a major at your school to instantly match it against the courses you have taken or are taking. Data comes only from official school sources; majors marked unverified are name-only — no invented requirements.",
+    "major.pick": "Choose a major",
+    "major.unverifiedTag": "Requirements pending official verification",
+    "major.partialTag": "Partial requirement set",
+    "major.verifiedTag": "Verified against official sources",
+    "major.summary": "Done {a} · in progress {b} · missing {c}",
+    "major.credits": "Credits: done {a} / known total {b} (plus {u} with unlisted credits, counted separately, never estimated)",
+    "major.missingTop": "Top gaps",
+    "major.openCatalog": "Open course catalog",
+    "major.export": "Export (Markdown)",
+    "major.exported": "Export file generated",
+    "major.loadFail": "Could not load major data — try again later",
+    "major.none": "Pick a major above first",
+    "major.nursingHint": "Nursing's full requirements live in Scenario 1 of Course Match below (maintained by your mentor from the official ledger); they are not recomputed here.",
+    "view.catalog": "Course Catalog",
+    "catalog.searchPh": "Search by course code or name",
+    "catalog.allMajors": "All majors",
+    "catalog.credits": "{n} credits",
+    "catalog.creditsUnknown": "Credits not listed",
+    "catalog.prereq": "Prerequisite: {x}",
+    "catalog.minGrade": "Minimum grade {g}",
+    "catalog.empty": "No matching courses",
+    "catalog.count": "{n} courses (aggregated from modeled majors' requirement sets)",
+    "card.parentNote": "One Line for Mom & Dad",
+    "pnote.desc": "Write one line to actively share with your parents (optionally with a feeling tag). Only lines you send appear on the parent page; diary and private-space content never goes there.",
+    "pnote.ph": "One line for your parents (≤80 chars)",
+    "pnote.send": "Send to parents",
+    "pnote.sent": "Sent — your parents can see it now",
+    "pnote.withdraw": "Withdraw",
+    "pnote.withdrawn": "Withdrawn",
+    "pnote.none": "No line sent yet",
+    "pnote.errEmpty": "Write a line first",
+    "pnote.errFreq": "Too frequent — wait a minute",
+    "pnote.errFail": "Send failed — try again later",
+    "pnote.tag.steady": "Steady",
+    "pnote.tag.tired": "A bit tired",
+    "pnote.tag.happy": "Happy",
+    "pnote.tag.busy": "Busy",
+    "pnote.tag.none": "No tag",
     "share.warnPrivate": "This was visible only to you. Once shared, it is public.",
     "share.textLabel": "Share text (editable)", "share.checkTitle": "Before exporting, confirm each item",
     "share.c1": "No real name", "share.c2": "No school name", "share.c3": "No grades / scores", "share.c4": "No identity details",
@@ -1039,8 +1119,9 @@ function renderTab(name) {
   renderedTabs[name] = LANG; // 记录渲染时语言：切换语言后再次进入该页会自动按新语言重渲染
   if (name === "home") renderHome(lastData);
   else if (name === "growth") renderGrowth(lastData);
-  else if (name === "plan") renderPlan(lastData);
-  else if (name === "mentor") renderMentor(lastData);
+  else if (name === "plan") { renderPlan(lastData); renderMajor().catch(() => { /* 数据集加载失败已在 renderMajor 内提示 */ }); }
+  else if (name === "mentor") { renderMentor(lastData); renderParentNotes(lastData); }
+  applyAccordions(name); // v13：展示收缩（默认展开规则见 applyAccordions）
 }
 function render(d) {
   lastData = d;
@@ -1551,7 +1632,7 @@ function attachVoice(textarea, opts) {
 }
 
 /* —— 独立视图（sheet）管理 —— */
-const SHEETS = ["view-private", "view-problems", "view-trail", "view-match", "view-share"];
+const SHEETS = ["view-private", "view-problems", "view-trail", "view-match", "view-share", "view-catalog"];
 function openSheet(id) {
   for (const s of SHEETS) { const el = $(s); if (el) el.hidden = s !== id; }
   window.scrollTo(0, 0);
@@ -2171,6 +2252,206 @@ function drawShareCard() {
   } catch (e) { /* 画布导出不可用时保留预览逻辑外不假装成功 */ }
 }
 
+/* ================= v13：展示收缩（手风琴） =================
+ * 规则：首页只展开驾驶舱核心三块（梦想距离 / 今日行动=行动清单 / 当前障碍）+ hero，
+ * 其余卡片默认收起；成长 / 规划 / 导师页默认只展开第一张可见卡片，其余收起。
+ * 收起 = h2 标题栏常驻、正文包进 .acc-body 并 hidden；点标题栏或箭头切换。
+ * 内容渲染函数只改各卡内部容器，包裹结构一次建成、后续渲染不破。 */
+const ACC_KEEP_HOME = ["sec-dream", "sec-actions", "sec-obstacles"];
+function setAcc(sec, open) {
+  sec.classList.toggle("acc-closed", !open);
+  const body = sec.querySelector(".acc-body");
+  if (body) body.hidden = !open;
+  const btn = sec.querySelector(".acc-toggle");
+  if (btn) btn.textContent = open ? "▾" : "▸";
+}
+function setupAccordion(sec) {
+  if (sec.dataset.acc === "1") return;
+  sec.dataset.acc = "1";
+  const h2 = sec.querySelector("h2");
+  if (!h2) return;
+  const body = document.createElement("div");
+  body.className = "acc-body";
+  [...sec.children].forEach((ch) => { if (ch !== h2) body.appendChild(ch); });
+  sec.appendChild(body);
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "acc-toggle";
+  btn.setAttribute("aria-label", "expand / collapse");
+  btn.textContent = "▾";
+  h2.appendChild(btn);
+  h2.addEventListener("click", (ev) => {
+    if (ev.target.closest("button, a, input, select, textarea")) return;
+    setAcc(sec, sec.classList.contains("acc-closed"));
+  });
+}
+function applyAccordions(page) {
+  const pageEl = $("page-" + page);
+  if (!pageEl) return;
+  const secs = [...pageEl.querySelectorAll("section.card")]
+    .filter((s) => !s.hidden && !s.classList.contains("hero"));
+  secs.forEach((sec, i) => {
+    setupAccordion(sec);
+    setAcc(sec, page === "home" ? ACC_KEEP_HOME.includes(sec.id) : i === 0);
+  });
+}
+
+/* ================= v13：专业选择 + 课程库 + 一键导出 ================= */
+let majorDataset = null, majorSel = "";
+async function renderMajor() {
+  const sel = $("major-select");
+  if (!sel) return;
+  if (!majorDataset) {
+    majorDataset = await OOOMajors.loadDataset();
+    if (!majorDataset) {
+      $("major-body").innerHTML = '<p class="empty">' + esc(t("major.loadFail")) + "</p>";
+      return;
+    }
+    sel.innerHTML = majorDataset.majors.map((m) =>
+      '<option value="' + esc(m.id) + '">' + esc(m.name) +
+      (m.verified ? "" : " · " + esc(t("major.unverifiedTag"))) + "</option>").join("");
+    sel.addEventListener("change", () => { majorSel = sel.value; renderMajorSummary(); });
+    $("major-export").addEventListener("click", exportMajor);
+    let saved = "";
+    try { saved = localStorage.getItem("ooo_major") || ""; } catch (e) { /* 忽略 */ }
+    majorSel = majorDataset.majors.some((m) => m.id === saved) ? saved : majorDataset.majors[0].id;
+    sel.value = majorSel;
+  }
+  renderMajorSummary();
+}
+function currentMajor() {
+  return majorDataset ? majorDataset.majors.find((m) => m.id === majorSel) || null : null;
+}
+function currentMajorMatch() {
+  const m = currentMajor();
+  if (!m || !m.verified || !m.requirements.length) return null;
+  const list = (lastData && lastData.courses && lastData.courses.list) || [];
+  return OOOMajors.matchRequirements(list, m.requirements);
+}
+function renderMajorSummary() {
+  const box = $("major-body");
+  const m = currentMajor();
+  if (!box || !m) return;
+  try { localStorage.setItem("ooo_major", m.id); } catch (e) { /* 忽略 */ }
+  let html = '<p style="margin:8px 0 4px"><span class="badge ' + (m.verified ? "pass" : "pending") + '">' +
+    esc(m.verified ? (m.partial ? t("major.partialTag") : t("major.verifiedTag")) : t("major.unverifiedTag")) + "</span></p>";
+  if (m.id === "nursing-bs") html += '<p class="mut" style="margin:0 0 4px">' + esc(t("major.nursingHint")) + "</p>";
+  if (m.note) html += '<p class="mut" style="margin:0 0 4px">' + esc(m.note) + "</p>";
+  const match = currentMajorMatch();
+  if (match) {
+    const tt = match.totals;
+    html += '<p style="margin:6px 0">' + esc(fmt("major.summary", { a: tt.done, b: tt.in_progress, c: tt.missing })) + "</p>" +
+      '<p class="mut" style="margin:0 0 6px">' + esc(fmt("major.credits", { a: tt.credits_done, b: tt.credits_total, u: tt.credits_unknown })) + "</p>";
+    if (match.missing.length) {
+      html += '<h3 class="sub-h">' + esc(t("major.missingTop")) + "</h3>" + match.missing.slice(0, 8).map((x) =>
+        '<div class="course"><span class="code">' + esc(x.code) + '</span><span class="name">' + esc(x.name) +
+        '</span><span class="cr">' + (x.credits !== null && x.credits !== undefined
+          ? esc(x.credits) + " " + esc(t("courses.unit")) : esc(t("catalog.creditsUnknown"))) + "</span></div>").join("");
+    }
+  }
+  html += '<p class="mut" style="margin:10px 0 0">' + esc(t("match.disclaimer")) + "</p>";
+  box.innerHTML = html;
+}
+function downloadText(text, filename, type) {
+  const blob = new Blob([text], { type: type || "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function exportMajor() {
+  const m = currentMajor();
+  if (!m || !majorDataset) { $("major-export-msg").textContent = t("major.none"); return; }
+  const md = OOOMajors.buildExportMarkdown({
+    studentName: (lastData && lastData.student && lastData.student.name) || "",
+    major: m, match: currentMajorMatch(), dataset: majorDataset, today: localDateStr(),
+  });
+  downloadText(md, "major-" + m.id + ".md", "text/markdown;charset=utf-8");
+  $("major-export-msg").textContent = t("major.exported");
+}
+let catalogWired = false;
+function renderCatalog() {
+  const list = $("catalog-list");
+  if (!majorDataset || !list) return;
+  const msel = $("catalog-major");
+  if (!catalogWired) {
+    catalogWired = true;
+    msel.innerHTML = '<option value="">' + esc(t("catalog.allMajors")) + "</option>" +
+      majorDataset.majors.filter((m) => m.requirements.length).map((m) =>
+        '<option value="' + esc(m.id) + '">' + esc(m.name) + "</option>").join("");
+    msel.addEventListener("change", renderCatalog);
+    $("catalog-q").addEventListener("input", renderCatalog);
+  }
+  const f = msel.value || "";
+  const q = ($("catalog-q").value || "").trim().toUpperCase();
+  const rows = majorDataset.courses.filter((c) =>
+    (!f || (c.majors || []).includes(f)) &&
+    (!q || c.course_code.toUpperCase().includes(q) || (c.course_name || "").toUpperCase().includes(q)));
+  $("catalog-count").textContent = fmt("catalog.count", { n: rows.length });
+  list.innerHTML = rows.length ? rows.map((c) =>
+    '<div class="course"><span class="code">' + esc(c.course_code) + '</span><span class="name">' + esc(c.course_name || "") +
+    '</span><span class="cr">' +
+    (c.credits !== null && c.credits !== undefined ? esc(fmt("catalog.credits", { n: c.credits })) : esc(t("catalog.creditsUnknown"))) +
+    (c.min_grade ? " · " + esc(fmt("catalog.minGrade", { g: c.min_grade })) : "") +
+    (c.prereq_codes && c.prereq_codes.length ? " · " + esc(fmt("catalog.prereq", { x: c.prereq_codes.join(", ") })) : "") +
+    "</span></div>").join("")
+    : '<p class="empty">' + esc(t("catalog.empty")) + "</p>";
+}
+
+/* ================= v13：给爸妈的一句话（学生主动分享通道） ================= */
+const FEELING_TAGS_UI = ["steady", "tired", "happy", "busy"];
+let pnoteTag = "", pnoteWired = false;
+function renderParentNotes(d) {
+  const list = $("pnote-list");
+  if (!list) return;
+  if (!pnoteWired) {
+    pnoteWired = true;
+    const tags = $("pnote-tags");
+    tags.innerHTML = FEELING_TAGS_UI.map((tag) =>
+      '<button type="button" class="mood-btn" data-tag="' + tag + '">' + esc(t("pnote.tag." + tag)) + "</button>").join("") +
+      '<button type="button" class="mood-btn on" data-tag="">' + esc(t("pnote.tag.none")) + "</button>";
+    tags.querySelectorAll("[data-tag]").forEach((b) => b.addEventListener("click", () => {
+      pnoteTag = b.getAttribute("data-tag") || "";
+      tags.querySelectorAll("[data-tag]").forEach((x) => x.classList.toggle("on", x === b));
+    }));
+    $("pnote-send").addEventListener("click", sendParentNote);
+  }
+  const notes = (d && d.parent_notes) || [];
+  list.innerHTML = notes.length ? notes.map((n) =>
+    '<div class="pnote-item"><div class="pnote-main"><span>' + esc(n.body) + "</span>" +
+    (n.feeling_tag_label ? ' <span class="pill">' + esc(n.feeling_tag_label) + "</span>" : "") +
+    ' <span class="mut">' + esc(String(n.created_at || "").slice(0, 10)) + "</span></div>" +
+    '<button type="button" class="btn-ghost" data-withdraw="' + n.id + '">' + esc(t("pnote.withdraw")) + "</button></div>").join("")
+    : '<p class="empty">' + esc(t("pnote.none")) + "</p>";
+  list.querySelectorAll("[data-withdraw]").forEach((b) => b.addEventListener("click", async () => {
+    const id = Number(b.getAttribute("data-withdraw"));
+    const out = await apiPost("/api/client/parent-note/withdraw", { id });
+    if (out.ok && lastData) {
+      lastData.parent_notes = (lastData.parent_notes || []).filter((n) => n.id !== id);
+      renderParentNotes(lastData);
+      $("pnote-status").textContent = t("pnote.withdrawn");
+    }
+  }));
+}
+async function sendParentNote() {
+  const inp = $("pnote-input");
+  const text = inp.value.trim();
+  if (!text) { $("pnote-status").textContent = t("pnote.errEmpty"); return; }
+  const out = await apiPost("/api/client/parent-note", { body: text, feeling_tag: pnoteTag || undefined });
+  if (out.ok && out.note && lastData) {
+    lastData.parent_notes = [out.note].concat(lastData.parent_notes || []);
+    inp.value = "";
+    renderParentNotes(lastData);
+    $("pnote-status").textContent = t("pnote.sent");
+  } else {
+    $("pnote-status").textContent = out.status === 429 ? t("pnote.errFreq") : t("pnote.errFail");
+  }
+}
+
 /* —— 初始化 —— */
 document.querySelectorAll(".tab-btn").forEach((b) => {
   b.addEventListener("click", () => switchTab(b.getAttribute("data-tab")));
@@ -2200,6 +2481,11 @@ document.addEventListener("click", (ev) => {
     else if (which === "problems") { openProblemsSheet(); }
     else if (which === "trail") { openSheet("view-trail"); renderTrailSheet(); }
     else if (which === "match") { openSheet("view-match"); renderMatchSheet(); }
+    else if (which === "catalog") {
+      openSheet("view-catalog");
+      if (majorDataset) renderCatalog();
+      else OOOMajors.loadDataset().then((ds) => { majorDataset = ds; renderCatalog(); });
+    }
     return;
   }
   if (ev.target.closest("[data-close]")) closeSheets();

@@ -162,8 +162,8 @@ section("家长接口：字段形态、排序、未读口径");
   const d = await getParent("parent-fix", pkey);
   ok(d.ok === true, "slug + parent_key 可读");
   const topKeys = Object.keys(d).sort().join(",");
-  ok(topKeys === "messages,ok,student,support_actions,unread_mentor_parent,updates",
-    "顶层字段恰为白名单（" + topKeys + "）");
+  ok(topKeys === "achievements,messages,ok,student,student_notes,support_actions,unread_mentor_parent,upcoming_reminders,updates",
+    "顶层字段恰为白名单（v13 扩展：+achievements/student_notes/upcoming_reminders，其余 v11 不变）（" + topKeys + "）");
   const stuKeys = Object.keys(d.student).sort().join(",");
   ok(stuKeys === "name,package,slug,stage,stage_label", "student 字段恰为白名单（" + stuKeys + "）");
   ok(d.student.name === "ParentFix" && d.student.stage === "diag" && d.student.stage_label === "评估诊断" &&

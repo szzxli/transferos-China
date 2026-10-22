@@ -202,6 +202,19 @@
         <button type="button" class="btn-ghost" data-open="problems" data-i18n="problems.open">进入问题解决中心</button>
       </section>
 
+      <section class="card" id="sec-major">
+        <h2 data-i18n="card.major">专业选择</h2>
+        <p class="mut" style="margin:0 0 8px" data-i18n="major.desc">选一个在读学校的专业，立刻按你已修 / 在修的课算匹配与缺口。数据只用学校官方来源；标「待核实」的专业只列名、不编要求。</p>
+        <label class="fld"><span data-i18n="major.pick">选择专业</span>
+          <select id="major-select"></select></label>
+        <div id="major-body"></div>
+        <div class="priv-actions">
+          <button type="button" class="btn-ghost" data-open="catalog" data-i18n="major.openCatalog">打开课程库</button>
+          <button type="button" class="btn-primary" id="major-export" data-i18n="major.export">一键导出（Markdown）</button>
+        </div>
+        <p class="mut" id="major-export-msg" style="margin:8px 0 0"></p>
+      </section>
+
       <section class="card" id="sec-match">
         <h2 data-i18n="card.match">课程匹配</h2>
         <div id="match-entry-body"></div>
@@ -231,6 +244,18 @@
           </div>
           <p id="msg-err" class="err" hidden></p>
         </form>
+      </section>
+
+      <section class="card" id="sec-parent-note">
+        <h2 data-i18n="card.parentNote">给爸妈的一句话</h2>
+        <p class="mut" style="margin:0 0 8px" data-i18n="pnote.desc">写一句话主动发给爸妈看（可附一个心情标签）。只有你主动发出的这一句会出现在家长页；日记和私密空间的内容永远不会发过去。</p>
+        <textarea id="pnote-input" rows="2" maxlength="80" data-i18n-ph="pnote.ph" placeholder="想对爸妈说的一句话（80 字内）"></textarea>
+        <div class="mood-row" id="pnote-tags"></div>
+        <div class="priv-actions">
+          <button type="button" class="btn-primary" id="pnote-send" data-i18n="pnote.send">发给爸妈</button>
+          <span class="mut" id="pnote-status"></span>
+        </div>
+        <div id="pnote-list"></div>
       </section>
     </div>
 
@@ -275,6 +300,23 @@
   <div class="sheet-body" id="match-body"></div>
 </div>
 
+<div class="sheet" id="view-catalog" hidden>
+  <div class="sheet-head">
+    <button type="button" class="sheet-back" data-close="view-catalog">← <span data-i18n="sheet.back">返回</span></button>
+    <h2 data-i18n="view.catalog">课程库</h2>
+  </div>
+  <div class="sheet-body">
+    <section class="card">
+      <label class="fld"><span data-i18n="major.pick">选择专业</span>
+        <select id="catalog-major"></select></label>
+      <label class="fld"><span data-i18n="catalog.searchPh">按课程代码或名称搜索</span>
+        <input id="catalog-q" type="search" autocomplete="off"></label>
+      <p class="mut" id="catalog-count"></p>
+      <div id="catalog-list"></div>
+    </section>
+  </div>
+</div>
+
 <div class="sheet" id="view-share" hidden>
   <div class="sheet-head">
     <button type="button" class="sheet-back" data-close="view-share">← <span data-i18n="sheet.back">返回</span></button>
@@ -314,6 +356,7 @@
 
 <script src="private.js"></script>
 <script src="problems.js"></script>
+<script src="majors.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

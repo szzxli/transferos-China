@@ -1,0 +1,680 @@
+{
+ "_meta": {
+  "dataset": "csi-majors",
+  "school": "CUNY College of Staten Island (CSI)",
+  "retrieved": "2026-10-21",
+  "sources": [
+   {
+    "url": "https://coursedog-pdfs-public-prod.s3.us-east-2.amazonaws.com/csi01/catalog-pdf/ruWaU1g0EN9UVfQAV7q3/sMJm9FBaDQdn6EfcLHX0Od8Fg/BIO-CSI-2025-09-16-13-47-28.pdf",
+    "retrieved": "2026-10-21"
+   },
+   {
+    "url": "https://csi-undergraduate.catalog.cuny.edu/programs/BIO-BS",
+    "retrieved": "2026-10-21"
+   },
+   {
+    "url": "https://www.csi.cuny.edu/sites/default/files/pdf/academciadvisement/PathwaysAcadPlans/2021/BiologyBS_General_DegreeMap.pdf",
+    "retrieved": "2026-10-21"
+   },
+   {
+    "url": "https://www.csi.cuny.edu/media/32231",
+    "retrieved": "2026-10-21"
+   },
+   {
+    "url": "https://www.cs.csi.cuny.edu/content/Sample_csc_4_yr_degree-career-map.pdf",
+    "retrieved": "2026-10-21"
+   },
+   {
+    "url": "https://csi-undergraduate.catalog.cuny.edu/programs/CSC-BS",
+    "retrieved": "2026-10-21"
+   }
+  ],
+  "note": "只收录官方来源可查的要求；verified=false 的专业仅列名、要求待官方核实。课程名称为空表示官方名称未在所引来源中确认。学分 null 表示未确认，匹配引擎单列未知、绝不估算。"
+ },
+ "majors": [
+  {
+   "id": "biology-bs",
+   "name": "Biology BS",
+   "verified": true,
+   "partial": true,
+   "note": "部分要求集：通识写作、先修与有机化学核心已按官方学位图建模；BIO 选修 OR 组（如 BIO 205/233/235/237/239 任选）与物理序列未逐条建模。官方口径：BIO 先修课须 C 以上、专业 GPA 须 ≥2.5 才能毕业。",
+   "sources": [
+    "https://coursedog-pdfs-public-prod.s3.us-east-2.amazonaws.com/csi01/catalog-pdf/ruWaU1g0EN9UVfQAV7q3/sMJm9FBaDQdn6EfcLHX0Od8Fg/BIO-CSI-2025-09-16-13-47-28.pdf",
+    "https://csi-undergraduate.catalog.cuny.edu/programs/BIO-BS",
+    "https://www.csi.cuny.edu/sites/default/files/pdf/academciadvisement/PathwaysAcadPlans/2021/BiologyBS_General_DegreeMap.pdf"
+   ],
+   "requirements": [
+    {
+     "block": "gened",
+     "course_code": "ENG 111",
+     "course_name": "",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "gened",
+     "course_code": "ENG 151",
+     "course_name": "",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": [
+      "ENG 111"
+     ]
+    },
+    {
+     "block": "prereq",
+     "course_code": "BIO 170",
+     "course_name": "General Biology I",
+     "credits": 3,
+     "min_grade": "C",
+     "prereq_codes": []
+    },
+    {
+     "block": "prereq",
+     "course_code": "BIO 171",
+     "course_name": "General Biology I Laboratory",
+     "credits": 1,
+     "min_grade": "C",
+     "prereq_codes": []
+    },
+    {
+     "block": "prereq",
+     "course_code": "BIO 180",
+     "course_name": "General Biology II",
+     "credits": 3,
+     "min_grade": "C",
+     "prereq_codes": [
+      "BIO 170"
+     ]
+    },
+    {
+     "block": "prereq",
+     "course_code": "BIO 181",
+     "course_name": "General Biology II Laboratory",
+     "credits": 1,
+     "min_grade": "C",
+     "prereq_codes": []
+    },
+    {
+     "block": "prereq",
+     "course_code": "CHM 141",
+     "course_name": "General Chemistry I",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "prereq",
+     "course_code": "CHM 121",
+     "course_name": "General Chemistry I Laboratory",
+     "credits": 1,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "prereq",
+     "course_code": "CHM 142",
+     "course_name": "General Chemistry II",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": [
+      "CHM 141"
+     ]
+    },
+    {
+     "block": "prereq",
+     "course_code": "CHM 127",
+     "course_name": "General Chemistry II Laboratory",
+     "credits": 1,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "prereq",
+     "course_code": "MTH 231",
+     "course_name": "Analytic Geometry and Calculus I",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "prereq",
+     "course_code": "MTH 229",
+     "course_name": "Calculus Computer Laboratory",
+     "credits": 1,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CHM 250",
+     "course_name": "",
+     "credits": 5,
+     "min_grade": null,
+     "prereq_codes": [
+      "CHM 142"
+     ]
+    },
+    {
+     "block": "core",
+     "course_code": "CHM 256",
+     "course_name": "",
+     "credits": 5,
+     "min_grade": null,
+     "prereq_codes": [
+      "CHM 250"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "computer-science-bs",
+   "name": "Computer Science BS",
+   "verified": true,
+   "partial": true,
+   "note": "部分要求集：按教师参议院课程文件（2025-11）与系官网清单建模；400 级选修×2、高阶数学×2、一年科学序列（OR 组）未逐条建模。官方口径：CSC 126 须 C 以上才能进入 CS 学士项目。个别课程学分在不同官方文件间未见一致标注，未确认者留空（null）。",
+   "sources": [
+    "https://www.csi.cuny.edu/media/32231",
+    "https://www.cs.csi.cuny.edu/content/Sample_csc_4_yr_degree-career-map.pdf",
+    "https://csi-undergraduate.catalog.cuny.edu/programs/CSC-BS"
+   ],
+   "requirements": [
+    {
+     "block": "prereq",
+     "course_code": "CSC 126",
+     "course_name": "Introduction to Computer Science",
+     "credits": 4,
+     "min_grade": "C",
+     "prereq_codes": []
+    },
+    {
+     "block": "prereq",
+     "course_code": "MTH 231",
+     "course_name": "Analytic Geometry and Calculus I",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "prereq",
+     "course_code": "MTH 229",
+     "course_name": "Calculus Computer Laboratory",
+     "credits": 1,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 211",
+     "course_name": "Intermediate Programming",
+     "credits": 4,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 220",
+     "course_name": "Computer Organization",
+     "credits": null,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 228",
+     "course_name": "Discrete Mathematical Structures for Computer Science",
+     "credits": 4,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 326",
+     "course_name": "Data Structures",
+     "credits": 4,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 330",
+     "course_name": "Object-Oriented Software Design",
+     "credits": 4,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 332",
+     "course_name": "Operating Systems I",
+     "credits": 3,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 305",
+     "course_name": "Operating Systems Laboratory",
+     "credits": 1,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 346",
+     "course_name": "Digital Systems Design",
+     "credits": null,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 347",
+     "course_name": "Digital Systems Design Laboratory",
+     "credits": null,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 382",
+     "course_name": "Analysis of Algorithms",
+     "credits": null,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 430",
+     "course_name": "Software Engineering",
+     "credits": null,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 446",
+     "course_name": "Computer Architecture",
+     "credits": null,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "CSC 490",
+     "course_name": "Seminar in Computer Science",
+     "credits": null,
+     "min_grade": null,
+     "prereq_codes": []
+    },
+    {
+     "block": "core",
+     "course_code": "MTH 232",
+     "course_name": "Analytic Geometry and Calculus II",
+     "credits": null,
+     "min_grade": null,
+     "prereq_codes": []
+    }
+   ]
+  },
+  {
+   "id": "nursing-bs",
+   "name": "Nursing BS",
+   "verified": false,
+   "partial": false,
+   "note": "要求待官方核实。本产品内已有该专业的完整台账情景（课程匹配「情景一」：CSI 护理要求 42 条，由导师按官方资料维护），专业匹配请直接看课程匹配区；本数据集不重复灌入，避免两处口径打架。",
+   "sources": [],
+   "requirements": []
+  },
+  {
+   "id": "psychology-bs",
+   "name": "Psychology BS",
+   "verified": false,
+   "partial": false,
+   "note": "要求待官方核实（仅列名，未取得官方要求集）。",
+   "sources": [],
+   "requirements": []
+  },
+  {
+   "id": "business-bs",
+   "name": "Business BS",
+   "verified": false,
+   "partial": false,
+   "note": "要求待官方核实（仅列名，未取得官方要求集）。",
+   "sources": [],
+   "requirements": []
+  },
+  {
+   "id": "accounting-bs",
+   "name": "Accounting BS",
+   "verified": false,
+   "partial": false,
+   "note": "要求待官方核实（仅列名，未取得官方要求集）。",
+   "sources": [],
+   "requirements": []
+  },
+  {
+   "id": "engineering-science-bs",
+   "name": "Engineering Science BS",
+   "verified": false,
+   "partial": false,
+   "note": "要求待官方核实（仅列名，未取得官方要求集）。",
+   "sources": [],
+   "requirements": []
+  },
+  {
+   "id": "teacher-education",
+   "name": "Teacher Education（教育方向）",
+   "verified": false,
+   "partial": false,
+   "note": "要求待官方核实（仅列名；具体项目与执照方向须按官方目录逐项确认）。",
+   "sources": [],
+   "requirements": []
+  }
+ ],
+ "courses": [
+  {
+   "course_code": "BIO 170",
+   "course_name": "General Biology I",
+   "credits": 3,
+   "min_grade": "C",
+   "prereq_codes": [],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "BIO 171",
+   "course_name": "General Biology I Laboratory",
+   "credits": 1,
+   "min_grade": "C",
+   "prereq_codes": [],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "BIO 180",
+   "course_name": "General Biology II",
+   "credits": 3,
+   "min_grade": "C",
+   "prereq_codes": [
+    "BIO 170"
+   ],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "BIO 181",
+   "course_name": "General Biology II Laboratory",
+   "credits": 1,
+   "min_grade": "C",
+   "prereq_codes": [],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "CHM 121",
+   "course_name": "General Chemistry I Laboratory",
+   "credits": 1,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "CHM 127",
+   "course_name": "General Chemistry II Laboratory",
+   "credits": 1,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "CHM 141",
+   "course_name": "General Chemistry I",
+   "credits": 3,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "CHM 142",
+   "course_name": "General Chemistry II",
+   "credits": 3,
+   "min_grade": null,
+   "prereq_codes": [
+    "CHM 141"
+   ],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "CHM 250",
+   "course_name": "",
+   "credits": 5,
+   "min_grade": null,
+   "prereq_codes": [
+    "CHM 142"
+   ],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "CHM 256",
+   "course_name": "",
+   "credits": 5,
+   "min_grade": null,
+   "prereq_codes": [
+    "CHM 250"
+   ],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 126",
+   "course_name": "Introduction to Computer Science",
+   "credits": 4,
+   "min_grade": "C",
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 211",
+   "course_name": "Intermediate Programming",
+   "credits": 4,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 220",
+   "course_name": "Computer Organization",
+   "credits": null,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 228",
+   "course_name": "Discrete Mathematical Structures for Computer Science",
+   "credits": 4,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 305",
+   "course_name": "Operating Systems Laboratory",
+   "credits": 1,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 326",
+   "course_name": "Data Structures",
+   "credits": 4,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 330",
+   "course_name": "Object-Oriented Software Design",
+   "credits": 4,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 332",
+   "course_name": "Operating Systems I",
+   "credits": 3,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 346",
+   "course_name": "Digital Systems Design",
+   "credits": null,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 347",
+   "course_name": "Digital Systems Design Laboratory",
+   "credits": null,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 382",
+   "course_name": "Analysis of Algorithms",
+   "credits": null,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 430",
+   "course_name": "Software Engineering",
+   "credits": null,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 446",
+   "course_name": "Computer Architecture",
+   "credits": null,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "CSC 490",
+   "course_name": "Seminar in Computer Science",
+   "credits": null,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "ENG 111",
+   "course_name": "",
+   "credits": 3,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "ENG 151",
+   "course_name": "",
+   "credits": 3,
+   "min_grade": null,
+   "prereq_codes": [
+    "ENG 111"
+   ],
+   "majors": [
+    "biology-bs"
+   ]
+  },
+  {
+   "course_code": "MTH 229",
+   "course_name": "Calculus Computer Laboratory",
+   "credits": 1,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "biology-bs",
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "MTH 231",
+   "course_name": "Analytic Geometry and Calculus I",
+   "credits": 3,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "biology-bs",
+    "computer-science-bs"
+   ]
+  },
+  {
+   "course_code": "MTH 232",
+   "course_name": "Analytic Geometry and Calculus II",
+   "credits": null,
+   "min_grade": null,
+   "prereq_codes": [],
+   "majors": [
+    "computer-science-bs"
+   ]
+  }
+ ]
+}

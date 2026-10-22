@@ -6,7 +6,8 @@ const require = createRequire(import.meta.url);
 const { JSDOM } = require("/home/hatch/workspace/tools/jsdomtest/node_modules/jsdom");
 
 const HTML = readFileSync(new URL("../../one-on-one-app/index.html", import.meta.url), "utf8");
-const JS = readFileSync(new URL("../../one-on-one-app/app.js", import.meta.url), "utf8");
+const JS = readFileSync(new URL("../../one-on-one-app/majors.js", import.meta.url), "utf8") + "\n" +
+  readFileSync(new URL("../../one-on-one-app/app.js", import.meta.url), "utf8");
 const CSS = readFileSync(new URL("../../one-on-one-app/style.css", import.meta.url), "utf8");
 
 let pass = 0, fail = 0;
