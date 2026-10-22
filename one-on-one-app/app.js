@@ -24,6 +24,17 @@ const I18N = {
     "gate.enter": "进入",
     "gate.hint": "小提示：进入后用浏览器菜单把本页「添加到主屏幕」，桌面上出现的就是你的专属APP，点图标即可打开。",
     "gate.errBoth": "编号与密钥都要填。",
+    "install.title": "把专属APP放到手机桌面",
+    "install.desc": "点桌面图标就能进来，不用每次找链接。",
+    "install.ios1": "点浏览器底部的「分享」按钮",
+    "install.ios2": "在菜单里选「添加到主屏幕」",
+    "install.ios3": "点右上角「添加」，桌面上就会出现专属APP图标",
+    "install.and1": "点浏览器右上角的菜单（三个点）",
+    "install.and2": "选「安装应用」或「添加到主屏幕」",
+    "install.and3": "确认后，桌面上就会出现专属APP图标",
+    "install.inapp1": "在微信等内置浏览器里没法添加到桌面。",
+    "install.inapp2": "请先点右上角「···」，选「在浏览器中打开」，再按提示添加到主屏幕——这样你的私密空间存在手机上也更稳。",
+    "install.btn": "一键安装到桌面",
     "state.loading": "正在加载…", "state.retry": "重试",
     "state.netErr": "网络不通，没能连上服务器。请检查网络后重试。",
     "state.notFound": "没找到这份客户端：专属名 / 编号或访问密钥不正确，或链接已更新。请核对导师发的最新链接。",
@@ -439,6 +450,17 @@ const I18N = {
     "gate.enter": "Enter",
     "gate.hint": "Tip: after entering, use your browser menu to Add to Home Screen — the icon on your home screen is your personal app.",
     "gate.errBoth": "Both the name / ID and the key are required.",
+    "install.title": "Put your app on the home screen",
+    "install.desc": "Tap the desktop icon to open it — no need to find the link each time.",
+    "install.ios1": "Tap the Share button at the bottom of the browser",
+    "install.ios2": "Choose “Add to Home Screen” in the menu",
+    "install.ios3": "Tap “Add” in the top right — your app icon will appear on the home screen",
+    "install.and1": "Tap the browser menu (three dots) in the top right",
+    "install.and2": "Choose “Install app” or “Add to Home screen”",
+    "install.and3": "Confirm — your app icon will appear on the home screen",
+    "install.inapp1": "You can't add to the home screen from an in-app browser like WeChat.",
+    "install.inapp2": "Tap “···” in the top right and choose “Open in browser”, then add it to the home screen — this also keeps your private space stored more reliably on your phone.",
+    "install.btn": "Install to home screen",
     "state.loading": "Loading…", "state.retry": "Retry",
     "state.netErr": "Network unavailable — could not reach the server. Please check your connection and retry.",
     "state.notFound": "This client was not found: the name / ID or key is incorrect, or the link has been updated. Please check the latest link from your mentor.",
@@ -2566,6 +2588,58 @@ $("forget").addEventListener("click", (ev) => {
   history.replaceState(null, "", location.pathname);
   showGate();
 });
+/* ================= v13.2：添加到主屏幕引导 =================
+ * 分流：已 standalone 打开 → 永不显示；微信等内置浏览器 → 先用系统浏览器打开；
+ * iOS → 分享菜单三步；Android → 有 beforeinstallprompt 用一键安装按钮，否则菜单三步；
+ * 桌面等其他环境 → 不显示。关闭后 localStorage 记住，不反复打扰。 */
+const LS_INSTALL_DISMISSED = "ooo_install_dismissed";
+function installEnv() {
+  const ua = navigator.userAgent || "";
+  const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  if (standalone) return "standalone";
+  if (/MicroMessenger|QQ\/|Weibo|DingTalk|AlipayClient/i.test(ua)) return "inapp";
+  const ios = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (ios) return "ios";
+  if (/Android/i.test(ua)) return window.__bipEvent ? "android-bip" : "android-menu";
+  return "other";
+}
+function refreshInstallCard() {
+  const card = $("install-card");
+  if (!card) return;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(LS_INSTALL_DISMISSED) === "1"; } catch (e) { /* 存储不可用时照常显示 */ }
+  const env = installEnv();
+  if (dismissed || env === "standalone" || env === "other") { card.hidden = true; return; }
+  card.hidden = false;
+  $("install-steps-ios").hidden = env !== "ios";
+  $("install-steps-inapp").hidden = env !== "inapp";
+  $("install-steps-android").hidden = !(env === "android-menu");
+  $("install-btn").hidden = env !== "android-bip";
+}
+$("install-close").addEventListener("click", () => {
+  try { localStorage.setItem(LS_INSTALL_DISMISSED, "1"); } catch (e) { /* 忽略 */ }
+  $("install-card").hidden = true;
+});
+$("install-btn").addEventListener("click", async () => {
+  const ev = window.__bipEvent;
+  if (!ev) { refreshInstallCard(); return; }
+  try {
+    ev.prompt();
+    const choice = await ev.userChoice;
+    if (choice && choice.outcome === "accepted") {
+      try { localStorage.setItem(LS_INSTALL_DISMISSED, "1"); } catch (e) { /* 忽略 */ }
+      $("install-card").hidden = true;
+    }
+  } catch (e) { /* 用户取消或事件失效时保留卡片 */ }
+  window.__bipEvent = null;
+  refreshInstallCard();
+});
+window.addEventListener("beforeinstallprompt", (e) => { window.__bipEvent = e; refreshInstallCard(); });
+window.addEventListener("appinstalled", () => {
+  try { localStorage.setItem(LS_INSTALL_DISMISSED, "1"); } catch (e) { /* 忽略 */ }
+  const c = $("install-card"); if (c) c.hidden = true;
+});
+refreshInstallCard();
 applyI18n();
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", load);
 else load();
