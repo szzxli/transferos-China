@@ -98,8 +98,8 @@ function humanCardHTML(note) {
   var subj = encodeURIComponent(note || "TransferOS咨询");
   return '<div class="human-card"><b>👩‍💼 人工客服（邮件）</b>' +
     '<p>写邮件给我们：<b>' + esc(CHAT_CONFIG.email) + '</b></p>' +
-    '<p><a class="btn" href="mailto:' + esc(CHAT_CONFIG.email) + '?subject=' + subj + '">✉️ 点这里写邮件</a></p>' +
-    '<p class="hint">邮件主题已带好备注（' + esc(note || "TransferOS咨询") + '），正文写下你的问题即可，我们回复到你的邮箱。</p></div>';
+    '<p><a class="btn" href="mailto:' + esc(CHAT_CONFIG.email) + '?subject=' + subj + '">✉️ 点这里写邮件</a> <button type="button" class="mini-btn" onclick="if(navigator.clipboard){navigator.clipboard.writeText(\'' + esc(CHAT_CONFIG.email) + '\');}this.textContent=\'已复制 ✓\'">复制邮箱</button></p>' +
+    '<p class="hint">邮件主题已带好备注（' + esc(note || "TransferOS咨询") + '），正文写下你的问题即可。如果点按钮没反应，就复制邮箱手动发，主题写上面这行备注。</p></div>';
 }
 if (typeof module !== "undefined") { module.exports = { faqScore: faqScore, faqFind: faqFind, humanCardHTML: humanCardHTML }; }
 

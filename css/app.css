@@ -359,3 +359,8 @@ input[type="number"], select { font-size: 15px; }
 .case-body .case-line{font-size:15px;line-height:1.75;margin:0 0 10px;color:#2b2b30}
 .case-body .case-key{font-size:15.5px;line-height:1.75;font-weight:700;margin:14px 0 10px}
 @media(max-width:720px){.case-grid{grid-template-columns:1fr}.case-photo{max-width:340px}}
+
+/* v38: mail panel + mini copy button */
+.mail-panel{margin-top:12px;background:#fff;border:1px dashed #16453a;border-radius:10px;padding:12px 14px;text-align:left}
+.mail-panel p{margin:6px 0;font-size:14.5px;line-height:1.6}
+.mini-btn{background:#16453a;color:#fff;border:0;border-radius:999px;padding:3px 12px;font-size:12.5px;cursor:pointer;vertical-align:1px}

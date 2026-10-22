@@ -95,13 +95,37 @@ function funnelShow(id) {
     if (el) el.hidden = false;
   }
 }
-/* 邮件咨询直达：主题自动带来源与评估结论，正文预填三行 */
-function mailConsult(source) {
+/* 复制小工具（剪贴板 API + 降级） */
+function togCopy(text, btn) {
+  function done() { if (btn) { var t = btn.textContent; btn.textContent = "已复制 ✓"; setTimeout(function () { btn.textContent = t; }, 1600); } }
+  function fallback() {
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done).catch(fallback); } else { fallback(); }
+}
+/* 邮件咨询：点后在卡内展开邮箱面板（mailto 在无默认邮件应用的设备上会静默无反应，面板兜底） */
+function mailConsult(source, btn) {
   var ctx = funnelCtx();
   var ref = togGet("ref", "");
   var subject = "TransferOS咨询·" + source + (ctx ? "·" + ctx : "") + (ref ? "·代理:" + ref : "");
   var body = "我的情况：\n我想问的问题：\n我的联系方式（微信/电话）：";
-  window.location.href = "mailto:info@zhuanuc.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+  var mailto = "mailto:info@zhuanuc.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+  var card = btn && btn.closest ? btn.closest(".funnel-card") : null;
+  if (!card) { window.location.href = mailto; return; }
+  var old = card.querySelector(".mail-panel");
+  if (old) old.remove();
+  var d = document.createElement("div");
+  d.className = "mail-panel";
+  d.innerHTML = '<p>收件人：<b>info@zhuanuc.com</b> <button type="button" class="mini-btn" onclick="togCopy(\'info@zhuanuc.com\', this)">复制邮箱</button></p>' +
+    '<p>主题请写：<b>' + esc(subject) + '</b></p>' +
+    '<p class="hint">点下面按钮会打开你的邮件应用并自动填好；如果点了没反应，就复制上面的邮箱和主题，手动发一封到这个邮箱。</p>' +
+    '<p><a class="btn" href="' + mailto + '">✉️ 打开邮件应用</a></p>';
+  card.appendChild(d);
+  if (d.scrollIntoView) d.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 /* ---- 步骤式折叠：点一步→展开→提交→✅→下一步 ---- */
