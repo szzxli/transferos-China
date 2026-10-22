@@ -85,6 +85,8 @@ footer.appFoot{color:var(--mut);font-size:12px;margin-top:26px}
 .siteNav .navCta{color:#fff;font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .siteNav .navCta span{color:var(--blue)}
 .menuToggle{display:none;margin-left:auto;width:40px;height:40px;border:1px solid var(--line-d);border-radius:50%;background:transparent;cursor:pointer;padding:0}
+.langToggle{color:#fff;background:transparent;border:1px solid var(--line-d);border-radius:999px;font:inherit;font-size:12px;line-height:1;padding:7px 13px;cursor:pointer;white-space:nowrap;letter-spacing:.04em;flex:none}
+.langToggle:hover{border-color:var(--blue);color:var(--blue)}
 .menuToggle i{display:block;width:16px;height:1.5px;background:#fff;margin:4px auto;transition:transform .25s ease,opacity .25s ease}
 .siteNav.menu-open .menuToggle i:first-child{transform:translateY(2.75px) rotate(45deg)}
 .siteNav.menu-open .menuToggle i:last-child{transform:translateY(-2.75px) rotate(-45deg)}
