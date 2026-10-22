@@ -236,7 +236,8 @@
     });
     html += "</table><p class='hint'>本机调节参数：保守情景实现率 " + Math.round(r.params.realizeConservative * 100) + "%、中性情景实现率 " + Math.round(r.params.realizeNeutral * 100) + "%、重复占比缩放 ×" + r.params.repeatScale.toFixed(2) + "、托管单价 " + yuan(r.params.hostedLow) + "–" + yuan(r.params.hostedHigh) + "/岗位/月。标「假设值」的系数可在表单中调节，正式诊断将以企业真实基线数据替换。</p>";
 
-    html += "<h3>下一步（服务入口）</h3><p>深度诊断：2 周流程盘点与基线测量，输出岗位 AI 化排序与试点方案。单岗位试点包：45 天单岗位托管试点，含岗位卡、治理规则与周效果账本，期末以实测数据复盘是否扩展。（本页为评估工具，正式合作请与服务团队联系签约。）</p>";
+    html += "<h3>下一步（服务入口）</h3><p>深度诊断：2 周流程盘点与基线测量，输出岗位 AI 化排序与试点方案。单岗位试点包：45 天单岗位托管试点，含岗位卡、治理规则与周效果账本，期末以实测数据复盘是否扩展。想往下走，先发一封意向邮件：我们逐封回复，先约一次沟通对齐口径，再谈诊断。登记免费、不构成签约承诺，正式签约待运营主体手续完成后按登记顺序推进。</p>";
+    html += "<div class='ctaRow'><a class='btn' href='mailto:info@zhuanuc.com?subject=%E3%80%90%E8%AF%84%E4%BC%B0%E5%90%8E%E7%BB%AD%E3%80%91%E4%BC%81%E4%B8%9A%E8%AF%84%E4%BC%B0%E6%B2%9F%E9%80%9A&body=%E5%8D%95%E4%BD%8D%E5%90%8D%E7%A7%B0%EF%BC%9A%0D%0A%E6%89%80%E5%9C%A8%E8%A1%8C%E4%B8%9A%E4%B8%8E%E4%BA%BA%E6%95%B0%EF%BC%9A%0D%0A%E8%AF%84%E4%BC%B0%E9%87%8C%E6%88%91%E6%9C%80%E5%85%B3%E5%BF%83%E7%9A%84%E7%BB%93%E8%AE%BA%EF%BC%9A%0D%0A%E8%81%94%E7%B3%BB%E4%BA%BA%EF%BC%9A%0D%0A%E8%81%94%E7%B3%BB%E6%96%B9%E5%BC%8F%EF%BC%88%E7%94%B5%E8%AF%9D%E6%88%96%E5%BE%AE%E4%BF%A1%EF%BC%89%EF%BC%9A'>发意向邮件，约一次沟通</a><a class='btn ghost' href='partner.html#apply'>看合作与试点入口</a></div>";
     html += "<p class='disclaimer'>免责声明：本报告基于公开基准与上表假设系数估算，不是收益承诺；行业与部门系数中标注「假设值」者未经逐户核实。正式诊断需以企业真实数据（处理量、响应时长、差错率、人力工时）做基线测量后重新测算。回本周期仅回收一次性投入（诊断+试点+培训+流程改造），托管月费已在月净折算价值中扣除；首年净效益已扣磨合成本并按 J 曲线爬坡折算，可能为负、照实呈现。</p>";
 
     showReport(html);
