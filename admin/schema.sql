@@ -185,6 +185,34 @@ CREATE TABLE IF NOT EXISTS parent_messages(
   read_by_parent INTEGER DEFAULT 0, read_by_mentor INTEGER DEFAULT 0,
   created_at TEXT);
 
+-- ===== v12 新增：一对一问题方案层 / 导师轨迹 / 课程要求集 =====
+-- 问题方案层（学生逐项确认后同步的结构化字段；只存方案摘要，永不存日记/情绪原文）
+CREATE TABLE IF NOT EXISTS student_problem_shares(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+  domain TEXT, title TEXT, desired_outcome TEXT, strategy_summary TEXT,
+  actions_text TEXT, support_needed TEXT, progress TEXT DEFAULT 'open',
+  resolved_note TEXT, compliance TEXT DEFAULT 'ok', source_local_id TEXT,
+  created_at TEXT, updated_at TEXT);
+-- 导师轨迹 / 会议精神（meeting_id 可空；takeaway_local=1 时领受正文只存学生本机，服务器只留占位标记）
+CREATE TABLE IF NOT EXISTS mentor_trail_entries(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, meeting_id INTEGER,
+  mentor_name TEXT, mentor_role TEXT DEFAULT 'lead', spirit_line TEXT,
+  key_judgments TEXT, student_takeaway TEXT, takeaway_local INTEGER DEFAULT 0,
+  followup_actions TEXT, revisit_result TEXT, revisit_due TEXT,
+  visibility TEXT DEFAULT 'plan', source TEXT DEFAULT 'mentor',
+  created_at TEXT, updated_at TEXT);
+-- 课程要求集（一名学生可并排多份情景；逐份标来源与版本）
+CREATE TABLE IF NOT EXISTS course_requirement_sets(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+  name TEXT, source_note TEXT, version_text TEXT, verified INTEGER DEFAULT 0,
+  sort INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT);
+-- 课程要求条目（按块建模；credits 可空=来源未给单门学分；prereq_codes 逗号分隔）
+CREATE TABLE IF NOT EXISTS course_requirements(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, set_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+  block TEXT DEFAULT 'prereq', course_code TEXT, course_name TEXT,
+  credits REAL, min_grade TEXT, prereq_codes TEXT, sort INTEGER DEFAULT 0,
+  created_at TEXT, updated_at TEXT);
+
 -- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）
 INSERT OR IGNORE INTO agents(code, name, region, kind, active, created_at) VALUES
   ('GD001', '广东', '广东', 'agent', 1, datetime('now')),

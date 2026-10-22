@@ -261,6 +261,7 @@ section("整页空占位");
   d.status = { latest: null, history: [] }; d.exams = []; d.meetings = [];
   d.courses = { progress: {}, groups: [], list: [] };
   d.milestones = []; d.advice = []; d.knowledge = []; d.messages = []; d.unread_mentor = 0;
+  d.actions = []; // v12：成长页新增「我的动态」（已完成行动会生成动态），真全空须连行动一并清空
   const w3 = makeWindow(d);
   await tick();
   tabBtn(w3, "growth").click();

@@ -67,6 +67,35 @@
         </div>
       </section>
 
+      <section class="card" id="sec-dream">
+        <h2 data-i18n="card.dream">与梦想的距离</h2>
+        <div id="dream-body"></div>
+      </section>
+
+      <section class="card" id="sec-today">
+        <h2 data-i18n="card.today">今日状态</h2>
+        <p class="mut" style="margin:0 0 8px" data-i18n="today.q">今天感觉怎么样？只存在这台设备上。</p>
+        <div class="mood-row" id="today-moods"></div>
+        <textarea id="today-line" rows="2" maxlength="200" data-i18n-ph="today.ph" placeholder="今天推进了什么（一句话，可空）"></textarea>
+        <div id="today-mic"></div>
+        <div class="priv-actions">
+          <button type="button" class="btn-primary" id="today-save" data-i18n="today.save">记录今天</button>
+          <span class="mut" id="today-status"></span>
+        </div>
+      </section>
+
+      <section class="card" id="sec-obstacles">
+        <h2 data-i18n="card.obstacles">当前障碍</h2>
+        <div id="obstacles-body"></div>
+        <button type="button" class="btn-ghost" data-open="problems" data-i18n="problems.open">打开问题解决中心</button>
+      </section>
+
+      <section class="card" id="sec-private">
+        <h2 data-i18n="card.private">私密空间</h2>
+        <p class="mut" style="margin:0 0 10px" data-i18n="private.entryDesc">日记、想法和情绪困惑只存在这台设备上，只有你能看到，平台不留存。</p>
+        <button type="button" class="btn-primary" data-open="private" data-i18n="private.enter">进入私密空间</button>
+      </section>
+
       <section class="card" id="sec-mentor" hidden>
         <h2 data-i18n="card.mentor">导师寄语</h2>
         <p id="mentor-body" class="mentor-body"></p>
@@ -94,6 +123,12 @@
 
     <!-- 页2 成长 -->
     <div class="tabpage" id="page-growth" hidden>
+      <section class="card" id="sec-feed">
+        <h2 data-i18n="card.feed">我的动态</h2>
+        <div id="feed-settings"></div>
+        <div id="feed-list"></div>
+      </section>
+
       <section class="card" id="sec-timeline" hidden>
         <h2 data-i18n="card.timeline">成长时间线</h2>
         <div id="timeline"></div>
@@ -120,6 +155,12 @@
       <section class="card" id="sec-meetings">
         <h2 data-i18n="card.meetings">辅导会议</h2>
         <div id="meetings"></div>
+      </section>
+
+      <section class="card" id="sec-trail">
+        <h2 data-i18n="card.trail">导师轨迹</h2>
+        <div id="trail-entry-body"></div>
+        <button type="button" class="btn-ghost" data-open="trail" data-i18n="trail.enter">查看导师轨迹</button>
       </section>
 
       <p class="page-empty" id="empty-growth" hidden></p>
@@ -152,6 +193,20 @@
       <section class="card" id="sec-advice" hidden>
         <h2 data-i18n="card.advice">导师建议</h2>
         <div id="advice-list"></div>
+      </section>
+
+      <section class="card" id="sec-problems">
+        <h2 data-i18n="card.problems">问题解决中心</h2>
+        <p class="mut" style="margin:0 0 8px" data-i18n="problems.desc">把卡住的事拆成能推进的方案——拆解全在本地完成，同步给导师由你逐项确认。</p>
+        <div id="problems-entry-body"></div>
+        <button type="button" class="btn-ghost" data-open="problems" data-i18n="problems.open">进入问题解决中心</button>
+      </section>
+
+      <section class="card" id="sec-match">
+        <h2 data-i18n="card.match">课程匹配</h2>
+        <div id="match-entry-body"></div>
+        <button type="button" class="btn-ghost" data-open="match" data-i18n="match.open">查看匹配结果</button>
+        <p class="mut" style="margin:10px 0 0" data-i18n="match.disclaimer">以学校官方学位审计为准</p>
       </section>
 
       <p class="page-empty" id="empty-plan" hidden></p>
@@ -187,6 +242,68 @@
   </div>
 </main>
 
+<!-- ===== v12 独立视图（sheet）：私密空间 / 问题解决中心 / 导师轨迹 / 课程匹配 / 分享卡 ===== -->
+<div class="sheet" id="view-private" hidden>
+  <div class="sheet-head">
+    <button type="button" class="sheet-back" data-close="view-private">← <span data-i18n="sheet.back">返回</span></button>
+    <h2 data-i18n="view.private">私密空间</h2>
+  </div>
+  <div class="sheet-body" id="private-body"></div>
+</div>
+
+<div class="sheet" id="view-problems" hidden>
+  <div class="sheet-head">
+    <button type="button" class="sheet-back" data-close="view-problems">← <span data-i18n="sheet.back">返回</span></button>
+    <h2 data-i18n="view.problems">问题解决中心</h2>
+  </div>
+  <div class="sheet-body" id="problems-body"></div>
+</div>
+
+<div class="sheet" id="view-trail" hidden>
+  <div class="sheet-head">
+    <button type="button" class="sheet-back" data-close="view-trail">← <span data-i18n="sheet.back">返回</span></button>
+    <h2 data-i18n="view.trail">导师轨迹</h2>
+  </div>
+  <div class="sheet-body" id="trail-body"></div>
+</div>
+
+<div class="sheet" id="view-match" hidden>
+  <div class="sheet-head">
+    <button type="button" class="sheet-back" data-close="view-match">← <span data-i18n="sheet.back">返回</span></button>
+    <h2 data-i18n="view.match">课程匹配</h2>
+  </div>
+  <div class="sheet-body" id="match-body"></div>
+</div>
+
+<div class="sheet" id="view-share" hidden>
+  <div class="sheet-head">
+    <button type="button" class="sheet-back" data-close="view-share">← <span data-i18n="sheet.back">返回</span></button>
+    <h2 data-i18n="view.share">分享卡</h2>
+  </div>
+  <div class="sheet-body">
+    <section class="card">
+      <div class="review-banner" id="share-warn" hidden data-i18n="share.warnPrivate">这条原本只有你能看到，分享后就是公开的。</div>
+      <label class="fld"><span data-i18n="share.textLabel">分享文案（可改）</span>
+        <textarea id="share-text" rows="4" maxlength="300"></textarea></label>
+      <h3 class="sub-h" data-i18n="share.checkTitle">导出前请逐项确认</h3>
+      <div id="share-checks">
+        <label class="chk"><input type="checkbox" class="share-chk"> <span data-i18n="share.c1">不含真实姓名</span></label>
+        <label class="chk"><input type="checkbox" class="share-chk"> <span data-i18n="share.c2">不含学校名称</span></label>
+        <label class="chk"><input type="checkbox" class="share-chk"> <span data-i18n="share.c3">不含成绩 / 分数</span></label>
+        <label class="chk"><input type="checkbox" class="share-chk"> <span data-i18n="share.c4">不含身份信息</span></label>
+      </div>
+      <div class="priv-actions">
+        <button type="button" class="btn-primary" id="share-img" disabled data-i18n="share.img">导出图片</button>
+        <button type="button" class="btn-ghost" id="share-copy" disabled data-i18n="share.text">复制文案</button>
+      </div>
+      <p class="mut" id="share-msg"></p>
+      <canvas id="share-canvas" width="1080" height="1350" hidden></canvas>
+      <img id="share-preview" alt="" style="width:100%;border-radius:12px;margin-top:10px" hidden>
+      <p class="mut" data-i18n="share.selfPost">图片和文案都只生成在你的设备上；发布请你自己打开 X 等平台手动发，APP 不代发、不索取社交账号。</p>
+    </section>
+  </div>
+</div>
+
 <!-- 底部页签（移动端形态；safe-area 适配在 style.css） -->
 <nav class="tabbar" id="tabbar" hidden>
   <button type="button" class="tab-btn on" data-tab="home"><span class="tab-ic" aria-hidden="true">⌂</span><span data-i18n="tab.home">首页</span></button>
@@ -195,6 +312,8 @@
   <button type="button" class="tab-btn" data-tab="mentor"><span class="tab-ic" aria-hidden="true">✎</span><span data-i18n="tab.mentor">导师</span><i class="dot" id="tab-dot" hidden></i></button>
 </nav>
 
+<script src="private.js"></script>
+<script src="problems.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

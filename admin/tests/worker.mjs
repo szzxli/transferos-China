@@ -471,6 +471,225 @@ function normParentExtras(body) {
   return out;
 }
 
+// ===== v12 新增：问题方案层 / 导师轨迹（会议精神）/ 课程要求集与匹配引擎 =====
+// 数据分层（蓝图第二节）：私密层正文永不进服务器——下列 norm 函数全部走字段白名单，
+// diary / journal / mood / emotion 等任何私密字段即使被调用方夹带，也会被直接丢弃、不落库、不回传。
+const PROBLEM_DOMAINS = { study: "学业", exam: "考试", business: "创业", career: "职业与并行线", family: "家庭沟通", emotion: "情绪状态", other: "其他" };
+const PROBLEM_PROGRESS = { open: "待解决", in_progress: "推进中", resolved: "已解决", escalated: "已升级导师" };
+const PROBLEM_RATE_LIMIT = 3;       // 同一学生 60 秒内最多同步 3 条方案（与留言同窗口）
+const TRAIL_ROLES = { lead: "主导师", teacher: "任课老师", industry: "行业前辈", coach: "教练", elder: "长辈", other: "其他" };
+const TRAIL_SOURCES = { mentor: "导师录入", student: "学生自建" };
+const TRAIL_VISIBILITIES = { private: "仅本机", mentor: "同步导师", plan: "方案层" };
+const REQ_BLOCKS = { gened: "通识", prereq: "专业先修", core: "专业核心", elective: "选修" };
+// 合规待核实关键词（蓝图第〇节双法总闸）：方案层文本命中任一词 → compliance = 'pending_review'（待核实），
+// 系统内任何角色都不能把待核实自行改判为已核实，只能转有资质律师 / 会计师 / 主管部门确认后由导师在方案外处理。
+const COMPLIANCE_WORDS = ["签证", "F-1", "工作许可", "打工", "营业执照", "公司注册", "代工厂", "食品", "销售许可", "税务", "报税", "收入申报", "移民", "OPT", "CPT", "雇佣", "创业注册", "经营许可"];
+function complianceFlag(text) {
+  const s = String(text || "");
+  return COMPLIANCE_WORDS.some((w) => s.includes(w)) ? "pending_review" : "ok";
+}
+// 成绩换算（仅用于课程匹配的成绩预警比较；CR / P / IP 等非字母成绩返回 null，不参与比较）
+const GRADE_POINTS = { A: 4, "A-": 3.7, "B+": 3.3, B: 3, "B-": 2.7, "C+": 2.3, C: 2, "C-": 1.7, "D+": 1.3, D: 1, F: 0 };
+function gradePoints(g) {
+  const k = String(g || "").trim().toUpperCase();
+  return Object.prototype.hasOwnProperty.call(GRADE_POINTS, k) ? GRADE_POINTS[k] : null;
+}
+function normCourseCode(c) {
+  return String(c || "").toUpperCase().replace(/\s+/g, " ").trim();
+}
+function parsePrereqCodes(s) {
+  return String(s || "").split(/[,，、;；]/).map((x) => normCourseCode(x)).filter(Boolean);
+}
+/* 课程匹配引擎（纯函数，确定性规则）：学生已修/在修/计划课程 × 一份要求集 →
+ * 各块匹配计数、缺课清单、先修断裂、成绩预警。口径写死：
+ * - 同代码多条课程取状态最优一条（done > ongoing/enrolled > planned）；
+ * - 要求状态：done / in_progress（ongoing|enrolled）/ planned / missing；
+ * - 学分只统计 credits 非空的要求；credits 为空的要求单列 credits_unknown 计数，绝不估算；
+ * - 成绩预警两类：below_min = 已修成绩低于该要求标注的最低成绩（min_grade 来自要求集数据）；
+ *   watch = 先修/核心块已修成绩低于 B（3.0）——通用提示，非任何学校官方线，界面须如实标注；
+ * - 先修断裂：要求本身已被修/在修/计划（非 missing），但其先修代码没有任何 done/在修课程承接。 */
+function matchRequirements(courses, requirements) {
+  const rank = (s) => (s === "done" ? 3 : (s === "ongoing" || s === "enrolled") ? 2 : s === "planned" ? 1 : 0);
+  const byCode = new Map();
+  for (const c of courses || []) {
+    const code = normCourseCode(c && c.course_code);
+    if (!code) continue;
+    const prev = byCode.get(code);
+    if (!prev || rank(c.status) > rank(prev.status)) byCode.set(code, c);
+  }
+  const blocks = {};
+  for (const b of Object.keys(REQ_BLOCKS)) {
+    blocks[b] = { total: 0, done: 0, in_progress: 0, planned: 0, missing: 0, credits_total: 0, credits_done: 0, credits_missing: 0, credits_unknown: 0 };
+  }
+  const items = [], missing = [], gradeWarnings = [], prereqBreaks = [];
+  for (const r of requirements || []) {
+    const block = REQ_BLOCKS[r.block] ? r.block : "prereq";
+    const code = normCourseCode(r.course_code);
+    const c = code ? byCode.get(code) : null;
+    const st = !c ? "missing" : c.status === "done" ? "done" : (c.status === "ongoing" || c.status === "enrolled") ? "in_progress" : "planned";
+    const credits = (r.credits === null || r.credits === undefined || r.credits === "") ? null : Number(r.credits);
+    const bk = blocks[block];
+    bk.total++;
+    bk[st]++;
+    if (credits === null || !Number.isFinite(credits)) bk.credits_unknown++;
+    else {
+      bk.credits_total += credits;
+      if (st === "done") bk.credits_done += credits;
+      if (st === "missing") bk.credits_missing += credits;
+    }
+    const item = {
+      code: r.course_code || "", name: r.course_name || "", block, block_label: REQ_BLOCKS[block],
+      credits, min_grade: r.min_grade || "", prereq_codes: parsePrereqCodes(r.prereq_codes),
+      status: st, course_grade: c ? (c.grade || "") : "", course_term: c ? (c.term || "") : "",
+    };
+    items.push(item);
+    if (st === "missing") missing.push(item);
+    if (st === "done" && c) {
+      const gp = gradePoints(c.grade);
+      const mp = gradePoints(r.min_grade);
+      if (gp !== null && mp !== null && gp < mp) {
+        gradeWarnings.push({ code: item.code, name: item.name, grade: c.grade, min_grade: r.min_grade, kind: "below_min" });
+      } else if (gp !== null && (block === "prereq" || block === "core") && gp < 3) {
+        gradeWarnings.push({ code: item.code, name: item.name, grade: c.grade, min_grade: "", kind: "watch" });
+      }
+    }
+    if (st !== "missing") {
+      for (const p of item.prereq_codes) {
+        const pc = byCode.get(p);
+        if (!pc || !(pc.status === "done" || pc.status === "ongoing" || pc.status === "enrolled")) {
+          prereqBreaks.push({ code: item.code, name: item.name, missing_prereq: p });
+        }
+      }
+    }
+  }
+  const totals = { requirements: items.length, done: 0, in_progress: 0, planned: 0, missing: 0, credits_total: 0, credits_done: 0, credits_missing: 0, credits_unknown: 0 };
+  for (const b of Object.keys(blocks)) {
+    totals.done += blocks[b].done; totals.in_progress += blocks[b].in_progress;
+    totals.planned += blocks[b].planned; totals.missing += blocks[b].missing;
+    totals.credits_total += blocks[b].credits_total; totals.credits_done += blocks[b].credits_done;
+    totals.credits_missing += blocks[b].credits_missing; totals.credits_unknown += blocks[b].credits_unknown;
+  }
+  return { blocks, items, missing, grade_warnings: gradeWarnings, prereq_breaks: prereqBreaks, totals };
+}
+/* v12 问题方案同步校验（学生端 POST /api/client/problem 用）：字段白名单归一，
+ * 任一不合法返回 { error }；私密字段（diary/journal/mood/emotion 等）不在白名单内，天然丢弃。 */
+function normProblemInput(body) {
+  const b = body || {};
+  const domain = b.domain === undefined || b.domain === null || b.domain === "" ? "other" : String(b.domain);
+  if (!PROBLEM_DOMAINS[domain]) return { error: "bad domain" };
+  const title = clampStr(b.title, 120);
+  if (!title) return { error: "title required" };
+  const actsRaw = Array.isArray(b.actions) ? b.actions : [];
+  if (actsRaw.length > 10) return { error: "too many actions (max 10)" };
+  const actions = [];
+  for (let i = 0; i < actsRaw.length; i++) {
+    const a = actsRaw[i] || {};
+    const at = clampStr(typeof a === "string" ? a : a.title, 120);
+    if (!at) return { error: "actions[" + i + "].title required" };
+    actions.push({ title: at, due_text: clampStr(a.due_text, 40) || null });
+  }
+  return {
+    domain, title,
+    desired_outcome: clampStr(b.desired_outcome, 500),
+    strategy_summary: clampStr(b.strategy_summary, 2000),
+    actions,
+    support_needed: clampStr(b.support_needed, 500),
+    source_local_id: clampStr(b.source_local_id, 80) || null,
+  };
+}
+/* v12 导师轨迹补录校验（enrich 用）：字段白名单归一；takeaway_local=1 时领受正文不落库（只存本机标记）。 */
+function normTrailExtras(body) {
+  const out = { trail: [] };
+  const raw = Array.isArray(body && body.trail_entries) ? body.trail_entries : [];
+  if (raw.length > 50) return { error: "too many trail_entries (max 50)" };
+  for (let i = 0; i < raw.length; i++) {
+    const e = raw[i] || {};
+    const mentorName = clampStr(e.mentor_name, 40);
+    if (!mentorName) return { error: "trail_entries[" + i + "].mentor_name required" };
+    const role = e.mentor_role === undefined || e.mentor_role === null || e.mentor_role === "" ? "lead" : String(e.mentor_role);
+    if (!TRAIL_ROLES[role]) return { error: "trail_entries[" + i + "] bad mentor_role" };
+    const spirit = clampStr(e.spirit_line, 120);
+    if ([...spirit].length > 60) return { error: "trail_entries[" + i + "].spirit_line too long (max 60)" };
+    const vis = e.visibility === undefined || e.visibility === null || e.visibility === "" ? "plan" : String(e.visibility);
+    if (!TRAIL_VISIBILITIES[vis]) return { error: "trail_entries[" + i + "] bad visibility" };
+    const takeLocal = e.takeaway_local ? 1 : 0;
+    let due = clampStr(e.revisit_due, 10);
+    if (due && (!/^\d{4}-\d{2}-\d{2}$/.test(due) || Number.isNaN(Date.parse(due)))) {
+      return { error: "trail_entries[" + i + "].revisit_due must be YYYY-MM-DD" };
+    }
+    out.trail.push({
+      meeting_id: e.meeting_id ? (parseInt(e.meeting_id, 10) || null) : null,
+      mentor_name: mentorName, mentor_role: role, spirit_line: spirit,
+      key_judgments: clampStr(e.key_judgments, 2000),
+      student_takeaway: takeLocal ? "" : clampStr(e.student_takeaway, 2000),
+      takeaway_local: takeLocal,
+      followup_actions: clampStr(e.followup_actions, 2000),
+      revisit_result: clampStr(e.revisit_result, 2000),
+      revisit_due: due || null, visibility: vis,
+      source: e.source === "student" ? "student" : "mentor",
+    });
+  }
+  return out;
+}
+/* v12 课程要求集校验（enrich 用）：字段白名单归一；要求集逐份标来源与版本，verified 只能由录入方按官方核实结果给。 */
+function normRequirementSets(body) {
+  const out = { sets: [] };
+  const raw = Array.isArray(body && body.requirement_sets) ? body.requirement_sets : [];
+  if (raw.length > 10) return { error: "too many requirement_sets (max 10)" };
+  for (let i = 0; i < raw.length; i++) {
+    const s = raw[i] || {};
+    const name = clampStr(s.name, 120);
+    if (!name) return { error: "requirement_sets[" + i + "].name required" };
+    const reqRaw = Array.isArray(s.requirements) ? s.requirements : [];
+    if (reqRaw.length > 300) return { error: "requirement_sets[" + i + "] too many requirements (max 300)" };
+    const reqs = [];
+    for (let j = 0; j < reqRaw.length; j++) {
+      const r = reqRaw[j] || {};
+      const code = clampStr(r.course_code, 30);
+      if (!code) return { error: "requirement_sets[" + i + "].requirements[" + j + "].course_code required" };
+      const block = r.block === undefined || r.block === null || r.block === "" ? "prereq" : String(r.block);
+      if (!REQ_BLOCKS[block]) return { error: "requirement_sets[" + i + "].requirements[" + j + "] bad block" };
+      let credits = null;
+      if (r.credits !== undefined && r.credits !== null && r.credits !== "") {
+        credits = Number(r.credits);
+        if (!Number.isFinite(credits) || credits < 0 || credits > 60) {
+          return { error: "requirement_sets[" + i + "].requirements[" + j + "] bad credits" };
+        }
+      }
+      reqs.push({
+        block, course_code: code, course_name: clampStr(r.course_name, 120),
+        credits, min_grade: clampStr(r.min_grade, 4) || null,
+        prereq_codes: clampStr(r.prereq_codes, 200) || null,
+        sort: Number.isFinite(parseInt(r.sort, 10)) ? parseInt(r.sort, 10) : j,
+      });
+    }
+    out.sets.push({
+      name, source_note: clampStr(s.source_note, 500), version_text: clampStr(s.version_text, 120),
+      verified: s.verified ? 1 : 0,
+      sort: Number.isFinite(parseInt(s.sort, 10)) ? parseInt(s.sort, 10) : i,
+      requirements: reqs,
+    });
+  }
+  return out;
+}
+// 会议精神的会后行动并入行动清单（一行一条，按标题对该学生去重）——导师录入 / enrich / 学生自建三处共用
+async function insertTrailFollowups(db, sid, followupText, now) {
+  const lines = String(followupText || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean).slice(0, 20);
+  let n = 0;
+  for (const title of lines) {
+    const t = clampStr(title, 120);
+    if (!t) continue;
+    const dup = await db.prepare(`SELECT id FROM student_actions WHERE student_id = ? AND title = ?`).bind(sid, t).first();
+    if (dup) continue;
+    await db.prepare(
+      `INSERT INTO student_actions(student_id, title, detail, due_text, status, sort, created_at, updated_at)
+       VALUES(?,?,?,NULL,'todo',0,?,?)`
+    ).bind(sid, t, "", now, now).run();
+    n++;
+  }
+  return n;
+}
+
 const DDL = [
   `CREATE TABLE IF NOT EXISTS agents(
     code TEXT PRIMARY KEY, name TEXT, region TEXT,
@@ -590,6 +809,35 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     sender TEXT DEFAULT 'parent', body TEXT, created_at TEXT,
     read_by_parent INTEGER DEFAULT 0, read_by_mentor INTEGER DEFAULT 0)`,
+  // ===== v12 新增表 =====
+  // 问题方案层（学生逐项确认后同步的结构化字段；只存方案摘要，永不存日记/情绪原文）
+  `CREATE TABLE IF NOT EXISTS student_problem_shares(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    domain TEXT, title TEXT, desired_outcome TEXT, strategy_summary TEXT,
+    actions_text TEXT, support_needed TEXT, progress TEXT DEFAULT 'open',
+    resolved_note TEXT, compliance TEXT DEFAULT 'ok', source_local_id TEXT,
+    created_at TEXT, updated_at TEXT)`,
+  // 导师轨迹 / 会议精神（与 student_meetings 1:1 关联，meeting_id 可空=学生自建或未关联会议；
+  // takeaway_local=1 表示学生领受只存学生本机，服务器只留占位标记，正文永不入库）
+  `CREATE TABLE IF NOT EXISTS mentor_trail_entries(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, meeting_id INTEGER,
+    mentor_name TEXT, mentor_role TEXT DEFAULT 'lead', spirit_line TEXT,
+    key_judgments TEXT, student_takeaway TEXT, takeaway_local INTEGER DEFAULT 0,
+    followup_actions TEXT, revisit_result TEXT, revisit_due TEXT,
+    visibility TEXT DEFAULT 'plan', source TEXT DEFAULT 'mentor',
+    created_at TEXT, updated_at TEXT)`,
+  // 课程要求集（一名学生可并排多份：本校 / 外部 / 备选情景；逐份标来源与版本，verified=已按官方核实）
+  `CREATE TABLE IF NOT EXISTS course_requirement_sets(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    name TEXT, source_note TEXT, version_text TEXT, verified INTEGER DEFAULT 0,
+    sort INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT)`,
+  // 课程要求条目（按块建模：gened 通识 / prereq 专业先修 / core 专业核心 / elective 选修；
+  // credits 可空=来源未给单门学分，匹配时单列未知、绝不估算；prereq_codes 为逗号分隔的先修课程代码）
+  `CREATE TABLE IF NOT EXISTS course_requirements(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, set_id INTEGER, student_id INTEGER,
+    block TEXT DEFAULT 'prereq', course_code TEXT, course_name TEXT,
+    credits REAL, min_grade TEXT, prereq_codes TEXT, sort INTEGER DEFAULT 0,
+    created_at TEXT, updated_at TEXT)`,
 ];
 // v10 迁移：students 补愿景（vision_text）与导师寄语（mentor_message / mentor_message_at）列，幂等
 
@@ -1042,6 +1290,157 @@ async function handleApi(req, env, url) {
     });
   }
 
+  // ===== v12 新增写接口（方案层同步 / 导师轨迹学生侧）=====
+  // 共同口径：与留言接口同一鉴权（定位符 + client_key 常量时间比对，失败一律 404）；
+  // 字段全部走白名单归一——请求体里夹带的 diary / journal / mood / emotion 等私密字段不读、不存、不回传。
+  const findClientStudent = async (body) => {
+    const locator = String((body && body.s) || "").trim();
+    const student = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : (locator ? await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(locator).first() : null);
+    const key = String((body && body.key) || "");
+    if (!student || !student.client_key || !timingSafeEq(key, String(student.client_key))) return null;
+    return student;
+  };
+  const problemOut = (r) => ({
+    id: r.id, domain: r.domain || "", domain_label: PROBLEM_DOMAINS[r.domain] || r.domain || "",
+    title: r.title || "", desired_outcome: r.desired_outcome || "",
+    strategy_summary: r.strategy_summary || "",
+    actions: String(r.actions_text || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean),
+    support_needed: r.support_needed || "", progress: r.progress || "open",
+    progress_label: PROBLEM_PROGRESS[r.progress] || r.progress || "",
+    resolved_note: r.resolved_note || "", compliance: r.compliance || "ok",
+    created_at: r.created_at || "", updated_at: r.updated_at || "",
+  });
+  // 问题方案同步（阶段 C）：学生逐项确认后才调用；同步的是方案摘要结构化字段，不是日记原文。
+  // 合规标记由服务端按关键词表复算（complianceFlag），客户端传什么都不采信。
+  if (p === "/api/client/problem") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const student = await findClientStudent(body);
+    if (!student) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const norm = normProblemInput(body);
+    if (norm.error) return jsonResp(req, { ok: false, error: norm.error }, 400);
+    const since = new Date(Date.now() - MESSAGE_RATE_WINDOW_MS).toISOString();
+    const recent = await db.prepare(
+      `SELECT COUNT(*) AS n FROM student_problem_shares WHERE student_id = ? AND created_at >= ?`
+    ).bind(student.id, since).first();
+    if (recent && recent.n >= PROBLEM_RATE_LIMIT) {
+      return jsonResp(req, { ok: false, error: "too frequent, retry in a minute" }, 429);
+    }
+    // 同步留痕去重：同一本地条目重复提交（source_local_id 相同）直接回既有记录，不重复落库
+    if (norm.source_local_id) {
+      const dup = await db.prepare(
+        `SELECT * FROM student_problem_shares WHERE student_id = ? AND source_local_id = ?`
+      ).bind(student.id, norm.source_local_id).first();
+      if (dup) return jsonResp(req, { ok: true, problem: problemOut(dup), existed: true });
+    }
+    const ts = nowIso();
+    const actionsText = norm.actions.map((a) => a.title + (a.due_text ? "（" + a.due_text + "）" : "")).join("\n");
+    const flag = complianceFlag(norm.title + "\n" + norm.desired_outcome + "\n" + norm.strategy_summary + "\n" + norm.support_needed);
+    const r = await db.prepare(
+      `INSERT INTO student_problem_shares(student_id, domain, title, desired_outcome, strategy_summary,
+        actions_text, support_needed, progress, resolved_note, compliance, source_local_id, created_at, updated_at)
+       VALUES(?,?,?,?,?,?,?,'open','',?,?,?,?)`
+    ).bind(student.id, norm.domain, norm.title, norm.desired_outcome, norm.strategy_summary,
+      actionsText, norm.support_needed, flag, norm.source_local_id, ts, ts).run();
+    const row = await db.prepare(`SELECT * FROM student_problem_shares WHERE id = ?`).bind(r.meta.last_row_id).first();
+    return jsonResp(req, { ok: true, problem: problemOut(row) });
+  }
+  // 问题进度回写（阶段 C）：学生把某个已同步问题标为推进中 / 已解决 / 已升级导师；resolved 时可附解决小结。
+  if (p === "/api/client/problem/status") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const student = await findClientStudent(body);
+    if (!student) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const pid = toInt(body && body.id, 0);
+    const progress = String((body && body.progress) || "");
+    if (!pid || !PROBLEM_PROGRESS[progress]) return jsonResp(req, { ok: false, error: "bad progress" }, 400);
+    const row = await db.prepare(
+      `SELECT * FROM student_problem_shares WHERE id = ? AND student_id = ?`).bind(pid, student.id).first();
+    if (!row) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const note = progress === "resolved" ? clampStr(body.resolved_note, 500) : (row.resolved_note || "");
+    await db.prepare(
+      `UPDATE student_problem_shares SET progress = ?, resolved_note = ?, updated_at = ? WHERE id = ?`
+    ).bind(progress, note, nowIso(), pid).run();
+    const upd = await db.prepare(`SELECT * FROM student_problem_shares WHERE id = ?`).bind(pid).first();
+    return jsonResp(req, { ok: true, problem: problemOut(upd) });
+  }
+  // 导师轨迹学生侧（阶段 C）：三种动作——
+  //   action=create：学生为校外导师自建一条（source='student'，visibility='mentor'）；
+  //   action=takeaway：给既有条目补学生领受；takeaway_local=1 时正文只存学生本机，服务器只留占位标记、正文清空；
+  //   action=revisit：补下次回看结果。
+  // 私密口径：takeaway_local 的正文永远不会出现在请求里——前端勾选本机保存时根本不发送正文。
+  if (p === "/api/client/trail") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const student = await findClientStudent(body);
+    if (!student) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const act = String((body && body.action) || "");
+    const ts = nowIso();
+    if (act === "create") {
+      const norm = normTrailExtras({ trail_entries: [{
+        meeting_id: body.meeting_id, mentor_name: body.mentor_name, mentor_role: body.mentor_role,
+        spirit_line: body.spirit_line, key_judgments: body.key_judgments,
+        student_takeaway: body.student_takeaway, takeaway_local: body.takeaway_local,
+        followup_actions: body.followup_actions, revisit_due: body.revisit_due,
+        visibility: "mentor", source: "student",
+      }] });
+      if (norm.error) return jsonResp(req, { ok: false, error: norm.error }, 400);
+      const e = norm.trail[0];
+      const since = new Date(Date.now() - MESSAGE_RATE_WINDOW_MS).toISOString();
+      const recent = await db.prepare(
+        `SELECT COUNT(*) AS n FROM mentor_trail_entries WHERE student_id = ? AND created_at >= ?`
+      ).bind(student.id, since).first();
+      if (recent && recent.n >= PROBLEM_RATE_LIMIT) {
+        return jsonResp(req, { ok: false, error: "too frequent, retry in a minute" }, 429);
+      }
+      const due = e.revisit_due || new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+      const r = await db.prepare(
+        `INSERT INTO mentor_trail_entries(student_id, meeting_id, mentor_name, mentor_role, spirit_line,
+          key_judgments, student_takeaway, takeaway_local, followup_actions, revisit_result, revisit_due,
+          visibility, source, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?,'',?, 'mentor', 'student', ?, ?)`
+      ).bind(student.id, e.meeting_id, e.mentor_name, e.mentor_role, e.spirit_line, e.key_judgments,
+        e.takeaway_local ? null : (e.student_takeaway || null), e.takeaway_local, e.followup_actions,
+        due, ts, ts).run();
+      await insertTrailFollowups(db, student.id, e.followup_actions, ts);
+      return jsonResp(req, { ok: true, id: r.meta.last_row_id });
+    }
+    if (act === "takeaway" || act === "revisit") {
+      const eid = toInt(body && body.id, 0);
+      const row = eid ? await db.prepare(
+        `SELECT * FROM mentor_trail_entries WHERE id = ? AND student_id = ?`).bind(eid, student.id).first() : null;
+      if (!row) return jsonResp(req, { ok: false, error: "not found" }, 404);
+      if (act === "takeaway") {
+        if (body.takeaway_local) {
+          await db.prepare(
+            `UPDATE mentor_trail_entries SET student_takeaway = NULL, takeaway_local = 1, updated_at = ? WHERE id = ?`
+          ).bind(ts, eid).run();
+        } else {
+          const text = clampStr(body.takeaway, 2000);
+          await db.prepare(
+            `UPDATE mentor_trail_entries SET student_takeaway = ?, takeaway_local = 0, updated_at = ? WHERE id = ?`
+          ).bind(text || null, ts, eid).run();
+        }
+      } else {
+        const text = clampStr(body.revisit_result, 2000);
+        if (!text) return jsonResp(req, { ok: false, error: "revisit_result required" }, 400);
+        await db.prepare(
+          `UPDATE mentor_trail_entries SET revisit_result = ?, updated_at = ? WHERE id = ?`
+        ).bind(text, ts, eid).run();
+      }
+      return jsonResp(req, { ok: true, id: eid });
+    }
+    return jsonResp(req, { ok: false, error: "bad action" }, 400);
+  }
+
   // 学生端只读接口（v7，一对一专属客户端 APP 专用；v8 起定位符同时支持 slug）：
   // GET /api/client/<学生id 或 slug>?key=<访问密钥>。密钥为 students.client_key（每名学生一个随机密钥），
   // 无 key / key 不对 / 学生不存在一律 404，不暴露学生存在性。写入仅限上方 v9 签名接口，其余只读。
@@ -1096,6 +1495,25 @@ async function handleApi(req, env, url) {
         `SELECT * FROM knowledge_items WHERE enabled = 1 ORDER BY id ASC LIMIT 200`).all()).results || [];
       knowledge = allK.filter((k) => kTags.includes(String(k.tag || ""))).slice(0, KNOWLEDGE_LIMIT);
     }
+    // —— v12 新模块：问题方案层 / 导师轨迹 / 课程要求集与匹配（全部为方案层数据，私密层永不经此接口）——
+    const problemRows = (await db.prepare(
+      `SELECT * FROM student_problem_shares WHERE student_id = ? ORDER BY id DESC LIMIT 100`).bind(sid).all()).results || [];
+    const trailRows = (await db.prepare(
+      `SELECT t.*, m.meeting_date AS m_date, m.topic AS m_topic FROM mentor_trail_entries t
+       LEFT JOIN student_meetings m ON m.id = t.meeting_id
+       WHERE t.student_id = ? ORDER BY COALESCE(m.meeting_date, substr(t.created_at, 1, 10)) DESC, t.id DESC LIMIT 200`).bind(sid).all()).results || [];
+    const reqSets = (await db.prepare(
+      `SELECT * FROM course_requirement_sets WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 20`).bind(sid).all()).results || [];
+    const reqRowsAll = reqSets.length ? ((await db.prepare(
+      `SELECT * FROM course_requirements WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 1000`).bind(sid).all()).results || []) : [];
+    const courseMatch = reqSets.map((s) => {
+      const reqs = reqRowsAll.filter((r) => r.set_id === s.id);
+      return {
+        id: s.id, name: s.name || "", source_note: s.source_note || "",
+        version_text: s.version_text || "", verified: !!s.verified,
+        match: reqs.length ? matchRequirements(courses, reqs) : null,
+      };
+    });
     const lineOut = (l) => ({
       id: l.id, name: l.name || "", line_type: l.line_type || "",
       line_type_label: LINE_TYPES[l.line_type] || l.line_type || "",
@@ -1152,11 +1570,13 @@ async function handleApi(req, env, url) {
       milestones: milestones.map((m) => ({
         id: m.id, date_text: m.date_text || "", title: m.title || "",
         detail: m.detail || "", kind: m.kind || "", sort: m.sort,
+        created_at: m.created_at || "",
       })),
       key_dates: keyDates.map((k) => ({ id: k.id, date: k.date || "", title: k.title || "" })),
       actions: actionRows.map((a) => ({
         id: a.id, title: a.title || "", detail: a.detail || "", due_text: a.due_text || "",
         status: a.status || "", status_label: ACTION_STATUSES[a.status] || a.status || "", sort: a.sort,
+        updated_at: a.updated_at || "",
       })),
       advice: adviceRows.map((a) => ({
         id: a.id, title: a.title || "", body: a.body || "", created_at: a.created_at || "",
@@ -1169,6 +1589,23 @@ async function handleApi(req, env, url) {
         body: m.body || "", created_at: m.created_at || "",
       })),
       unread_mentor: unreadMentor,
+      // —— v12 ——
+      problems: problemRows.map(problemOut),
+      mentor_trail: trailRows.map((r) => ({
+        id: r.id, meeting_id: r.meeting_id || null,
+        meeting_date: r.m_date || "", meeting_topic: r.m_topic || "",
+        mentor_name: r.mentor_name || "", mentor_role: r.mentor_role || "",
+        mentor_role_label: TRAIL_ROLES[r.mentor_role] || r.mentor_role || "",
+        spirit_line: r.spirit_line || "", key_judgments: r.key_judgments || "",
+        // takeaway_local=1：领受正文只在学生本机，接口只回占位标记，绝不回正文
+        student_takeaway: r.takeaway_local ? "" : (r.student_takeaway || ""),
+        takeaway_local: !!r.takeaway_local,
+        followup_actions: r.followup_actions || "",
+        revisit_result: r.revisit_result || "", revisit_due: r.revisit_due || "",
+        visibility: r.visibility || "", source: r.source || "",
+        created_at: r.created_at || "", updated_at: r.updated_at || "",
+      })),
+      course_match: courseMatch,
     });
   }
 
@@ -1514,6 +1951,11 @@ async function handleApi(req, env, url) {
     if (extras.error) return bad(extras.error);
     const pExtras = normParentExtras(body || {});
     if (pExtras.error) return bad(pExtras.error);
+    // v12 两段同样先校验后落库：任一不合法整单 400，不留半截数据
+    const tExtras = normTrailExtras(body || {});
+    if (tExtras.error) return bad(tExtras.error);
+    const rExtras = normRequirementSets(body || {});
+    if (rExtras.error) return bad(rExtras.error);
     const now = nowIso();
     const counts = {
       patched: 0, renamed: 0,
@@ -1523,6 +1965,8 @@ async function handleApi(req, env, url) {
       parent_updates: { inserted: 0, skipped: 0 },
       parent_support_actions: { inserted: 0, skipped: 0 },
       parent_messages: { inserted: 0, skipped: 0 },
+      trail_entries: { inserted: 0, skipped: 0 },
+      requirement_sets: { inserted: 0, skipped: 0, requirements_inserted: 0, requirements_skipped: 0 },
     };
     // —— 学生字段补丁（愿景 / 导师寄语；寄语不许在此替导师编话，只搬运调用方给的文本）——
     const patch = (body && body.student_patch) || {};
@@ -1664,6 +2108,49 @@ async function handleApi(req, env, url) {
          VALUES(?,?,?,?,?,?)`
       ).bind(sid, m.sender, m.body, now, m.sender === "mentor" ? 0 : 1, m.sender === "mentor" ? 1 : 0).run();
       counts.parent_messages.inserted++;
+    }
+    // —— v12 导师轨迹 + 课程要求集（校验已在上方完成；私密字段夹带已在 norm* 白名单处丢弃）——
+    for (const e of tExtras.trail) {
+      // 去重口径：同学生 + 同导师 + 同一句话精神视为同一条
+      const dup = await db.prepare(
+        `SELECT id FROM mentor_trail_entries WHERE student_id = ? AND mentor_name = ? AND spirit_line = ?`
+      ).bind(sid, e.mentor_name, e.spirit_line).first();
+      if (dup) { counts.trail_entries.skipped++; continue; }
+      const due = e.revisit_due || new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+      await db.prepare(
+        `INSERT INTO mentor_trail_entries(student_id, meeting_id, mentor_name, mentor_role, spirit_line,
+          key_judgments, student_takeaway, takeaway_local, followup_actions, revisit_result, revisit_due,
+          visibility, source, created_at, updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(sid, e.meeting_id, e.mentor_name, e.mentor_role, e.spirit_line, e.key_judgments,
+        e.takeaway_local ? null : (e.student_takeaway || null), e.takeaway_local, e.followup_actions,
+        e.revisit_result, due, e.visibility, e.source, now, now).run();
+      counts.trail_entries.inserted++;
+      await insertTrailFollowups(db, sid, e.followup_actions, now);
+    }
+    for (const s of rExtras.sets) {
+      let setRow = await db.prepare(
+        `SELECT id FROM course_requirement_sets WHERE student_id = ? AND name = ?`).bind(sid, s.name).first();
+      let setId;
+      if (setRow) { setId = setRow.id; counts.requirement_sets.skipped++; }
+      else {
+        const rr = await db.prepare(
+          `INSERT INTO course_requirement_sets(student_id, name, source_note, version_text, verified, sort, created_at, updated_at)
+           VALUES(?,?,?,?,?,?,?,?)`
+        ).bind(sid, s.name, s.source_note, s.version_text, s.verified, s.sort, now, now).run();
+        setId = rr.meta.last_row_id;
+        counts.requirement_sets.inserted++;
+      }
+      for (const r of s.requirements) {
+        const dup = await db.prepare(
+          `SELECT id FROM course_requirements WHERE set_id = ? AND course_code = ?`).bind(setId, r.course_code).first();
+        if (dup) { counts.requirement_sets.requirements_skipped++; continue; }
+        await db.prepare(
+          `INSERT INTO course_requirements(set_id, student_id, block, course_code, course_name, credits, min_grade, prereq_codes, sort, created_at, updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)`
+        ).bind(setId, sid, r.block, r.course_code, r.course_name, r.credits, r.min_grade, r.prereq_codes, r.sort, now, now).run();
+        counts.requirement_sets.requirements_inserted++;
+      }
     }
     // 家长密钥：存量学生首次补录时顺带生成并回传（后台重置走客户端页 parent_key_rotate）
     const parentKey = await ensureParentKey(db, student);
@@ -2062,6 +2549,11 @@ async function postDelivery(req, env) {
     await db.prepare("DELETE FROM parent_updates WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM parent_support_actions WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM parent_messages WHERE student_id=?").bind(delId).run();
+    // v12：问题方案 / 导师轨迹 / 课程要求集与要求条目一并清理
+    await db.prepare("DELETE FROM student_problem_shares WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM mentor_trail_entries WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM course_requirements WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM course_requirement_sets WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM students WHERE id=?").bind(delId).run();
     return redirect("/admin/delivery");
   }
@@ -2967,6 +3459,21 @@ async function pageClient(env, url, sid) {
       "UPDATE parent_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0"
     ).bind(sid).run();
   }
+  // —— v12 查询：问题方案层 / 导师轨迹 / 课程要求集 ——
+  const problemShares = (await db.prepare(
+    "SELECT * FROM student_problem_shares WHERE student_id=? ORDER BY id DESC LIMIT 100").bind(sid).all()).results || [];
+  const trailEntries = (await db.prepare(
+    `SELECT t.*, m.meeting_date AS m_date, m.topic AS m_topic FROM mentor_trail_entries t
+     LEFT JOIN student_meetings m ON m.id = t.meeting_id
+     WHERE t.student_id=? ORDER BY t.id DESC LIMIT 200`).bind(sid).all()).results || [];
+  const reqSets = (await db.prepare(
+    "SELECT * FROM course_requirement_sets WHERE student_id=? ORDER BY sort ASC, id ASC LIMIT 20").bind(sid).all()).results || [];
+  const reqRowsBySet = {};
+  if (reqSets.length) {
+    const allReqs = (await db.prepare(
+      "SELECT * FROM course_requirements WHERE student_id=? ORDER BY sort ASC, id ASC LIMIT 1000").bind(sid).all()).results || [];
+    for (const r of allReqs) { (reqRowsBySet[r.set_id] = reqRowsBySet[r.set_id] || []).push(r); }
+  }
 
   const bar = (done, total) => {
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -3208,6 +3715,40 @@ async function pageClient(env, url, sid) {
   </form>
   ${meetings.length ? `<div class="wrap"><table><tr><th>日期</th><th>专题</th><th>纪要</th><th>待办</th><th>下次会议</th><th></th><th></th></tr>${meetingRows}</table></div>` : `<p class="mut">暂无会议记录。</p>`}
   </div>`;
+  // —— 导师轨迹 / 会议精神（v12）——
+  // 一录三出本期不做：导师在此手工录入会议精神五项，保存即进入学生 APP 导师轨迹（方案层）。
+  // 学生领受与回看结果由学生在 APP 补录；领受勾「只存本机」时这里只显示占位标记，永不显示正文（服务器根本没有）。
+  const trailRowsHtml = trailEntries.map((e) => `<tr>
+    <td>${esc(e.m_date || String(e.created_at || "").slice(0, 10))}</td>
+    <td>${esc(e.mentor_name || "")}<br><span class="pill">${esc(TRAIL_ROLES[e.mentor_role] || e.mentor_role || "")}</span></td>
+    <td>${esc(e.spirit_line || "")}</td>
+    <td>${esc((e.key_judgments || "").slice(0, 60))}${(e.key_judgments || "").length > 60 ? "…" : ""}</td>
+    <td>${e.takeaway_local ? '<span class="mut">已在本机记录（正文不入库）</span>' : esc((e.student_takeaway || "").slice(0, 40))}</td>
+    <td>${e.revisit_result ? esc(e.revisit_result.slice(0, 40)) : '<span class="mut">待回看' + (e.revisit_due ? "（" + esc(e.revisit_due) + "）" : "") + "</span>"}</td>
+    <td>${esc(TRAIL_SOURCES[e.source] || e.source || "")}</td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条会议精神？')">
+      <input type="hidden" name="action" value="trail_delete"><input type="hidden" name="id" value="${e.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const meetingOpts = `<option value="">（不关联会议）</option>` + meetings.map((m) =>
+    `<option value="${m.id}">${esc(m.meeting_date || "")} · ${esc(m.topic || "")}</option>`).join("");
+  const trailCard = `
+  <div class="card"><h2>导师轨迹 · 会议精神（v12）</h2>
+  <p class="mut">每次会议后在此录入「会议精神」：一句话精神、关键判断、会后行动（每行一条，会自动并入学生行动清单）。学生领受与回看结果由学生在 APP 补录；学生自建的校外导师条目也会出现在这里（来源=学生自建）。家长端永不展示本区原文。</p>
+  <form method="post">
+    <input type="hidden" name="action" value="trail_add">
+    <div class="row">
+      <div><label>关联会议（可空）</label><select name="meeting_id">${meetingOpts}</select></div>
+      <div><label>导师姓名 *</label><input name="mentor_name" required maxlength="40" placeholder="如 主导师 / 某老师"></div>
+      <div><label>导师身份</label><select name="mentor_role">${opts(TRAIL_ROLES, "lead")}</select></div>
+      <div><label>回看日期（可空，默认 30 天后）</label><input name="revisit_due" type="date"></div>
+    </div>
+    <label>一句话精神（≤60 字）*</label><input name="spirit_line" required maxlength="60" placeholder="这次会议最核心的一句">
+    <label>关键判断（1–3 条，每行一条）</label><textarea name="key_judgments" maxlength="2000"></textarea>
+    <label>会后行动（每行一条，自动并入行动清单）</label><textarea name="followup_actions" maxlength="2000"></textarea>
+    <button type="submit">录入会议精神</button>
+  </form>
+  ${trailEntries.length ? `<div class="wrap"><table><tr><th>日期</th><th>导师</th><th>一句话精神</th><th>关键判断</th><th>学生领受</th><th>回看</th><th>来源</th><th></th></tr>${trailRowsHtml}</table></div>` : `<p class="mut">暂无会议精神记录。</p>`}
+  </div>`;
   // —— 成长时间线（v10）——
   const editMsId = toInt(url.searchParams.get("edit_milestone"), 0);
   const editMs = editMsId ? milestones.find((m) => m.id === editMsId) : null;
@@ -3321,6 +3862,77 @@ async function pageClient(env, url, sid) {
   </form>
   ${adviceRows.length ? `<div class="wrap"><table><tr><th>日期</th><th>标题</th><th>正文</th><th></th><th></th></tr>${advRows}</table></div>` : `<p class="mut">暂无建议。</p>`}
   </div>`;
+  // —— 问题方案层（v12）——
+  // 这里只显示学生逐项确认后同步的方案摘要结构化字段；学生日记 / 情绪原文只存学生本机，永不进服务器，本页也不存在任何查看入口。
+  // 合规标记 compliance='pending_review'（待核实）由服务端关键词规则生成，命中经营/食品/就业/税务/身份等事项时出现——待核实只能转律师/会计师/主管部门确认，系统内不得自行改判。
+  const problemRowsHtml = problemShares.map((pr) => `<tr>
+    <td>${esc(String(pr.created_at || "").slice(0, 10))}</td>
+    <td>${esc(PROBLEM_DOMAINS[pr.domain] || pr.domain || "")}</td>
+    <td>${esc(pr.title || "")}${pr.compliance === "pending_review" ? ' <span class="pill" style="background:#fdf6e0;color:#8a6d1a">待核实</span>' : ""}<br><span class="mut">${esc((pr.strategy_summary || "").slice(0, 60))}</span></td>
+    <td><form method="post" style="margin:0;display:flex;gap:6px">
+      <input type="hidden" name="action" value="problem_progress"><input type="hidden" name="id" value="${pr.id}">
+      <select name="progress" style="margin:0">${opts(PROBLEM_PROGRESS, pr.progress || "open")}</select>
+      <button class="small" type="submit">更新</button></form></td>
+    <td>${esc(pr.resolved_note || "—")}</td>
+    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条问题方案？')">
+      <input type="hidden" name="action" value="problem_delete"><input type="hidden" name="id" value="${pr.id}">
+      <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+  const problemCard = `
+  <div class="card"><h2>问题方案（学生确认同步，v12）</h2>
+  <p class="mut">学生用问题解决中心在本地拆解问题、逐项确认后，方案摘要才同步到这里。带「待核实」标记的条目涉及合规事项，须转有资质律师 / 会计师 / 主管部门确认，不得按可执行处理。</p>
+  ${problemShares.length ? `<div class="wrap"><table><tr><th>日期</th><th>领域</th><th>问题与方案摘要</th><th>进度</th><th>解决小结</th><th></th></tr>${problemRowsHtml}</table></div>` : `<p class="mut">暂无学生同步的问题方案。</p>`}
+  </div>`;
+  // —— 课程要求集（v12 课程匹配引擎）——
+  const reqSetCards = reqSets.map((s) => {
+    const rows = (reqRowsBySet[s.id] || []).map((r) => `<tr>
+      <td>${esc(REQ_BLOCKS[r.block] || r.block || "")}</td><td>${esc(r.course_code || "")}</td>
+      <td>${esc(r.course_name || "")}</td><td>${r.credits === null || r.credits === undefined ? "—" : r.credits}</td>
+      <td>${esc(r.min_grade || "—")}</td><td>${esc(r.prereq_codes || "—")}</td>
+      <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条要求？')">
+        <input type="hidden" name="action" value="req_delete"><input type="hidden" name="id" value="${r.id}">
+        <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
+    return `<h3>${esc(s.name)} ${s.verified ? '<span class="pill">已按官方核实</span>' : '<span class="pill" style="background:#fdf6e0;color:#8a6d1a">未核实</span>'}</h3>
+    <p class="mut">来源：${esc(s.source_note || "—")}${s.version_text ? " · 版本：" + esc(s.version_text) : ""} · 共 ${(reqRowsBySet[s.id] || []).length} 条要求
+    <form method="post" style="display:inline;margin:0" onsubmit="return confirm('确定删除这份要求集及其全部要求？')">
+      <input type="hidden" name="action" value="reqset_delete"><input type="hidden" name="id" value="${s.id}">
+      <button class="small danger" type="submit">删除要求集</button></form></p>
+    ${rows ? `<div class="wrap"><table><tr><th>块</th><th>代码</th><th>名称</th><th>学分</th><th>最低成绩</th><th>先修</th><th></th></tr>${rows}</table></div>` : `<p class="mut">暂无要求条目（框架情景：官方要求核实后在此录入）。</p>`}`;
+  }).join("");
+  const reqSetOpts = reqSets.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  const reqsetCard = `
+  <div class="card"><h2>课程要求集（匹配引擎，v12）</h2>
+  <p class="mut">要求按块建模（通识 / 专业先修 / 专业核心 / 选修），学生端 APP 用已修课程逐块算匹配度、缺课清单与预警。要求集必须逐份标来源与版本；未按学校官方核实的要求集请勿勾「已核实」。匹配结果只是规划参考，页面会标注「以学校官方学位审计为准」。</p>
+  ${reqSetCards || `<p class="mut">暂无要求集。</p>`}
+  <h3>新增要求集</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="reqset_add">
+    <div class="row">
+      <div style="flex:2"><label>名称 *</label><input name="name" required maxlength="120" placeholder="如 CSI 本校护理 BSN（情景一）"></div>
+      <div><label>版本 / 日期</label><input name="version_text" maxlength="120" placeholder="如 2026-10-21 intake 版"></div>
+      <div><label>排序</label><input name="sort" type="number" value="${reqSets.length + 1}"></div>
+    </div>
+    <label>来源说明</label><input name="source_note" maxlength="500" placeholder="如 来源：学生 intake《工作簿2》台账，未经学校官网复核">
+    <label style="display:block;margin:4px 0 10px"><input type="checkbox" name="verified" value="1" style="width:auto;margin:0 6px 0 0">已按学校官方来源核实</label>
+    <button type="submit">添加要求集</button>
+  </form>
+  ${reqSets.length ? `<h3>新增要求条目</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="req_add">
+    <div class="row">
+      <div><label>要求集</label><select name="set_id">${reqSetOpts}</select></div>
+      <div><label>块</label><select name="block">${opts(REQ_BLOCKS, "prereq")}</select></div>
+      <div><label>课程代码 *</label><input name="course_code" required maxlength="30" placeholder="如 BIO 350"></div>
+      <div><label>课程名</label><input name="course_name" maxlength="120"></div>
+    </div>
+    <div class="row">
+      <div><label>学分（可空）</label><input name="credits" type="number" step="0.5" min="0" max="60"></div>
+      <div><label>最低成绩（可空）</label><input name="min_grade" maxlength="4" placeholder="如 B（仅官方有明文时填）"></div>
+      <div><label>先修代码（逗号分隔，可空）</label><input name="prereq_codes" maxlength="200" placeholder="如 BIO 150"></div>
+      <div><label>排序</label><input name="sort" type="number" value="0"></div>
+    </div>
+    <button type="submit">添加要求条目</button>
+  </form>` : ""}
+  </div>`;
   // —— 导师沟通（v10）——
   const threadHtml = messageRows.length ? messageRows.map((m) => `
     <div style="margin:8px 0;padding:9px 12px;border-radius:10px;${m.sender === "mentor" ? "background:#eef4f1" : "background:#f6f2ea"}">
@@ -3423,8 +4035,8 @@ async function pageClient(env, url, sid) {
   </form>
   </div>`;
   return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery",
-    hero + goalCard + statusCard + examCard + courseCard + meetingCard +
-    milestoneCard + keyDateCard + actionCard + adviceCard + messageCard + parentCard));
+    hero + goalCard + statusCard + examCard + courseCard + meetingCard + trailCard +
+    milestoneCard + keyDateCard + actionCard + adviceCard + problemCard + reqsetCard + messageCard + parentCard));
 }
 async function postClient(req, env, sidFromPath) {
   const db = env.DB;
@@ -3756,6 +4368,83 @@ async function postClient(req, env, sidFromPath) {
     ).bind(sid, text, nowIso()).run();
     return redirect(back);
   }
+  // —— v12 导师轨迹 / 问题方案 / 课程要求集 ——
+  if (action === "trail_add") {
+    const mentorName = clampStr(fd.get("mentor_name"), 40);
+    const spirit = clampStr(fd.get("spirit_line"), 120);
+    if (!mentorName || !spirit || [...spirit].length > 60) return redirect(back);
+    const role = TRAIL_ROLES[fd.get("mentor_role")] ? String(fd.get("mentor_role")) : "lead";
+    const meetingId = toInt(fd.get("meeting_id"), 0) || null;
+    const dueRaw = clampStr(fd.get("revisit_due"), 10);
+    const due = /^\d{4}-\d{2}-\d{2}$/.test(dueRaw) ? dueRaw
+      : new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+    const followups = clampStr(fd.get("followup_actions"), 2000);
+    await db.prepare(
+      `INSERT INTO mentor_trail_entries(student_id, meeting_id, mentor_name, mentor_role, spirit_line,
+        key_judgments, student_takeaway, takeaway_local, followup_actions, revisit_result, revisit_due,
+        visibility, source, created_at, updated_at)
+       VALUES(?,?,?,?,?, ?, NULL, 0, ?, '', ?, 'plan', 'mentor', ?, ?)`
+    ).bind(sid, meetingId, mentorName, role, spirit, clampStr(fd.get("key_judgments"), 2000),
+      followups, due, nowIso(), nowIso()).run();
+    await insertTrailFollowups(db, sid, followups, nowIso());
+    return redirect(back);
+  }
+  if (action === "trail_delete") {
+    await db.prepare("DELETE FROM mentor_trail_entries WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "problem_progress") {
+    const progress = PROBLEM_PROGRESS[fd.get("progress")] ? String(fd.get("progress")) : "open";
+    await db.prepare("UPDATE student_problem_shares SET progress=?, updated_at=? WHERE id=? AND student_id=?")
+      .bind(progress, nowIso(), toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "problem_delete") {
+    await db.prepare("DELETE FROM student_problem_shares WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
+  if (action === "reqset_add") {
+    const name = clampStr(fd.get("name"), 120);
+    if (!name) return redirect(back);
+    await db.prepare(
+      `INSERT INTO course_requirement_sets(student_id, name, source_note, version_text, verified, sort, created_at, updated_at)
+       VALUES(?,?,?,?,?,?,?,?)`
+    ).bind(sid, name, clampStr(fd.get("source_note"), 500), clampStr(fd.get("version_text"), 120),
+      fd.get("verified") ? 1 : 0, toInt(fd.get("sort"), 0), nowIso(), nowIso()).run();
+    return redirect(back);
+  }
+  if (action === "reqset_delete") {
+    const setId = toInt(fd.get("id"), 0);
+    await db.prepare("DELETE FROM course_requirements WHERE set_id=? AND student_id=?").bind(setId, sid).run();
+    await db.prepare("DELETE FROM course_requirement_sets WHERE id=? AND student_id=?").bind(setId, sid).run();
+    return redirect(back);
+  }
+  if (action === "req_add") {
+    const setId = toInt(fd.get("set_id"), 0);
+    const code = clampStr(fd.get("course_code"), 30);
+    if (!setId || !code) return redirect(back);
+    const setRow = await db.prepare(
+      "SELECT id FROM course_requirement_sets WHERE id=? AND student_id=?").bind(setId, sid).first();
+    if (!setRow) return redirect(back);
+    const crRaw = String(fd.get("credits") ?? "").trim();
+    const credits = crRaw === "" ? null : Number(crRaw);
+    await db.prepare(
+      `INSERT INTO course_requirements(set_id, student_id, block, course_code, course_name, credits, min_grade, prereq_codes, sort, created_at, updated_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(setId, sid, REQ_BLOCKS[fd.get("block")] ? String(fd.get("block")) : "prereq", code,
+      clampStr(fd.get("course_name"), 120),
+      credits === null || Number.isNaN(credits) ? null : credits,
+      clampStr(fd.get("min_grade"), 4) || null, clampStr(fd.get("prereq_codes"), 200) || null,
+      toInt(fd.get("sort"), 0), nowIso(), nowIso()).run();
+    return redirect(back);
+  }
+  if (action === "req_delete") {
+    await db.prepare("DELETE FROM course_requirements WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
+    return redirect(back);
+  }
   return redirect(back);
 }
 
@@ -3826,4 +4515,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, complianceFlag, gradePoints, normCourseCode, parsePrereqCodes, matchRequirements, normProblemInput, normTrailExtras, normRequirementSets, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT, PROBLEM_DOMAINS, PROBLEM_PROGRESS, PROBLEM_RATE_LIMIT, TRAIL_ROLES, TRAIL_SOURCES, REQ_BLOCKS };
