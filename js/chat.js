@@ -100,8 +100,8 @@ function humanCardHTML(note) {
     '<p>写邮件给我们：<b>' + esc(CHAT_CONFIG.email) + '</b></p>' +
     '<p><a class="btn" href="mailto:' + esc(CHAT_CONFIG.email) + '?subject=' + subj + '">✉️ 点这里写邮件</a> <button type="button" class="mini-btn" onclick="if(navigator.clipboard){navigator.clipboard.writeText(\'' + esc(CHAT_CONFIG.email) + '\');}this.textContent=\'已复制 ✓\'">复制邮箱</button></p>' +
     '<p class="hint">邮件主题已带好备注（' + esc(note || "TransferOS咨询") + '），正文写下你的问题即可。如果点按钮没反应，就复制邮箱手动发，主题写上面这行备注。</p>' +
-    '<p class="hint">用网页邮箱的，点这里直接打开写信框（收件人、主题已填好）：</p>' +
-    '<p><a class="mini-btn" style="text-decoration:none;display:inline-block" target="_blank" rel="noopener" href="https://mail.google.com/mail/?view=cm&fs=1&to=' + esc(CHAT_CONFIG.email) + '&su=' + subj + '">用 Gmail 写</a> <a class="mini-btn" style="text-decoration:none;display:inline-block" target="_blank" rel="noopener" href="https://outlook.live.com/mail/0/deeplink/compose?to=' + esc(CHAT_CONFIG.email) + '&subject=' + subj + '">用 Outlook 写</a></p></div>';
+    '<p class="hint">用网页邮箱的，点这里直接打开写信框（收件人已填好，主题照上面备注写）：</p>' +
+    '<p><a class="mini-btn" style="text-decoration:none;display:inline-block" target="_blank" rel="noopener" href="https://mail.google.com/mail/?view=cm&fs=1&to=' + esc(CHAT_CONFIG.email) + '&su=' + subj + '">用 Gmail 写</a> <a class="mini-btn" style="text-decoration:none;display:inline-block" target="_blank" rel="noopener" href="https://mail.qq.com/cgi-bin/qm_share?t=qm_mailme&email=' + esc(CHAT_CONFIG.email) + '">用 QQ 邮箱写</a></p></div>';
 }
 if (typeof module !== "undefined") { module.exports = { faqScore: faqScore, faqFind: faqFind, humanCardHTML: humanCardHTML }; }
 
