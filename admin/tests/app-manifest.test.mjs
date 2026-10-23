@@ -118,5 +118,58 @@ for (const f of ["private.js", "problems.js", "majors.js", "app.js"]) {
 }
 ok(PHTML.includes('src="parent.js?v='), "家长页 parent.js 带 ?v= 版本参数");
 
+section("G. v14.3 iOS 分流：iOS+URL 凭据 → 移除 manifest 链接（URL 快照路线）");
+const IOS_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+const AND_UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36";
+const MAC_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15";
+function setUA(w, ua) { Object.defineProperty(w.navigator, "userAgent", { get: () => ua, configurable: true }); }
+const mlinkOrNull = (w) => { const l = w.document.querySelector('link[rel="manifest"]'); return l ? l.getAttribute("href") : null; };
+function inlineOnly(html, inline, url, ua, extra) {
+  const dom = new JSDOM(html, { url, runScripts: "outside-only" });
+  if (ua) setUA(dom.window, ua);
+  if (extra) extra(dom.window);
+  dom.window.eval(inline);
+  return dom.window;
+}
+{
+  const w = inlineOnly(HTML, S_INLINE, "https://zhuanuc.com/one-on-one-app/?s=fix&k=key-fix", IOS_UA);
+  ok(mlinkOrNull(w) === null, "学生 iOS+带凭据参数：manifest 链接被移除（iOS 以当前 URL 建图标）");
+}
+{
+  const w = inlineOnly(HTML, S_INLINE, "https://zhuanuc.com/one-on-one-app/", IOS_UA);
+  ok(mlinkOrNull(w) === "manifest.json", "学生 iOS 无凭据：manifest 链接保留不动");
+}
+{
+  const w = inlineOnly(HTML, S_INLINE, "https://zhuanuc.com/one-on-one-app/?s=fix&k=key-fix&api=https://api.test", AND_UA);
+  ok(mlinkOrNull(w) === "https://api.test/api/manifest/client/fix?key=key-fix", "学生 Android+带凭据：manifest 路线保留并改指端点");
+}
+{
+  const w = inlineOnly(HTML, S_INLINE, "https://zhuanuc.com/one-on-one-app/?s=fix&k=key-fix", MAC_UA, (win) => {
+    Object.defineProperty(win.navigator, "platform", { get: () => "MacIntel", configurable: true });
+    Object.defineProperty(win.navigator, "maxTouchPoints", { get: () => 5, configurable: true });
+  });
+  ok(mlinkOrNull(w) === null, "学生 iPad 桌面 UA（MacIntel+触控）：同样移除 manifest 链接");
+}
+{
+  const w = inlineOnly(PHTML, P_INLINE, "https://zhuanuc.com/one-on-one-app/parent.html?s=fix&p=pkey-fix", IOS_UA);
+  ok(mlinkOrNull(w) === null, "家长 iOS+带凭据参数：manifest 链接被移除");
+}
+{
+  const w = inlineOnly(PHTML, P_INLINE, "https://zhuanuc.com/one-on-one-app/parent.html", IOS_UA);
+  ok(mlinkOrNull(w) === "manifest-parent.json", "家长 iOS 无凭据：manifest 链接保留不动");
+}
+{
+  const w = inlineOnly(PHTML, P_INLINE, "https://zhuanuc.com/one-on-one-app/parent.html?s=fix&p=pkey-fix&api=https://api.test", AND_UA);
+  ok(mlinkOrNull(w) === "https://api.test/api/manifest/parent/fix?key=pkey-fix", "家长 Android+带凭据：manifest 路线保留并改指端点");
+}
+
+section("H. v14.3 iOS 独立模式 apple meta 齐全（源码断言）");
+for (const [html, title, label] of [[HTML, "专属客户端", "学生"], [PHTML, "家长更新", "家长"]]) {
+  ok(html.includes('<link rel="apple-touch-icon" href="icon-180.png">'), label + "：apple-touch-icon 指向 icon-180.png");
+  ok(html.includes('<meta name="apple-mobile-web-app-capable" content="yes">'), label + "：apple-mobile-web-app-capable=yes");
+  ok(html.includes('<meta name="apple-mobile-web-app-title" content="' + title + '">'), label + "：apple-mobile-web-app-title=" + title);
+  ok(html.includes('<meta name="theme-color" content="#16453a">'), label + "：theme-color=#16453a");
+}
+
 console.log("\n==== app-manifest: " + pass + " passed, " + fail + " failed ====");
 process.exit(fail ? 1 : 0);

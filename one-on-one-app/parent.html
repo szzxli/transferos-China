@@ -11,19 +11,26 @@
 <meta name="theme-color" content="#16453a">
 <link rel="manifest" href="manifest-parent.json">
 <script>
-/* v14.2 个性化 manifest 抢先改指：与学生端同一机制——<head> 里同步执行，赶在
- * 浏览器读取 manifest 链接之前。凭据来源与 parent.js creds() 一致：URL 参数
- * （s 与 p）优先，其次本机已记住的。parent.js 的 personalizeManifest 保留作兜底。 */
+/* v14.3 安装分流：与学生端同一机制、同一根因——个性化 manifest 端点跨源
+ * （Worker 域名 vs zhuanuc.com）会被浏览器忽略，iOS 又主要按当前页 URL +
+ * apple 系 meta 建主屏幕图标。iOS + 本页 URL 带凭据参数（s/p）→ 移除
+ * <link rel="manifest">，让 iOS 以当前完整 URL 建图标、点图标直达；非 iOS
+ * 沿用改指逻辑。parent.js 的 personalizeManifest 仍作兜底（空守卫已备）。 */
 (function () {
   try {
     var q = new URLSearchParams(location.search);
-    var s = q.get("s") || localStorage.getItem("oop_parent_id") || "";
-    var k = q.get("p") || localStorage.getItem("oop_parent_key") || "";
+    var urlS = q.get("s") || "";
+    var urlK = q.get("p") || "";
+    var ua = navigator.userAgent || "";
+    var isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    var link = document.querySelector('link[rel="manifest"]');
+    if (isIOS && urlS && urlK) { if (link) link.remove(); return; }
+    var s = urlS || localStorage.getItem("oop_parent_id") || "";
+    var k = urlK || localStorage.getItem("oop_parent_key") || "";
     var api = (q.get("api") || localStorage.getItem("oop_parent_api") || "https://transferos-admin.szzxli711.workers.dev").replace(/\/+$/, "");
     if (!s || !k) return;
-    var link = document.querySelector('link[rel="manifest"]');
     if (link) link.href = api + "/api/manifest/parent/" + encodeURIComponent(s) + "?key=" + encodeURIComponent(k);
-  } catch (e) { /* 抢先改指失败不影响主流程 */ }
+  } catch (e) { /* 抢先处理失败不影响主流程 */ }
 })();
 </script>
 <script>window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();window.__bipEvent=e;});</script>
