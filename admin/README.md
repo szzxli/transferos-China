@@ -28,6 +28,7 @@
 1. `transferos-admin` Worker → **Settings** → **Variables and Secrets**
 2. **Add** 一条 Secret：变量名 **`ADMIN_KEY`**，值就是你自己定的后台登录密码（比如一串字母数字，越长越好）
 3. 再 **Add** 一条 Secret：变量名 **`LEAD_API_TOKEN`**，值是另一串随机字符（线索管家 bot 专用，只读接口凭证，跟登录密码不要用同一串；设好后把这串发给 Noor 配置提醒）
+4. （可选）再 **Add** 一条 Secret：变量名 **`RESEND_API_KEY`**，值是 Resend 发信服务的 API 密钥（在 Cloudflare 控制台以 Secret 形式配置，不要写进代码或 wrangler.toml）；配好后，通知偏好为「邮箱」且留有邮箱的导师，其发件箱通知由系统自动发邮件（发件人 info@zhuanuc.com），未配置时维持创始人人工转达
 3. 保存后去 **Deployments** 点 **Redeploy**（或等下一次自动部署）让密码生效
 
 ### 4. 打开后台

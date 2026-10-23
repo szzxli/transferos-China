@@ -675,16 +675,123 @@ async function logEvent(db, studentId, eventType, objectId, summary) {
     ).bind(studentId, eventType, objectId || null, clampStr(summary, 200), nowIso()).run();
   } catch (e) { /* 事件流是追踪层，写入失败不阻断主流程 */ }
 }
+/* ===== v16：系统自动邮件通知（Resend）=====
+ * 口径：导师 notify_channel = 'email' 且 contact_email 非空时，发件箱通知生成后由系统
+ * 自动发邮件（发件人 info@zhuanuc.com，域名 MX 在腾讯企业邮箱，回复自然回到 info@），
+ * 成功即把该行置 sent + auto_sent=1；其余渠道（微信/电话/后台呈现）行为完全不变，
+ * 仍走 queued → 创始人人工转达。发信是旁路：未配 RESEND_API_KEY 静默跳过、发送失败
+ * 只记 mail_log 并保持 queued，任何异常都不得影响留言/问题等主流程。 */
+const RESEND_API_URL = "https://api.resend.com/emails";
+const MAIL_FROM = "TransferOS <info@zhuanuc.com>";
+const MENTOR_WORKBENCH_URL = "https://zhuanuc.com/one-on-one-app/mentor.html";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/* 自动邮件的收件地址：导师通知偏好明确为 email 且邮箱有效才返回地址，否则 null。 */
+function mentorMailTo(staff) {
+  if (!staff) return null;
+  if (String(staff.notify_channel || "") !== "email") return null;
+  const to = String(staff.contact_email || "").trim();
+  return EMAIL_RE.test(to) ? to : null;
+}
+/* 通知邮件内容（纯函数）：只含元数据（学生名/事项摘要/时间）+ 工作台链接，
+ * 绝不带留言正文等私密内容；签名只写 TransferOS，不出现真人姓名。 */
+function buildOutboxMail(eventType, studentName, summary, ts) {
+  const name = String(studentName || "").trim() || "学生";
+  const subjects = {
+    student_message: "【TransferOS】" + name + " 发来一条留言",
+    problem_escalated: "【TransferOS】" + name + " 把一个问题升级给你",
+    trail_revisit: "【TransferOS】" + name + " 有新的轨迹动态待回看",
+  };
+  const subject = subjects[eventType] || ("【TransferOS】" + name + " 有一条新通知");
+  const text = [
+    "学生：" + name,
+    "事项：" + (summary || ""),
+    "时间：" + (ts || ""),
+    "",
+    "请登录导师工作台查看并回复：",
+    MENTOR_WORKBENCH_URL,
+    "",
+    "— TransferOS",
+  ].join("\n");
+  const html = "<div style=\"font-family:sans-serif;font-size:14px;line-height:1.7;color:#222\">"
+    + "<p>学生：" + esc(name) + "<br>事项：" + esc(summary || "") + "<br>时间：" + esc(ts || "") + "</p>"
+    + "<p>请登录导师工作台查看并回复：<br><a href=\"" + MENTOR_WORKBENCH_URL + "\">" + MENTOR_WORKBENCH_URL + "</a></p>"
+    + "<p>— TransferOS</p></div>";
+  return { subject, text, html };
+}
+/* 发信（Resend）：返回 { ok:true, id } / { ok:false, error } / 未配密钥时
+ * { ok:false, skipped:true, error:"mail_not_configured" }。自身不抛异常。 */
+async function sendResendMail(env, to, subject, text, html) {
+  const key = env && env.RESEND_API_KEY;
+  if (!key) return { ok: false, skipped: true, error: "mail_not_configured" };
+  try {
+    const ctrl = typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined;
+    const res = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: MAIL_FROM, to: [to], subject, text, html }),
+      signal: ctrl,
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      return { ok: false, error: "resend_http_" + res.status + (t ? ": " + t.slice(0, 300) : "") };
+    }
+    const data = await res.json().catch(() => null);
+    return { ok: true, id: data && data.id ? String(data.id) : "" };
+  } catch (e) {
+    return { ok: false, error: "fetch_error: " + (e && e.message ? e.message : String(e)) };
+  }
+}
+/* 邮件发送日志（排查用；写日志失败同样不得影响主流程）。 */
+async function logMailRow(db, outboxId, to, subject, status, error) {
+  try {
+    await db.prepare(
+      `INSERT INTO mail_log(outbox_id, to_addr, subject, status, error, created_at) VALUES(?,?,?,?,?,?)`
+    ).bind(outboxId || null, clampStr(to, 200), clampStr(subject, 300), status, error ? clampStr(error, 500) : null, nowIso()).run();
+  } catch (e) { /* 旁路日志，忽略 */ }
+}
+/* 发件箱生成后的自动发送尝试：非 email 渠道直接返回；成功置 sent + auto_sent=1，
+ * 失败保持 queued 并记 mail_log。全程 try/catch 兜底，绝不向上抛。 */
+async function maybeAutoSendOutboxMail(env, db, mentor, outboxId, studentId, eventType, summary, ts) {
+  try {
+    const to = mentorMailTo(mentor);
+    if (!to) return;
+    if (!env || !env.RESEND_API_KEY) {
+      console.log("[mail] RESEND_API_KEY 未配置，跳过自动发送 outbox#" + outboxId);
+      return;
+    }
+    let stuName = "";
+    try {
+      const s = await db.prepare("SELECT name FROM students WHERE id = ?").bind(studentId).first();
+      if (s && s.name) stuName = s.name;
+    } catch (e) { /* 学生名取不到时模板以「学生」兜底 */ }
+    const mail = buildOutboxMail(eventType, stuName, summary, ts);
+    const r = await sendResendMail(env, to, mail.subject, mail.text, mail.html);
+    if (r.ok) {
+      await db.prepare(
+        `UPDATE notifications_outbox SET status = 'sent', auto_sent = 1, updated_at = ? WHERE id = ? AND status = 'queued'`
+      ).bind(nowIso(), outboxId).run();
+      await logMailRow(db, outboxId, to, mail.subject, "sent", null);
+    } else {
+      await logMailRow(db, outboxId, to, mail.subject, "failed", r.error);
+    }
+  } catch (e) {
+    console.log("[mail] 自动发送异常 outbox#" + outboxId + ": " + (e && e.message ? e.message : String(e)));
+  }
+}
 /* 发件箱写入（仅元数据）。channel 按导师通知偏好与实际联系方式解析；
- * 本期无发送通道：状态只到 queued（待转达），由创始人在后台标 sent、导师回复后自动 responded。 */
-async function pushOutbox(db, mentor, studentId, eventType, summary, refType, refId) {
+ * email 渠道导师（notify_channel=email 且有邮箱）在生成后由系统自动发信（v16，见上），
+ * 其余仍只到 queued（待转达），由创始人在后台标 sent、导师回复后自动 responded。 */
+async function pushOutbox(env, db, mentor, studentId, eventType, summary, refType, refId) {
   if (!mentor) return null;
   const ts = nowIso();
+  const cleanSummary = clampStr(summary, 200);
   const r = await db.prepare(
     `INSERT INTO notifications_outbox(mentor_staff_id, student_id, channel, event_type, summary, status, ref_type, ref_id, created_at, updated_at)
      VALUES(?,?,?, ?, ?, 'queued', ?, ?, ?, ?)`
-  ).bind(mentor.id, studentId, mentorChannel(mentor), eventType, clampStr(summary, 200), refType || null, refId || null, ts, ts).run();
-  return r.meta.last_row_id;
+  ).bind(mentor.id, studentId, mentorChannel(mentor), eventType, cleanSummary, refType || null, refId || null, ts, ts).run();
+  const outboxId = r.meta.last_row_id;
+  await maybeAutoSendOutboxMail(env, db, mentor, outboxId, studentId, eventType, cleanSummary, ts);
+  return outboxId;
 }
 /* 家长成就（方案层事实事件）：已完成里程碑（成长时间线条目本身即已发生的事实）+
  * 已完成行动 + 已解决问题。只出标题与日期文本，绝不带成绩/GPA/课程/考试明细。 */
@@ -1090,8 +1197,9 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     body TEXT, feeling_tag TEXT, created_at TEXT, withdrawn_at TEXT)`,
   // 通知发件箱（只记元数据：收件导师/渠道/事件摘要/状态，不含任何私密正文）。
-  // status: queued 待转达 / sent 已转达 / responded 导师已回复。本期无邮件发送通道：
-  // queued 即「已生成待创始人按登记联系方式转达」，不等于已触达导师本人（口径见交付标准附则）。
+  // status: queued 待转达 / sent 已转达 / responded 导师已回复。queued 即「已生成待转达」，
+  // 不等于已触达导师本人（口径见交付标准附则）；v16 起 email 渠道导师由系统自动发信，
+  // 成功置 sent 且 auto_sent=1（迁移补列）。
   `CREATE TABLE IF NOT EXISTS notifications_outbox(
     id INTEGER PRIMARY KEY AUTOINCREMENT, mentor_staff_id INTEGER, student_id INTEGER,
     channel TEXT, event_type TEXT, summary TEXT, status TEXT DEFAULT 'queued',
@@ -1108,6 +1216,12 @@ const DDL = [
   `CREATE TABLE IF NOT EXISTS student_topic_mentors(
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, staff_id INTEGER,
     topic TEXT, created_at TEXT, UNIQUE(student_id, staff_id))`,
+  // ===== v16 新增表：邮件发送日志 =====
+  // 系统自动邮件（Resend）的发送尝试记录，供失败排查。outbox_id 关联发件箱行
+  // （通道测试邮件为 NULL）；status: sent / failed；只记收件地址与主题等元数据。
+  `CREATE TABLE IF NOT EXISTS mail_log(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, outbox_id INTEGER,
+    to_addr TEXT, subject TEXT, status TEXT, error TEXT, created_at TEXT)`,
 ];
 // v10 迁移：students 补愿景（vision_text）与导师寄语（mentor_message / mentor_message_at）列，幂等
 
@@ -1175,6 +1289,10 @@ const MESSAGE_MIGRATIONS = [
   "ALTER TABLE student_messages ADD COLUMN mentor_id INTEGER",
   "ALTER TABLE student_messages ADD COLUMN category TEXT",
 ];
+// v16 迁移：发件箱补 auto_sent（1 = 系统邮件自动发送置 sent，区别于创始人手动标记），同样幂等
+const OUTBOX_MIGRATIONS = [
+  "ALTER TABLE notifications_outbox ADD COLUMN auto_sent INTEGER DEFAULT 0",
+];
 let schemaReady = false;
 /* —— 性能优化（2026-10-22）：ensureSchema 快速通道 ——
  * 原实现每个冷 isolate 串行执行全部 69 条建表/迁移语句（35 DDL + 34 迁移），
@@ -1187,7 +1305,7 @@ let schemaReady = false;
 const MIGRATION_GROUPS = () => [
   STAFF_MIGRATIONS, TASK_MIGRATIONS, LEAD_MIGRATIONS, CONTENT_MIGRATIONS,
   GOAL_MIGRATIONS, STUDENT_MIGRATIONS, STAFF_V13_MIGRATIONS, KEYDATE_MIGRATIONS,
-  MESSAGE_MIGRATIONS,
+  MESSAGE_MIGRATIONS, OUTBOX_MIGRATIONS,
 ];
 function schemaStmtDone(sql, tables, indexes) {
   const alt = sql.match(/ALTER\s+TABLE\s+([A-Za-z0-9_]+)\s+ADD\s+COLUMN\s+([A-Za-z0-9_]+)/i);
@@ -1410,6 +1528,39 @@ async function handleApi(req, env, url) {
       weekly,
       outbox: outboxCounts,
     });
+  }
+
+  // v16：系统邮件通道实测入口（后台登录会话鉴权，非 Bearer；与自动通知共用同一发信模块）。
+  // body { to } → 发一封通道测试邮件，返回 Resend 的 id 或错误；未配 RESEND_API_KEY 时
+  // 明确返回 mail_not_configured，不静默成功。发送结果同步记 mail_log（outbox_id 为 NULL）。
+  if (p === "/api/admin/mail/test") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    if (!(await isAuthed(req, env))) return jsonResp(req, { ok: false, error: "unauthorized" }, 401);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    const to = clampStr(body && body.to, 120);
+    if (!EMAIL_RE.test(to)) return jsonResp(req, { ok: false, error: "bad email" }, 400);
+    if (!env.RESEND_API_KEY) return jsonResp(req, { ok: false, error: "mail_not_configured" }, 503);
+    await ensureSchema(db);
+    const ts = nowIso();
+    const subject = "【TransferOS】系统邮件通道测试";
+    const text = [
+      "这是一封系统邮件通道测试邮件，由 TransferOS 后台发出，用于验证自动通知邮件能否送达。",
+      "时间：" + ts,
+      "",
+      "收到本邮件即表示邮件通道已打通，无需回复。",
+      "",
+      "— TransferOS",
+    ].join("\n");
+    const html = "<div style=\"font-family:sans-serif;font-size:14px;line-height:1.7;color:#222\">"
+      + "<p>这是一封系统邮件通道测试邮件，由 TransferOS 后台发出，用于验证自动通知邮件能否送达。</p>"
+      + "<p>时间：" + esc(ts) + "</p>"
+      + "<p>收到本邮件即表示邮件通道已打通，无需回复。</p>"
+      + "<p>— TransferOS</p></div>";
+    const r = await sendResendMail(env, to, subject, text, html);
+    await logMailRow(db, null, to, subject, r.ok ? "sent" : "failed", r.ok ? null : r.error);
+    if (!r.ok) return jsonResp(req, { ok: false, error: r.error || "send failed" }, 502);
+    return jsonResp(req, { ok: true, id: r.id, to });
   }
 
   // 线索自动评级处理入口（线索管家专用，Bearer LEAD_API_TOKEN）：
@@ -1661,7 +1812,7 @@ async function handleApi(req, env, url) {
     await logEvent(db, student.id, "message_student", r.meta.last_row_id,
       category ? "学生提交课程数据纠错" : "学生给导师留言");
     if (mentor) {
-      await pushOutbox(db, mentor, student.id, "student_message",
+      await pushOutbox(env, db, mentor, student.id, "student_message",
         (student.name || "学生") + (category ? " 提交了一条课程数据纠错" : " 发来一条留言"), "message", r.meta.last_row_id);
     }
     return jsonResp(req, {
@@ -1762,7 +1913,7 @@ async function handleApi(req, env, url) {
     if (progress === "escalated" && row.progress !== "escalated") {
       await logEvent(db, student.id, "problem_escalated", pid, "问题升级导师：" + (row.title || ""));
       if (mentor) {
-        await pushOutbox(db, mentor, student.id, "problem_escalated",
+        await pushOutbox(env, db, mentor, student.id, "problem_escalated",
           (student.name || "学生") + " 把问题升级给你：" + (row.title || ""), "problem", pid);
       }
     }
@@ -1816,7 +1967,7 @@ async function handleApi(req, env, url) {
       if (student.mentor_id) {
         const mentor = await resolveStudentMentor(db, student);
         if (mentorNotifiable(mentor)) {
-          await pushOutbox(db, mentor, student.id, "trail_revisit",
+          await pushOutbox(env, db, mentor, student.id, "trail_revisit",
             (student.name || "学生") + " 新增导师轨迹待回看：" + (e.spirit_line || e.mentor_name || ""), "trail", r.meta.last_row_id);
         }
       }
@@ -4312,9 +4463,11 @@ async function postStaff(req, env) {
 }
 
 // ===== 导师通知发件箱（v13）=====
-/* 诚实口径：当前未配置邮件发送通道，通知实际触达 = 本发件箱队列 + 后台醒目呈现 +
- * 创始人每日简报（含 summary.outbox 计数），由创始人用登记的联系方式转达。
- * 状态：queued 待转达 / sent 创始人已转达（手动标记）/ responded 导师已回复（系统自动推进）。
+/* 触达口径：email 渠道导师（notify_channel=email 且有邮箱）在配置 RESEND_API_KEY 后由
+ * 系统自动发邮件（v16，状态显示「已转达（系统邮件）」）；其余渠道的通知实际触达 =
+ * 本发件箱队列 + 后台醒目呈现 + 创始人每日简报（含 summary.outbox 计数），由创始人用
+ * 登记的联系方式转达。
+ * 状态：queued 待转达 / sent 已转达 / responded 导师已回复（系统自动推进）。
  * 本页与 summaries 只记元数据（收件导师、渠道、事件摘要、时间），不含私密正文。 */
 async function pageOutbox(env, url) {
   const db = env.DB;
@@ -4335,7 +4488,7 @@ async function pageOutbox(env, url) {
     <td>${esc(NOTIFY_CHANNELS[o.channel] || o.channel || "—")}</td>
     <td>${esc(EVENT_TYPES[o.event_type] || o.event_type || "")}</td>
     <td>${esc(o.summary || "")}</td>
-    <td>${o.status === "queued" ? '<span class="warn">待转达</span>' : o.status === "sent" ? '<span class="ok">已转达</span>' : '<span class="ok">已回复</span>'}</td>
+    <td>${o.status === "queued" ? '<span class="warn">待转达</span>' : o.status === "sent" ? (o.auto_sent ? '<span class="ok">已转达（系统邮件）</span>' : '<span class="ok">已转达</span>') : '<span class="ok">已回复</span>'}</td>
     <td>${o.status === "queued" ? `<form method="post" style="margin:0">
       <input type="hidden" name="action" value="outbox_mark_sent"><input type="hidden" name="id" value="${o.id}">
       <button class="small" type="submit">标记已转达</button></form>` : ""}</td></tr>`).join("");
@@ -4365,7 +4518,7 @@ async function pageOutbox(env, url) {
   }
   const body = `
   <div class="card"><h2>导师通知发件箱（v13）</h2>
-  <p class="mut">现状触达：未配置邮件发送通道——通知 = 发件箱队列 + 本页呈现 + 创始人每日简报计数，创始人按登记联系方式转达后手动标记「已转达」。
+  <p class="mut">现状触达：通知偏好为邮箱且留有邮箱的导师，在系统配好发信密钥后由系统自动发邮件（状态「已转达（系统邮件）」）；其余渠道仍为发件箱队列 + 本页呈现 + 创始人每日简报计数，创始人按登记联系方式转达后手动标记「已转达」。
   queued 表示待转达，不等于已通知到人。导师在工作台或后台回复后自动推进为「已回复」。</p>
   <p>待转达 <b>${counts.queued}</b> ｜ 已转达 <b>${counts.sent}</b> ｜ 已回复 <b>${counts.responded}</b></p>
   <div class="wrap"><table><tr><th>#</th><th>时间</th><th>收件导师</th><th>学生</th><th>渠道</th><th>事件</th><th>摘要</th><th>状态</th><th></th></tr>
@@ -5589,7 +5742,7 @@ async function postClient(req, env, sidFromPath) {
       const mentor = await db.prepare("SELECT * FROM staff WHERE id=?").bind(stuM.mentor_id).first();
       if (mentorNotifiable(mentor)) {
         const stuName = await db.prepare("SELECT name FROM students WHERE id=?").bind(sid).first();
-        await pushOutbox(db, mentor, sid, "trail_revisit",
+        await pushOutbox(env, db, mentor, sid, "trail_revisit",
           ((stuName && stuName.name) || "学生") + " 新增导师轨迹待回看：" + spirit, "trail", tr.meta.last_row_id);
       }
     }
@@ -5733,4 +5886,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, complianceFlag, gradePoints, normCourseCode, parsePrereqCodes, matchRequirements, normProblemInput, normTrailExtras, normRequirementSets, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT, PROBLEM_DOMAINS, PROBLEM_PROGRESS, PROBLEM_RATE_LIMIT, TRAIL_ROLES, TRAIL_SOURCES, REQ_BLOCKS, FEELING_TAGS, KEY_DATE_KINDS, MENTOR_STATUSES, NOTIFY_CHANNELS, OUTBOX_STATUSES, EVENT_TYPES, PARENT_NOTE_MAX_LEN, genMentorKey, mentorNotifiable, mentorContacts, computeUpcomingReminders, buildAchievements };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, complianceFlag, gradePoints, normCourseCode, parsePrereqCodes, matchRequirements, normProblemInput, normTrailExtras, normRequirementSets, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT, PROBLEM_DOMAINS, PROBLEM_PROGRESS, PROBLEM_RATE_LIMIT, TRAIL_ROLES, TRAIL_SOURCES, REQ_BLOCKS, FEELING_TAGS, KEY_DATE_KINDS, MENTOR_STATUSES, NOTIFY_CHANNELS, OUTBOX_STATUSES, EVENT_TYPES, PARENT_NOTE_MAX_LEN, genMentorKey, mentorNotifiable, mentorContacts, mentorMailTo, buildOutboxMail, computeUpcomingReminders, buildAchievements };

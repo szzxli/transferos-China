@@ -1,6 +1,8 @@
 name = "transferos-admin"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
+# 可选 Secret（在 Cloudflare 控制台 Settings → Variables and Secrets 配置，切勿把值写进本文件）：
+# RESEND_API_KEY —— 系统自动邮件通知（Resend）的发信密钥；配好后，通知偏好为邮箱的导师由系统自动发信，未配置则维持人工转达。
 
 [[d1_databases]]
 binding = "DB"
