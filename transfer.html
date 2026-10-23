@@ -6,7 +6,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>转学指南 · TransferOS-China</title>
-<link rel="stylesheet" href="css/app.css?v=15">
+<link rel="stylesheet" href="css/app.css?v=16">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#132625">
 </head>
@@ -17,6 +17,13 @@
 </div></div>
 <div class="page">
 <div id="evalBanner"></div>
+<div class="card" id="routeCard">
+  <div class="section-title">🧭 先对号入座：你现在在哪一步？</div>
+  <p>· <b>还没入学社区大学</b>，正在比较纯线上还是赴美线下 → <button class="btn ghost" type="button" onclick="goStep('guide')">先看全程五步 + 方式对比</button></p>
+  <p>· <b>已在社区大学在读</b>，准备申请 UC → <button class="btn ghost" type="button" onclick="goStep('transfer')">看申请季时间线</button></p>
+  <p>· <b>已经被 UC 录取</b> → <a class="btn ghost" href="https://szzxli.github.io/UC-Course/web/transfer.html">去导入转学分（UC 智选）→</a></p>
+  <p class="hint">还不确定这条通道适不适合？先去<a href="assess.html">评估选校页</a>做免费评估。上面第三个链接跳到 szzxli.github.io，是我们自己的工具站地址。</p>
+</div>
 <section class="step" id="step-transfer">
   <button type="button" class="step-head" data-step="transfer" data-page="transfer">
     <span class="step-num">1</span><span class="step-title">转学时间线</span><span class="step-check" id="check-transfer"></span><span class="step-arrow">▾</span>
@@ -30,25 +37,19 @@
   </div>
 
   <div class="card">
-    <div class="section-title">🎓 已被 UC 录取？</div>
-    <p class="hint">一键导入你的 CC 转学分，看看入学后还差什么课、怎么排四年计划。</p>
-    <a class="btn" href="https://szzxli.github.io/UC-Course/web/transfer.html">去 UC 智选导入转学分 →</a>
-  </div>
-
-  <div class="card">
-    <div class="section-title">🛤️ 6 步时间线（以入学当年为 T 年）</div>
+    <div class="section-title">📅 申请季时间线（全程第 4–5 步的展开 · 以 UC 入学当年为 T 年）</div>
     <div class="timeline" id="tl"></div>
   </div>
 
   <div class="card">
     <div class="section-title">✍️ 文书提醒（PIQ）</div>
-    <p>· UC 个人陈述 <b>PIQ：8 选 4</b>，每篇 <b>350 词上限</b></p>
-    <p>· 建议 T 年 8–10 月起草，11 月网申前定稿</p>
+    <p>· PIQ 是 UC 申请的个人洞察问题（文书）。<b>转学生规则：1 道必答（讲你为目标专业做了哪些准备）+ 另外 7 道里选 3 道</b>，每篇 <b>350 词上限</b>。（“8 选 4”是大一新生的规则，别弄混。）</p>
+    <p>· 建议 T-1 年 8–10 月起草，11 月网申前定稿</p>
     <p class="hint">写你真实的转学动机和课程经历，不要编造——招生官每年看几十万份。</p>
   </div>
 
   <div class="risk">
-    <h3>🛂 F-1 签证（第 6 步前必读）</h3>
+    <h3>🛂 F-1 签证（全程第 5 步 · 申请季最后一个节点，先读这条）</h3>
     <p>纯线上读完 CC 后申请 F-1，面签官会重点审查两年网课的学习真实性。完整说明见 <a href="transfer.html#sec-visa">入学指南 · 签证风险</a>。</p>
   </div>
 
@@ -56,6 +57,13 @@
     <div class="section-title">🔗 课程映射工具</div>
     <p class="hint">申请前最后核对一次：你的 CC 课程能转成目标 UC 的哪些学分。</p>
     <a class="btn ghost" href="https://szzxli.github.io/transfer-os/mobile/www/">打开 TransferOS 课程映射 →</a>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🎓 已被 UC 录取？</div>
+    <p class="hint">一键导入你的 CC 转学分，看看入学后还差什么课、怎么排四年计划。</p>
+    <a class="btn" href="https://szzxli.github.io/UC-Course/web/transfer.html">去导入转学分（UC 智选）→</a>
+    <p class="hint">链接跳到 szzxli.github.io，是我们自己的工具站地址。</p>
   </div>
 
   <div class="disclaimer">
@@ -72,15 +80,42 @@
   </button>
   <div class="step-body" id="body-guide" hidden>
 
+  <div class="card">
+    <div class="section-title">⚖️ 先选方式：纯线上 vs 赴美线下</div>
+    <table class="cmp">
+      <tr><th></th><th>💻 纯线上</th><th>✈️ 赴美线下</th></tr>
+      <tr><td><b>上课地点</b></td><td>在国内上网课</td><td>到加州校园上课</td></tr>
+      <tr><td><b>签证</b></td><td>不需要</td><td>入学前办 F-1 学生签证（学校先发 I-20）</td></tr>
+      <tr><td><b>资金证明</b></td><td>不需要</td><td>需要（De Anza 约 $27,189/年，见材料清单）</td></tr>
+      <tr><td><b>医疗保险</b></td><td>不强制</td><td>强制购买学校保险</td></tr>
+      <tr><td><b>花钱大头</b></td><td>主要是学费</td><td>学费 + 生活费 + 保险</td></tr>
+      <tr><td><b>后面的衔接</b></td><td>拿到 UC 录取后办 F-1，面签会重点审查这两年网课的学习真实性（先读下方签证风险框，别等到第 5 步才看）</td><td>已持 F-1 在美就读，衔接顺畅</td></tr>
+      <tr><td><b>适合谁</b></td><td>想先在国内低成本读完两年、还没定死要不要赴美</td><td>确定赴美、预算充足、想尽早适应环境</td></tr>
+    </table>
+    <p class="hint">两种方式修的学分一样算：UC 判断学分看课程本身，不看上课方式。差别在成本、签证和衔接，不在学分。</p>
+  </div>
 
   <div class="card">
-    <div class="section-title">🛤️ 五步时间线（按你的方式看）</div>
+    <div class="section-title">📖 这页的词，先说清</div>
+    <p>· <b>CC</b> = 社区大学（Community College），这条通道的前两年在这里读。</p>
+    <p>· <b>IGETC</b> = 通识教育清单，照着修可满足 UC 的通识要求（新入学逐步改用 Cal-GETC，以 ASSIST 当年清单为准）。</p>
+    <p>· <b>Major Prep</b> = 专业先修课：目标专业要求你转学前先修完的课。</p>
+    <p>· <b>TAG</b> = 保录计划（Transfer Admission Guarantee），达标即保证录取，见第 4 步。</p>
+    <p>· <b>PIQ</b> = 个人洞察问题，UC 申请要写的文书，见第 1 节文书提醒。</p>
+    <p>· <b>I-20</b> = 学校签发的留学资格文件，办 F-1 学生签证要用。</p>
+    <p>· <b>GPA</b> = 成绩平均绩点，满分 4.0。</p>
+    <p>· <b>T 年</b> = 你入学 UC 的那一年，T-1 年就是入学前一年。</p>
+  </div>
+
+
+  <div class="card">
+    <div class="section-title">🛤️ 全程五步（从申请社区大学到入学 UC）</div>
     <div class="timeline">
-      <div class="tl-step"><div class="tl-num">1</div><div class="tl-body"><b>申请社区大学（提前 3-6 个月）</b><div class="hint">De Anza 或 Foothill 在线申请 + 高中成绩单（英文盖章版）+ 语言成绩。<br>💻 纯线上：拿入学确认即可开学，无需签证。<br>✈️ 赴美线下：学校发 I-20 → 准备 $27,189/年资金证明 → 申请 F-1 签证。</div></div></div>
-      <div class="tl-step"><div class="tl-num">2</div><div class="tl-body"><b>选课：IGETC + Major Prep（第 1-4 学期）</b><div class="hint">通识课（IGETC）+ 目标专业的先修课（Major Preparation）。选课直接决定你能转哪所 UC、什么专业——<a href="https://szzxli.github.io/transfer-os/mobile/www/">用 TransferOS 查课程映射</a>。</div></div></div>
-      <div class="tl-step"><div class="tl-num">3</div><div class="tl-body"><b>保持 GPA（全程）</b><div class="hint">UCB/UCLA 热门专业转学 GPA 门槛高，每学期都算数，没有"水过去"的学期。</div></div></div>
-      <div class="tl-step"><div class="tl-num">4</div><div class="tl-body"><b>申请 UC（每年 11 月）</b><div class="hint">UC 申请季为入学前一年的 11 月。TAG（转学保证协议）部分 UC/专业适用，提前查。</div></div></div>
-      <div class="tl-step"><div class="tl-num">5</div><div class="tl-body"><b>F-1 签证（拿到 UC 录取后）</b><div class="hint">凭 UC 录取 + I-20 面签。💻 纯线上的同学注意：⚠️ 先读下面的签证风险框。</div></div></div>
+      <div class="tl-step"><div class="tl-num">1</div><div class="tl-body"><b>申请社区大学（提前 3-6 个月）</b><div class="hint">De Anza 或 Foothill 在线申请 + 高中成绩单（英文盖章版）+ 语言成绩。<br>💻 纯线上：拿入学确认即可开学，无需签证。<br>✈️ 赴美线下：学校发 I-20 → 准备 $27,189/年资金证明（De Anza 当前标准）→ 申请 F-1 签证。<br>↕ 两种方式的完整对比在本节顶部表格。</div></div></div>
+      <div class="tl-step"><div class="tl-num">2</div><div class="tl-body"><b>选课：IGETC + Major Prep（第 1-4 学期）</b><div class="hint">通识课（IGETC）+ 目标专业的先修课（Major Preparation）。选课直接决定你能转哪所 UC、什么专业——<a href="https://szzxli.github.io/transfer-os/mobile/www/">用 TransferOS 查课程映射</a>；官方对应关系查 <a href="https://www.assist.org" target="_blank" rel="noopener">ASSIST（www.assist.org）</a>。</div></div></div>
+      <div class="tl-step"><div class="tl-num">3</div><div class="tl-body"><b>保持 GPA（全程）</b><div class="hint">先分清两条线：UC 转学的<b>最低资格线是 GPA 2.4（非居民 2.8）</b>——那只是“能申请”的线。热门校、热门专业的<b>实际录取区间高得多</b>，UC 每年公布各校录取学生的 GPA 数据，查 <a href="https://admission.universityofcalifornia.edu/admission-requirements/transfer-requirements/preparing-to-transfer/transfer-gpa.html" target="_blank" rel="noopener">UC 官网转学 GPA 页</a>。每学期都算数，没有"水过去"的学期。</div></div></div>
+      <div class="tl-step"><div class="tl-num">4</div><div class="tl-body"><b>申请 UC（T-1 年 10–11 月）</b><div class="hint">UC 申请季为入学前一年的 10 月 1 日 – 11 月 30 日。TAG（保录计划）：6 所 UC 参与，课程和 GPA 达标即保证录取，各校门槛 2.7–3.6 不等，<a href="https://admission.universityofcalifornia.edu/admission-requirements/transfer-requirements/uc-transfer-programs/transfer-admission-guarantee-tag.html" target="_blank" rel="noopener">去 UC 官网查 TAG</a>；UCB / UCLA / UCSD 不参与 TAG。</div></div></div>
+      <div class="tl-step"><div class="tl-num">5</div><div class="tl-body"><b>F-1 签证（拿到 UC 录取后）</b><div class="hint">凭 UC 录取 + I-20 面签。💻 纯线上的同学注意：⚠️ 先读下面的签证风险框。具体日期节点见第 1 节「申请季时间线」（本步的展开）。</div></div></div>
     </div>
   </div>
 
@@ -90,7 +125,7 @@
       <li>高中成绩单（英文版，学校盖章）</li>
       <li>护照（有效期覆盖整个学习计划）</li>
       <li>Duolingo / 托福成绩单</li>
-      <li>✈️ 赴美线下：资金证明（De Anza 要求 $27,189/年银行证明，无例外）+ 强制医疗保险</li>
+      <li>✈️ 赴美线下：资金证明（De Anza 官网当前估算总成本 $27,189/年，银行证明不得低于此数、无例外；金额每年调整，查 <a href="https://www.deanza.edu/international/future-students/cost.html" target="_blank" rel="noopener">De Anza 官网费用页</a>）+ 强制医疗保险</li>
       <li>💻 纯线上：无需资金证明、无需签证</li>
       <li>在读证明/毕业证（如适用）</li>
     </ul>
@@ -110,6 +145,8 @@
     <div class="section-title">🔗 课程映射工具</div>
     <p class="hint">选课阶段用得上：查你的 CC 课程能转成 UC 的哪些学分（15 万条映射数据）。</p>
     <a class="btn ghost" href="https://szzxli.github.io/transfer-os/mobile/www/">打开 TransferOS 课程映射 →</a>
+    <p class="hint">链接跳到 szzxli.github.io，是我们自己的工具站地址；课程对应关系以官方 ASSIST（www.assist.org）为准。</p>
+    <p class="hint">链接跳到 szzxli.github.io，是我们自己的工具站地址；课程对应关系以官方 ASSIST（www.assist.org）为准。</p>
   </div>
 
   <div class="disclaimer">
@@ -125,6 +162,12 @@
     <span class="step-num">3</span><span class="step-title">申请表</span><span class="step-check" id="check-apply"></span><span class="step-arrow">▾</span>
   </button>
   <div class="step-body" id="body-apply" hidden>
+
+  <div class="card">
+    <div class="section-title">🧾 这张表帮你做什么</div>
+    <p>把你的中文信息整理成一份<b>可逐项核对的英文版</b>：填好后点「生成英文版」→ 逐项核对 → 正式申请时，照着填进每所社区大学官网的申请系统。<b>本表不代交、不碰你的申请账号。</b></p>
+    <p class="hint">🔒 所有信息只保存在本机浏览器，不上传服务器。</p>
+  </div>
 
 
   <div class="alert">
@@ -143,7 +186,7 @@
     <div class="field"><label>出生日期</label><input type="date" id="f_dob"></div>
     <div class="field"><label>国籍</label>
       <select id="f_nat"><option value="China">中国 China</option><option value="other">其他（英文填写）</option></select></div>
-    <div class="field"><label>护照号码</label><input type="text" id="f_pass" placeholder="E12345678" style="text-transform:uppercase"></div>
+    <div class="field"><label>护照号码</label><input type="text" id="f_pass" placeholder="E12345678" style="text-transform:uppercase"><div class="hint">🔒 只保存在本机浏览器，不上传服务器。</div></div>
     <div class="field"><label>邮箱</label><input type="email" id="f_email" placeholder="name@example.com"></div>
     <div class="field"><label>电话（含国家码）</label><input type="tel" id="f_phone" placeholder="+86 13800000000"></div>
   </div>
@@ -174,7 +217,7 @@
 
   <div class="card">
     <div class="section-title">🎯 目标学校（白名单）</div>
-    <div class="hint">在<a href="assess.html#sec-whitelist">白名单页</a>勾选，或在这里直接选。</div>
+    <div class="hint">这里选的是<b>社区大学</b>（不是 UC）。“白名单”指可全程线上就读、学分可转 UC 的社区大学名单，说明见<a href="assess.html#sec-whitelist">白名单页</a>；也可以在这里直接勾选。</div>
     <div id="tgtBox"></div>
   <div class="card funnel-card" id="funnelApply" hidden>
     <div class="section-title">💬 申请季有疑问？先问清楚</div>
@@ -222,15 +265,15 @@ togNavActive("transfer");
 
 var STEPS = [
   { t: "TAG 申请", when: "T-1 年 9/1 – 9/30",
-    d: "转学保证协议。注意：UCB / UCLA / UCSD <b>不参与 TAG</b>；适用 UCSC / UCD / UCI 等（各校专业另有要求）。" },
-  { t: "UC 网申", when: "T-1 年 11/1 – 11/30",
+    d: "TAG（保录计划）：达到课程和 GPA 要求即保证录取。6 所 UC 参与（UCD / UCI / UCM / UCR / UCSB / UCSC），各校 GPA 门槛 <b>2.7–3.6</b> 不等；UCB / UCLA / UCSD <b>不参与</b>。查 <a href=\"https://admission.universityofcalifornia.edu/admission-requirements/transfer-requirements/uc-transfer-programs/transfer-admission-guarantee-tag.html\" target=\"_blank\" rel=\"noopener\">UC 官网 TAG 页</a>。" },
+  { t: "UC 网申", when: "T-1 年 10/1 – 11/30",
     d: "UC 申请系统提交，选校+选专业+PIQ 文书一次交齐。" },
   { t: "成绩单提交", when: "T 年 1 月",
     d: "按各校要求提交秋季成绩单更新（TAU）。" },
   { t: "放榜", when: "T 年 3 – 4 月",
     d: "各校陆续放榜，注意查邮箱和申请 portal。" },
-  { t: "SIR 确认 + I-20", when: "T 年 5 月",
-    d: "接受录取（SIR）并交留位费；学校签发 I-20。" },
+  { t: "SIR 确认 + I-20", when: "T 年 6/1 前",
+    d: "接受录取（SIR，转学生截止 6 月 1 日）并交留位费；学校签发 I-20（留学资格文件，办 F-1 签证用）。" },
   { t: "F-1 签证", when: "T 年 6 – 7 月",
     d: "凭 I-20 面签。纯线上读完 CC 的同学先读签证风险说明。" },
 ];
@@ -352,7 +395,7 @@ function gen() {
     + '<table class="nums">' + rows.map(function (r) {
       return "<tr><td>" + esc(r[0]) + "</td><td><b>" + esc(r[1]) + "</b></td></tr>";
     }).join("") + "</table>"
-    + '<div class="alert" style="margin-top:10px">⚠️ 逐项核对无误后，再填入各校官网申请系统。本页不是正式申请。</div></div>';
+    + '<div class="alert" style="margin-top:10px">⚠️ <b>下一步：</b>逐项核对无误后，去你勾选的每所社区大学官网申请系统，照着这份英文版逐项填入并正式提交。本页不是正式申请，不会替你提交。</div></div>';
   document.getElementById("outSlot").innerHTML = html;
   document.getElementById("outSlot").scrollIntoView({ behavior: "smooth" });
   renderStatus();
@@ -397,6 +440,7 @@ init();
 </script>
 <script>
 (function(){
+  window.goStep = function(id){ var b = document.getElementById("body-" + id); if (b && b.hidden) stepToggle("transfer", id); var el = document.getElementById("step-" + id); if (el) setTimeout(function(){ el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60); };
   document.querySelectorAll(".step-head").forEach(function(h){
     h.addEventListener("click", function(){ stepToggle(h.dataset.page, h.dataset.step); });
   });
