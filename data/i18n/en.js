@@ -1,6 +1,7 @@
 var I18N_EN = {
  "最后必须加一段：以上为 AI 初筛仅供参考，正式流程是成绩单认证（IERF/WES）+ 入学后找 counselor 逐门 petition，最终以学校为准。": "Always append: the above is AI pre-screening for reference only. The official process is transcript evaluation (IERF/WES) + petitioning course by course with a counselor after enrollment. The school has the final say.",
  "Online Degree for International Students：明确写 No Student Visa Required。": "Online Degree for International Students: explicitly states No Student Visa Required.",
+ "Online Degree for International Students：明确写 No Student Visa Required。；申请在 CCCApply 平台提交（按钮直达），平台内按学校英文名选校。": "Online Degree for International Students: explicitly states No Student Visa Required.; applications are submitted on the CCCApply platform (the button goes straight there) — select the college by its English name.",
  "，不是判定——正式流程：成绩单先做认证（IERF/WES）→ 入学后找 counselor 逐门 petition，最终以学校为准。": " — not a decision. Official process: get your transcript evaluated (IERF/WES) first → petition course by course with a counselor after enrollment. The school has the final say.",
  "国内学分能否转 CC，取决于成绩单认证 + 学校 counselor 的逐门审核，AI 和本工具都不做最终判定。": "Whether credits earned in China transfer to a CC depends on transcript evaluation + course-by-course review by the school counselor. Neither the AI nor this tool makes the final call.",
  "学区 GOL（Global Online Learning）：专为美国境外学生设，可全程线上读完拿可转学分。": "District GOL (Global Online Learning): designed for students outside the US — complete fully online and earn transferable credits.",
@@ -13,6 +14,7 @@ var I18N_EN = {
  "，约 2 个 quarter（估算，实际以入学 placement test 为准）。": ", about 2 quarters (estimate — actual placement test after enrollment decides).",
  "Foothill-De Anza 学区：非居民可全程线上就读，无需签证（人在中国）。": "Foothill-De Anza District: nonresidents can study fully online, no visa needed (from China).",
  "Global Online Business Degree：在家拿证书或副学士学位。": "Global Online Business Degree: earn a certificate or associate degree from home.",
+ "Global Online Business Degree：在家拿证书或副学士学位。；申请在 CCCApply 平台提交（按钮直达），平台内按学校英文名选校。": "Global Online Business Degree: earn a certificate or associate degree from home.; applications are submitted on the CCCApply platform (the button goes straight there) — select the college by its English name.",
  "De Anza / Foothill 二选一，纯线上或赴美线下，拿到 CC 录取。": "Pick De Anza or Foothill, fully online or in-person in the US — get your CC admission.",
  "名单基于 2026-10-18 公开政策核实，申请前请以各校官网复核（政策会变）。": "List verified against public policies on 2026-10-18. Re-check each school’s official site before applying (policies change).",
  "课程要求来自 ASSIST 转学协议（2026-10-17 提取），仅供规划参考。": "Course requirements from ASSIST articulation agreements (extracted 2026-10-17), for planning reference only.",
@@ -28,7 +30,6 @@ var I18N_EN = {
  "本工具仅提供公开信息整理与测算，不构成留学中介服务，不承诺任何录取结果。": "This tool only organizes public information and estimates. Not an agency service; no admission outcomes promised.",
  "检查 Key 是否正确、网络能否访问 api.deepseek.com。": "Check that the key is correct and api.deepseek.com is reachable.",
  "纯线上读完 CC 后申请 F-1，面签官会重点审查两年网课的学习真实性。": "After finishing CC fully online, F-1 interviewers will closely scrutinize whether your two years of online study were genuine.",
- "TransferOS-Global · 加州社区大学转 UC 路径规划": "TransferOS-Global · California CC → UC Transfer Planner",
  "TAG、UC 网申、放榜、SIR、F-1 签证——6 步时间线盯到底。": "TAG, UC application, decisions, SIR, F-1 visa — a 6-step timeline tracked to the end.",
  "：学校官网明确写了国际生可在美国境外全程线上就读、无需 F-1 签证。": ": the school site explicitly states international students may study fully online from outside the US with no F-1 visa.",
  "时间线为 UC 常规申请季整理，政策每年微调，请以 UC 官网为准。": "Timeline based on the regular UC application cycle; policies shift yearly — check UC sites.",
@@ -49,6 +50,7 @@ var I18N_EN = {
  "勾选目标学校后，去填写双语申请信息表，生成英文版申请材料。": "After checking target schools, fill in the bilingual application form to generate English materials.",
  "低于常见要求线（Duolingo 105 / 托福 61）": "Below common thresholds (Duolingo 105 / TOEFL 61)",
  "Pierce Global：在家全程线上拿学位，无需赴美。": "Pierce Global: earn the degree fully online from home, no US trip needed.",
+ "Pierce Global：在家全程线上拿学位，无需赴美。；申请在 CCCApply 平台提交（按钮直达），平台内按学校英文名选校。": "Pierce Global: earn the degree fully online from home, no US trip needed.; applications are submitted on the CCCApply platform (the button goes straight there) — select the college by its English name.",
  "粘贴《高等数学I》的大纲：函数、极限、导数、积分、级数……": "Paste the syllabus for 《Advanced Math I》: functions, limits, derivatives, integrals, series…",
  "GPA 为手动记录，仅供自我跟踪，不构成任何官方成绩证明。": "GPA is self-reported for tracking only — not an official record.",
  "能接受前两年高强度学习（线上或赴美）+ 之后赴美完成学位": "Can handle two intensive years (online or in the US) + finishing the degree in the US",
@@ -637,5 +639,6 @@ var I18N_EN = {
  "🇬🇧 英文版申请信息（核对后使用）": "🇬🇧 English application info (verify before use)",
  "⚠️ 逐项核对无误后，再填入各校官网申请系统。本页不是正式申请。": "⚠️ After verifying each item, enter them into each school’s official application system. This page is not a formal application.",
  "· 可能对应": "· possibly maps to",
- "去生成规划": "Generate plan"
+ "去生成规划": "Generate plan",
+ "TransferOS-China · 加州社区大学转 UC 路径规划": "TransferOS-China · California CC → UC Transfer Planner"
 };

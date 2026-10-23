@@ -1,6 +1,7 @@
 var I18N_TW = {
  "最后必须加一段：以上为 AI 初筛仅供参考，正式流程是成绩单认证（IERF/WES）+ 入学后找 counselor 逐门 petition，最终以学校为准。": "最後必須加一段：以上爲 AI 初篩僅供參考，正式流程是成績單認證（IERF/WES）+ 入學後找 counselor 逐門 petition，最終以學校爲準。",
  "Online Degree for International Students：明确写 No Student Visa Required。": "Online Degree for International Students：明確寫 No Student Visa Required。",
+ "Online Degree for International Students：明确写 No Student Visa Required。；申请在 CCCApply 平台提交（按钮直达），平台内按学校英文名选校。": "Online Degree for International Students：明確寫 No Student Visa Required。；申請在 CCCApply 平台提交（按鈕直達），平台內按學校英文名選校。",
  "，不是判定——正式流程：成绩单先做认证（IERF/WES）→ 入学后找 counselor 逐门 petition，最终以学校为准。": "，不是判定——正式流程：成績單先做認證（IERF/WES）→ 入學後找 counselor 逐門 petition，最終以學校爲準。",
  "国内学分能否转 CC，取决于成绩单认证 + 学校 counselor 的逐门审核，AI 和本工具都不做最终判定。": "國內學分能否轉 CC，取決於成績單認證 + 學校 counselor 的逐門審覈，AI 和本工具都不做最終判定。",
  "学区 GOL（Global Online Learning）：专为美国境外学生设，可全程线上读完拿可转学分。": "學區 GOL（Global Online Learning）：專爲美國境外學生設，可全程線上讀完拿可轉學分。",
@@ -13,6 +14,7 @@ var I18N_TW = {
  "，约 2 个 quarter（估算，实际以入学 placement test 为准）。": "，約 2 個 quarter（估算，實際以入學 placement test 爲準）。",
  "Foothill-De Anza 学区：非居民可全程线上就读，无需签证（人在中国）。": "Foothill-De Anza 學區：非居民可全程線上就讀，無需簽證（人在中國）。",
  "Global Online Business Degree：在家拿证书或副学士学位。": "Global Online Business Degree：在家拿證書或副學士學位。",
+ "Global Online Business Degree：在家拿证书或副学士学位。；申请在 CCCApply 平台提交（按钮直达），平台内按学校英文名选校。": "Global Online Business Degree：在家拿證書或副學士學位。；申請在 CCCApply 平台提交（按鈕直達），平台內按學校英文名選校。",
  "De Anza / Foothill 二选一，纯线上或赴美线下，拿到 CC 录取。": "De Anza / Foothill 二選一，純線上或赴美線下，拿到 CC 錄取。",
  "名单基于 2026-10-18 公开政策核实，申请前请以各校官网复核（政策会变）。": "名單基於 2026-10-18 公開政策覈實，申請前請以各校官網複覈（政策會變）。",
  "课程要求来自 ASSIST 转学协议（2026-10-17 提取），仅供规划参考。": "課程要求來自 ASSIST 轉學協議（2026-10-17 提取），僅供規劃參考。",
@@ -48,6 +50,7 @@ var I18N_TW = {
  "勾选目标学校后，去填写双语申请信息表，生成英文版申请材料。": "勾選目標學校後，去填寫雙語申請信息表，生成英文版申請材料。",
  "低于常见要求线（Duolingo 105 / 托福 61）": "低於常見要求線（Duolingo 105 / 託福 61）",
  "Pierce Global：在家全程线上拿学位，无需赴美。": "Pierce Global：在家全程線上拿學位，無需赴美。",
+ "Pierce Global：在家全程线上拿学位，无需赴美。；申请在 CCCApply 平台提交（按钮直达），平台内按学校英文名选校。": "Pierce Global：在家全程線上拿學位，無需赴美。；申請在 CCCApply 平台提交（按鈕直達），平台內按學校英文名選校。",
  "粘贴《高等数学I》的大纲：函数、极限、导数、积分、级数……": "粘貼《高等數學I》的大綱：函數、極限、導數、積分、級數……",
  "GPA 为手动记录，仅供自我跟踪，不构成任何官方成绩证明。": "GPA 爲手動記錄，僅供自我跟蹤，不構成任何官方成績證明。",
  "能接受前两年高强度学习（线上或赴美）+ 之后赴美完成学位": "能接受前兩年高強度學習（線上或赴美）+ 之後赴美完成學位",
