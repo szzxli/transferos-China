@@ -99,18 +99,61 @@ function wechatBlockHTML(note) {
   return '<div class="lead-wx"><b>① 微信（最快）</b>' + qr +
     '<p>微信扫一扫加好友，昵称「' + esc(CHAT_CONFIG.wechatId) + '」，加好友时请带备注：<b>' + esc(note || "TransferOS咨询") + '</b></p></div>';
 }
+function leadFormHTML(srcKey, note) {
+  return '<form class="lead-form" onsubmit="return leadSubmit(this)">' +
+    '<b>② 在线留言（站内填写直接发送）</b>' +
+    '<input type="hidden" class="lf-src" value="' + esc(srcKey || "manual") + '">' +
+    '<input type="hidden" class="lf-note" value="' + esc(note || "") + '">' +
+    '<label>怎么称呼你 <span class="req">*</span><input class="lf-name" type="text" autocomplete="name" placeholder="如：王女士"></label>' +
+    '<label>微信号<input class="lf-wechat" type="text" placeholder="微信号、手机号至少填一个"></label>' +
+    '<label>手机号<input class="lf-phone" type="tel" autocomplete="tel" placeholder="微信号、手机号至少填一个"></label>' +
+    '<label>想问的问题<textarea class="lf-q" rows="3" placeholder="简单写下孩子的情况和你想问的问题"></textarea></label>' +
+    '<label class="lf-consent"><input type="checkbox" class="lf-agree"> 我同意把以上信息用于回复本次咨询</label>' +
+    '<p class="lf-err hint" hidden></p>' +
+    '<button type="submit" class="btn lf-btn">发送咨询</button></form>';
+}
+function leadSubmit(form) {
+  function val(cls) { var el = form.querySelector(cls); return el ? String(el.value || "").trim() : ""; }
+  var err = form.querySelector(".lf-err");
+  function fail(msg) { if (err) { err.hidden = false; err.textContent = msg; } return false; }
+  var name = val(".lf-name"), wechat = val(".lf-wechat"), phone = val(".lf-phone"), q = val(".lf-q");
+  var agree = form.querySelector(".lf-agree");
+  if (!name) return fail("请先填一下怎么称呼你。");
+  if (!wechat && !phone) return fail("微信号和手机号至少填一个，不然我们回复不了你。");
+  if (agree && !agree.checked) return fail("请勾选同意，我们才能用这些信息回复你。");
+  var btn = form.querySelector(".lf-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "发送中…"; }
+  var ref = (typeof togGet === "function") ? togGet("ref", "") : "";
+  var payload = { name: name, wechat: wechat, phone: phone, source: val(".lf-src") || "manual", ref: ref, eval_summary: val(".lf-note"), note: q };
+  fetch(CHAT_CONFIG.apiBase + "/api/lead", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (res.ok && res.j && res.j.ok) {
+        form.innerHTML = '<p class="lead-done">✅ 已收到，我们会尽快通过你留的联系方式回复。</p>';
+      } else {
+        if (btn) { btn.disabled = false; btn.textContent = "发送咨询"; }
+        fail("提交没成功，请稍后再试，或用下方邮箱联系我们。");
+      }
+    })
+    .catch(function () {
+      if (btn) { btn.disabled = false; btn.textContent = "发送咨询"; }
+      fail("网络不通，提交失败。请用下方邮箱联系我们。");
+    });
+  return false;
+}
 function humanCardHTML(note) {
   var subj = encodeURIComponent(note || "TransferOS咨询");
   return '<div class="human-card"><b>👩‍💼 人工客服</b>' +
     wechatBlockHTML(note) +
-    '<div class="lead-mail"><b>② 邮件（打开你自己的邮箱窗口写）</b>' +
+    leadFormHTML("manual", note) +
+    '<div class="lead-mail"><b>③ 邮件（打开你自己的邮箱窗口写）</b>' +
     '<p>写邮件给我们：<b>' + esc(CHAT_CONFIG.email) + '</b></p>' +
     '<p><a class="btn" href="mailto:' + esc(CHAT_CONFIG.email) + '?subject=' + subj + '">✉️ 点这里写邮件</a> <button type="button" class="mini-btn" onclick="if(navigator.clipboard){navigator.clipboard.writeText(\'' + esc(CHAT_CONFIG.email) + '\');}this.textContent=\'已复制 ✓\'">复制邮箱</button></p>' +
     '<p class="hint">邮件主题已带好备注（' + esc(note || "TransferOS咨询") + '），正文写下你的问题即可。如果点按钮没反应，就复制邮箱手动发，主题写上面这行备注。</p>' +
     '<p class="hint">用网页邮箱的，点这里直接打开写信框（收件人已填好，主题照上面备注写）：</p>' +
     '<p><a class="mini-btn" style="text-decoration:none;display:inline-block" target="_blank" rel="noopener" href="https://mail.google.com/mail/?view=cm&fs=1&to=' + esc(CHAT_CONFIG.email) + '&su=' + subj + '">用 Gmail 写</a> <span class="hint">（海外或可科学上网时可用）</span> <a class="mini-btn" style="text-decoration:none;display:inline-block" target="_blank" rel="noopener" href="https://mail.qq.com/cgi-bin/qm_share?t=qm_mailme&email=' + esc(CHAT_CONFIG.email) + '">用 QQ 邮箱写</a></p></div></div>';
 }
-if (typeof module !== "undefined") { module.exports = { faqScore: faqScore, faqFind: faqFind, humanCardHTML: humanCardHTML, wechatBlockHTML: wechatBlockHTML }; }
+if (typeof module !== "undefined") { module.exports = { faqScore: faqScore, faqFind: faqFind, humanCardHTML: humanCardHTML, wechatBlockHTML: wechatBlockHTML, leadFormHTML: leadFormHTML, leadSubmit: leadSubmit }; }
 
 /* ---- 页面交互 ---- */
 function chatToggle() {

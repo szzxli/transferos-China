@@ -125,8 +125,10 @@ function mailConsult(source, btn) {
   else if (typeof CHAT_CONFIG !== "undefined" && CHAT_CONFIG.wechatQr) {
     wx = '<div class="lead-wx"><b>① 微信（最快）</b><img class="lead-qr" src="' + CHAT_CONFIG.wechatQr + '" alt="客服微信二维码"><p>微信扫一扫加好友，昵称「' + esc(CHAT_CONFIG.wechatId) + '」，加好友时请带备注：<b>' + esc(subject) + '</b></p></div>';
   }
-  d.innerHTML = wx +
-    '<div class="lead-mail"><b>② 邮件（打开你自己的邮箱窗口写）</b>' +
+  var srcKeys = { "评估页": "assess", "选课规划页": "track", "转学页": "apply" };
+  var formHtml = (typeof leadFormHTML === "function") ? leadFormHTML(srcKeys[source] || "manual", subject) : "";
+  d.innerHTML = wx + formHtml +
+    '<div class="lead-mail"><b>③ 邮件（打开你自己的邮箱窗口写）</b>' +
     '<p>收件人：<b>info@zhuanuc.com</b> <button type="button" class="mini-btn" onclick="togCopy(\'info@zhuanuc.com\', this)">复制邮箱</button></p>' +
     '<p>主题请写：<b>' + esc(subject) + '</b></p>' +
     '<p class="hint">点下面按钮会打开你的邮件应用并自动填好；如果点了没反应，就复制上面的邮箱和主题，手动发一封到这个邮箱。</p>' +
