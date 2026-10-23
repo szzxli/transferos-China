@@ -145,6 +145,7 @@ const CORS_ORIGINS = [
   "https://transferos-china.szzxli711.workers.dev",
   "https://admin.zhuanuc.com",
 ];
+const APP_BASE_URL = "https://zhuanuc.com/one-on-one-app"; // 一对一专属客户端站点根（个性化 manifest 用）
 const COOKIE_NAME = "tog_admin";
 const COOKIE_MSG = "transferos-admin-session-v1";
 // 交付阶段（固定 9 个，与产品定义一致）；逾期只对进行中阶段判定
@@ -1857,6 +1858,64 @@ async function handleApi(req, env, url) {
   // GET /api/client/<学生id 或 slug>?key=<访问密钥>。密钥为 students.client_key（每名学生一个随机密钥），
   // 无 key / key 不对 / 学生不存在一律 404，不暴露学生存在性。写入仅限上方 v9 签名接口，其余只读。
   // 返回六块数据，选课分组与汇总复用 groupCoursesByTerm / courseProgress，与后台客户端页同口径。
+  // 个性化 manifest（v14.1）：GET /api/manifest/client/<id 或 slug>?key=<学生密钥> /
+  // GET /api/manifest/parent/<id 或 slug>?key=<家长密钥>。
+  // 解决「添加到主屏幕后点图标落到门页」：静态 manifest 的 start_url 不带凭据，图标按
+  // start_url 打开、独立应用存储又与浏览器不互通，本机记住的密钥读不到。前端带凭据
+  // 打开时把 <link rel="manifest"> 换成本端点，本端点校验通过才发 manifest，其
+  // start_url = 该生带完整凭据的页面 URL，装到桌面后点图标直达本人页面。
+  // 鉴权口径与 /api/client、/api/parent 完全一致（locator 按 id 或 slug 定位、
+  // client_key / parent_key 分列、timingSafeEq 常量时间比对、交叉与错钥一律 404，
+  // 不暴露学生存在性）；字段与静态 manifest.json / manifest-parent.json 逐项一致，
+  // 仅 start_url / scope / icons 改为绝对 URL（manifest 位于 Worker 域名下，必须绝对化）。
+  // 密钥只回填请求所带且已校验通过的那把，密钥轮换后打开新链接即生成新 manifest。
+  const manifestApiMatch = p.match(/^\/api\/manifest\/(client|parent)\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
+  if (manifestApiMatch) {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    await ensureSchema(db);
+    const kind = manifestApiMatch[1];
+    const locator = manifestApiMatch[2];
+    const student = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(locator).first();
+    const key = url.searchParams.get("key") || "";
+    const storedKey = student ? (kind === "parent" ? student.parent_key : student.client_key) : null;
+    if (!student || !storedKey || !timingSafeEq(key, String(storedKey))) {
+      return jsonResp(req, { ok: false, error: "not found" }, 404);
+    }
+    const isParent = kind === "parent";
+    const startUrl = isParent
+      ? APP_BASE_URL + "/parent.html?s=" + encodeURIComponent(locator) + "&p=" + encodeURIComponent(key)
+      : APP_BASE_URL + "/?s=" + encodeURIComponent(locator) + "&k=" + encodeURIComponent(key);
+    const manifest = {
+      name: isParent ? "家长更新" : "一对一专属客户端",
+      short_name: isParent ? "家长更新" : "专属客户端",
+      description: isParent
+        ? "一对一辅导家长端：导师整理的阶段进展、成就与重要日期。"
+        : "一对一辅导专属客户端：目标、状态、考试、选课与辅导会议。",
+      lang: "zh-CN",
+      display: "standalone",
+      background_color: "#f6f6f1",
+      theme_color: "#16453a",
+      scope: APP_BASE_URL + "/",
+      start_url: startUrl,
+      icons: [
+        { purpose: "any", sizes: "any", src: APP_BASE_URL + "/icon.svg", type: "image/svg+xml" },
+        { purpose: "any", sizes: "192x192", src: APP_BASE_URL + "/icon-192.png", type: "image/png" },
+        { purpose: "any", sizes: "512x512", src: APP_BASE_URL + "/icon-512.png", type: "image/png" },
+        { purpose: "maskable", sizes: "512x512", src: APP_BASE_URL + "/icon-512.png", type: "image/png" },
+      ],
+    };
+    return new Response(JSON.stringify(manifest), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/manifest+json; charset=utf-8",
+        "Cache-Control": "no-store",
+        ...corsHeaders(req),
+      },
+    });
+  }
+
   // 学生端「家长看到的是什么」只读预览（v13.4）：GET /api/client/parent-preview?s=<slug 或 id>&key=<学生密钥>。
   // 用学生密钥鉴权（与学生端其它接口同一口径：无 key / key 不对 / 学生不存在一律 404）；
   // 返回内容 = 家长页实际载荷的展示区块，与 GET /api/parent 共用 parentViewSections 构建、

@@ -222,6 +222,19 @@ function creds() {
   return { s: s || "", k: k || "", api: (api || DEFAULT_API_BASE).replace(/\/+$/, "") };
 }
 
+/* v14.1 个性化 manifest：带凭据打开（或本机已记住凭据）时，把 <link rel="manifest">
+ * 换成 Worker 动态端点——其 start_url 带本人 s/p，「添加到主屏幕」后点图标直达，
+ * 不再落门页。无凭据时不动，沿用静态 manifest-parent.json，行为不变。 */
+function personalizeManifest() {
+  try {
+    const { s, k, api } = creds();
+    if (!s || !k) return;
+    const link = document.querySelector('link[rel="manifest"]');
+    if (!link) return;
+    link.href = api + "/api/manifest/parent/" + encodeURIComponent(s) + "?key=" + encodeURIComponent(k);
+  } catch (e) { /* 个性化失败不影响主流程 */ }
+}
+
 function showGate(errText) {
   $("gate").hidden = false; $("state").hidden = true; $("app").hidden = true; $("tabbar").hidden = true;
   const e = $("gate-err");
@@ -508,6 +521,7 @@ $("gate-form").addEventListener("submit", (ev) => {
     localStorage.setItem(LS_S, s); localStorage.setItem(LS_K, k);
     if (!localStorage.getItem(LS_A)) localStorage.setItem(LS_A, DEFAULT_API_BASE);
   } catch (e) { /* 忽略 */ }
+  personalizeManifest();
   load();
 });
 $("state-retry").addEventListener("click", () => load());
@@ -572,5 +586,6 @@ window.addEventListener("appinstalled", () => {
 });
 refreshInstallCard();
 applyI18n();
+personalizeManifest();
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", load);
 else load();
