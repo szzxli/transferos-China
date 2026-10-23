@@ -533,3 +533,15 @@ fieldset.fld{border:0;padding:0}
 .install-steps p{margin:0 0 6px;font-size:14px;line-height:1.7}
 .install-steps .ishare{vertical-align:-2px;margin-right:5px}
 .install-card .btn-primary{margin-top:12px}
+
+/* v17 导师文件一次性投递 */
+.wb-file-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-bottom:1px dashed var(--line)}
+.wb-file-row:last-child{border-bottom:none}
+.wb-file-name{font-weight:600;word-break:break-all}
+.wb-file-up{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+.wb-file-up input[type="file"]{min-height:44px;max-width:100%}
+.file-card{padding:12px 0;border-bottom:1px dashed var(--line)}
+.file-card:last-child{border-bottom:none}
+.file-card .file-name{font-weight:600;word-break:break-all;margin-bottom:2px}
+.file-card.done{opacity:.65}
+.file-card .file-dl{display:inline-block;margin-top:8px;min-height:44px;line-height:44px;padding:0 18px;text-decoration:none}

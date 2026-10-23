@@ -49,6 +49,24 @@ const I18N = {
     "wb.thread": "留言线程",
     "wb.myTrail": "我写的导师轨迹",
     "wb.noTrail": "暂无我写的轨迹",
+    "wb.files": "文件投递",
+    "wb.fileHint": "单个文件 ≤ 5MB（pdf、图片、Office、txt、zip）；学生下载后立即删除，未下载满 24 小时自动删除。",
+    "wb.fileSend": "发送文件",
+    "wb.fileSending": "发送中…",
+    "wb.fileSent": "已发送",
+    "wb.fileNone": "还没有发送过文件",
+    "wb.fileChoose": "请先选择文件",
+    "wb.filePending": "待下载",
+    "wb.fileDownloaded": "已下载（已删除）",
+    "wb.fileExpired": "已过期（已删除）",
+    "wb.fileWithdrawn": "已撤回",
+    "wb.fileWithdraw": "撤回",
+    "wb.fileLeft": "剩余 {x}",
+    "wb.fileErrType": "文件类型不支持",
+    "wb.fileErrLarge": "文件超过 5MB",
+    "wb.fileErrStuQuota": "该学生待下载文件已达 25MB 上限",
+    "wb.fileErrGlobal": "系统待下载总量已达上限，请稍后再试",
+    "wb.fileErr": "发送失败，稍后再试",
     "cm.inbox": "收件箱",
     "cm.loading": "正在加载…",
     "cm.inboxFail": "收件箱加载失败，稍后重进页面试试。",
@@ -105,6 +123,24 @@ const I18N = {
     "wb.thread": "Message thread",
     "wb.myTrail": "Trail entries I wrote",
     "wb.noTrail": "No trail entries yet",
+    "wb.files": "File delivery",
+    "wb.fileHint": "Up to 5MB per file (PDF, images, Office, txt, zip). Deleted right after the student downloads it, or automatically after 24 hours.",
+    "wb.fileSend": "Send file",
+    "wb.fileSending": "Sending…",
+    "wb.fileSent": "Sent",
+    "wb.fileNone": "No files sent yet",
+    "wb.fileChoose": "Choose a file first",
+    "wb.filePending": "Awaiting download",
+    "wb.fileDownloaded": "Downloaded (deleted)",
+    "wb.fileExpired": "Expired (deleted)",
+    "wb.fileWithdrawn": "Withdrawn",
+    "wb.fileWithdraw": "Withdraw",
+    "wb.fileLeft": "{x} left",
+    "wb.fileErrType": "File type not supported",
+    "wb.fileErrLarge": "File exceeds 5MB",
+    "wb.fileErrStuQuota": "This student's pending files reached the 25MB limit",
+    "wb.fileErrGlobal": "System pending-file limit reached — please retry later",
+    "wb.fileErr": "Send failed — try again later",
     "cm.inbox": "Inbox",
     "cm.loading": "Loading…",
     "cm.inboxFail": "Inbox failed to load — reopen the page in a moment.",
@@ -206,6 +242,8 @@ function render(d) {
   }
   box.innerHTML = d.students.map((blk, i) => studentHtml(blk, i)).join("");
   box.querySelectorAll("[data-reply]").forEach((btn) => btn.addEventListener("click", () => sendReply(btn)));
+  box.querySelectorAll("[data-filesend]").forEach((btn) => btn.addEventListener("click", () => sendMentorFile(btn)));
+  d.students.forEach((blk, i) => { if (blk.student && blk.student.id) loadMentorFiles(i, blk.student.id); });
 }
 function studentHtml(blk, i) {
   // v15：专题学生走裁剪卡（只有专题、与本人的留言线程、本人轨迹与回复框）
@@ -245,6 +283,7 @@ function studentHtml(blk, i) {
     '<textarea rows="2" maxlength="500" placeholder="' + esc(t("wb.replyPh")) + '" id="wb-reply-' + i + '"></textarea>' +
     '<div class="msg-bar"><span class="mut" id="wb-status-' + i + '"></span>' +
     '<button type="button" class="btn-send" data-reply="' + i + '" data-student="' + stu.id + '">' + esc(t("wb.send")) + "</button></div></form>" +
+    fileSectionHtml(stu, i) +
     "</section>";
 }
 /* v15 专题学生卡（裁剪视图）：与主导师卡分开渲染——服务端只下发本人线程与本人轨迹，
@@ -273,6 +312,7 @@ function topicStudentHtml(blk, i) {
     '<textarea rows="2" maxlength="500" placeholder="' + esc(t("wb.replyPh")) + '" id="wb-reply-' + i + '"></textarea>' +
     '<div class="msg-bar"><span class="mut" id="wb-status-' + i + '"></span>' +
     '<button type="button" class="btn-send" data-reply="' + i + '" data-student="' + stu.id + '">' + esc(t("wb.send")) + "</button></div></form>" +
+    fileSectionHtml(stu, i) +
     "</section>";
 }
 async function sendReply(btn) {
@@ -534,6 +574,120 @@ $("th-form").addEventListener("submit", (ev) => {
   ev.preventDefault();
   sendThreadReply();
 });
+/* ===== v17 导师文件一次性投递（工作台侧）=====
+ * 每学生卡片一块：选文件 → POST /api/mentor/file（multipart）→ 本生文件列表
+ * （名/大小/状态/剩余时间 + 撤回）。服务端规则：单文件 ≤5MB、类型白名单、
+ * 每生 pending ≤25MB、全局 ≤2GB；学生下载后或满 24h 自动删除。错误码映射
+ * 到上方 wb.fileErr* 文案；接口异常时只显示空态，绝不影响沟通台主流程。 */
+function fmtBytes(n) {
+  const b = Number(n) || 0;
+  if (b < 1024) return b + " B";
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+  return (b / 1024 / 1024).toFixed(1) + " MB";
+}
+function fmtDur(sec) {
+  const s = Math.max(0, Number(sec) || 0);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return LANG === "zh" ? h + " 小时 " + m + " 分" : h + "h " + m + "m";
+}
+function fileSectionHtml(stu, i) {
+  return '<h3 class="sub-h">' + esc(t("wb.files")) + "</h3>" +
+    '<div class="wb-files" id="wb-files-' + i + '"><p class="mut">' + esc(t("wb.fileNone")) + "</p></div>" +
+    '<div class="wb-file-up"><input type="file" id="wb-file-input-' + i + '" />' +
+    '<button type="button" class="btn-send" data-filesend="' + i + '" data-student="' + stu.id + '">' + esc(t("wb.fileSend")) + "</button></div>" +
+    '<p class="mut" id="wb-file-status-' + i + '"></p>' +
+    '<p class="mut">' + esc(t("wb.fileHint")) + "</p>";
+}
+function renderMentorFileList(i, studentId, files) {
+  const box = $("wb-files-" + i);
+  if (!box) return;
+  if (!files.length) { box.innerHTML = '<p class="mut">' + esc(t("wb.fileNone")) + "</p>"; return; }
+  box.innerHTML = files.map((f) => {
+    const sk = f.status === "pending" ? "wb.filePending"
+      : f.status === "downloaded" ? "wb.fileDownloaded"
+      : f.status === "expired" ? "wb.fileExpired" : "wb.fileWithdrawn";
+    let line = '<div class="wb-file-row"><span class="wb-file-name">' + esc(f.filename) + "</span> " +
+      '<span class="mut">' + esc(fmtBytes(f.size)) + "</span> " +
+      '<span class="pill">' + esc(t(sk)) + "</span>";
+    if (f.status === "pending") {
+      line += ' <span class="mut">' + esc(fmt("wb.fileLeft", { x: fmtDur(f.seconds_left) })) + "</span> " +
+        '<button type="button" class="btn-ghost" data-filewithdraw="' + f.id + '" data-fidx="' + i +
+        '" data-student="' + studentId + '">' + esc(t("wb.fileWithdraw")) + "</button>";
+    }
+    return line + "</div>";
+  }).join("");
+  box.querySelectorAll("[data-filewithdraw]").forEach((btn) =>
+    btn.addEventListener("click", () => withdrawMentorFile(btn)));
+}
+async function loadMentorFiles(i, studentId) {
+  const box = $("wb-files-" + i);
+  if (!box) return;
+  const { s, k, api } = creds();
+  try {
+    const resp = await fetch(api + "/api/mentor/files?s=" + encodeURIComponent(s) +
+      "&key=" + encodeURIComponent(k) + "&student_id=" + encodeURIComponent(studentId),
+      { headers: { Accept: "application/json" } });
+    const d = await resp.json().catch(() => null);
+    if (!resp.ok || !d || !d.ok || !Array.isArray(d.files)) {
+      box.innerHTML = '<p class="mut">' + esc(t("wb.fileNone")) + "</p>";
+      return;
+    }
+    renderMentorFileList(i, studentId, d.files);
+  } catch (e) {
+    box.innerHTML = '<p class="mut">' + esc(t("wb.fileNone")) + "</p>";
+  }
+}
+async function sendMentorFile(btn) {
+  const i = btn.getAttribute("data-filesend");
+  const sid = Number(btn.getAttribute("data-student"));
+  const input = $("wb-file-input-" + i);
+  const status = $("wb-file-status-" + i);
+  const file = input && input.files && input.files[0];
+  if (!file) { if (status) status.textContent = t("wb.fileChoose"); return; }
+  const { s, k, api } = creds();
+  const fd = new FormData();
+  fd.append("s", s); fd.append("key", k);
+  fd.append("student_id", String(sid)); fd.append("file", file);
+  btn.disabled = true;
+  if (status) status.textContent = t("wb.fileSending");
+  try {
+    const resp = await fetch(api + "/api/mentor/file", { method: "POST", body: fd });
+    const d = await resp.json().catch(() => null);
+    if (resp.ok && d && d.ok) {
+      if (status) status.textContent = t("wb.fileSent");
+      if (input) input.value = "";
+      loadMentorFiles(Number(i), sid);
+    } else {
+      const code = d && d.error;
+      const key = code === "bad_type" ? "wb.fileErrType"
+        : code === "file_too_large" ? "wb.fileErrLarge"
+        : code === "student_quota" ? "wb.fileErrStuQuota"
+        : code === "global_quota" ? "wb.fileErrGlobal" : "wb.fileErr";
+      if (status) status.textContent = t(key);
+    }
+  } catch (e) {
+    if (status) status.textContent = t("wb.fileErr");
+  }
+  btn.disabled = false;
+}
+async function withdrawMentorFile(btn) {
+  const id = Number(btn.getAttribute("data-filewithdraw"));
+  const i = Number(btn.getAttribute("data-fidx"));
+  const sid = Number(btn.getAttribute("data-student"));
+  const { s, k, api } = creds();
+  btn.disabled = true;
+  try {
+    const resp = await fetch(api + "/api/mentor/file/withdraw", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ s, key: k, id }),
+    });
+    const d = await resp.json().catch(() => null);
+    if (resp.ok && d && d.ok) loadMentorFiles(i, sid);
+    else btn.disabled = false;
+  } catch (e) { btn.disabled = false; }
+}
+
 applyI18n();
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", load);
 else load();

@@ -5,9 +5,11 @@
 // 问题升级路径同样自动发信（pushOutbox 收口）；测试端点 /api/admin/mail/test 的
 // 会话鉴权 / mail_not_configured / 成功返回 id / 坏邮箱 400 / 上游失败 502；
 // 发件箱页对 auto_sent 行显示「已转达（系统邮件）」。
+// v16.1：通知邮件正文的工作台链接为收件导师本人一键链接（?s=&k=其 mentor_key，
+// html 版 & 转义）；无密钥回退裸链接；主题与 mail_log 绝不含密钥。
 // 运行：node tests/smoke-v16.mjs（需先把最新 src/index.js 拷为 tests/worker.mjs）
 import { DatabaseSync} from "node:sqlite";
-import worker, { mentorMailTo, buildOutboxMail} from "./worker.mjs";
+import worker, { mentorMailTo, buildOutboxMail, mentorWorkbenchUrl} from "./worker.mjs";
 
 class Stmt {
 constructor(db, sql) { this.db = db; this.sql = sql; this.args = [];}
@@ -86,6 +88,29 @@ const e = buildOutboxMail("problem_escalated", "小明", "x", "t");
 ok(e.subject === "【TransferOS】小明 把一个问题升级给你", "升级主题模板正确");
 }
 
+// ============ 纯函数：一键链接（导师本人密钥仅进其本人邮件正文）============
+section("纯函数：mentorWorkbenchUrl / 一键链接");
+const KEY_A = "mk_aaaaaaaaaaaaaaaaaaaaaaaa";
+const KEY_B = "mk_bbbbbbbbbbbbbbbbbbbbbbbb";
+const mentorA = { id: 101, emp_no: "EMP-T101", mentor_key: KEY_A };
+const mentorB = { id: 102, emp_no: "EMP-T102", mentor_key: KEY_B };
+ok(mentorWorkbenchUrl(mentorA) === "https://zhuanuc.com/one-on-one-app/mentor.html?s=EMP-T101&k=" + KEY_A, "有密钥 → 一键链接（s=工号）");
+ok(mentorWorkbenchUrl({ id: 7, mentor_key: KEY_A }) === "https://zhuanuc.com/one-on-one-app/mentor.html?s=7&k=" + KEY_A, "无工号 → s 回退 staff id");
+ok(mentorWorkbenchUrl({ id: 7, emp_no: "EMP-T7", mentor_key: "" }) === "https://zhuanuc.com/one-on-one-app/mentor.html", "密钥为空 → 回退裸链接");
+ok(mentorWorkbenchUrl({ id: 7, emp_no: "EMP-T7" }) === "https://zhuanuc.com/one-on-one-app/mentor.html", "密钥字段缺失 → 回退裸链接");
+ok(mentorWorkbenchUrl(null) === "https://zhuanuc.com/one-on-one-app/mentor.html", "无导师对象 → 回退裸链接");
+{
+const mk = buildOutboxMail("student_message", "小明", "小明 发来一条留言", "2026-10-23T00:00:00.000Z", mentorA);
+ok(mk.text.includes("mentor.html?s=EMP-T101&k=" + KEY_A), "text 正文含本人一键链接");
+ok(mk.html.includes("mentor.html?s=EMP-T101&amp;k=" + KEY_A), "html 正文 & 转义为 &amp;");
+ok(!mk.text.includes(KEY_B) && !mk.html.includes(KEY_B), "正文不含其他导师的密钥");
+ok(!mk.subject.includes(KEY_A) && !mk.subject.includes("mentor.html"), "主题行不含密钥与链接");
+const bare = buildOutboxMail("student_message", "小明", "x", "t", { id: 9, emp_no: "EMP-T9", mentor_key: "" });
+ok(bare.text.includes("https://zhuanuc.com/one-on-one-app/mentor.html") && !bare.text.includes("?s="), "导师无密钥 → 正文回退裸链接");
+const bare2 = buildOutboxMail("student_message", "小明", "x", "t");
+ok(!bare2.text.includes("?s=") && !bare2.html.includes("?s="), "不传导师 → 裸链接（旧行为不变）");
+}
+
 // ============ 夹具：三名学生 + 两位导师（email / wechat）============
 section("夹具：导入学生与注册导师");
 const impA = await (await imp({ student: { name: "V16学生甲", slug: "v16a"}})).json();
@@ -131,6 +156,14 @@ const obA = q1("SELECT * FROM notifications_outbox WHERE student_id =? AND event
 ok(obA && obA.status === "sent" && obA.auto_sent === 1 && obA.channel === "email", "outbox 行变 sent 且 auto_sent=1");
 const mlA = q1("SELECT * FROM mail_log WHERE outbox_id =?", obA.id);
 ok(mlA && mlA.status === "sent" && mlA.to_addr === "mentor-mail@example.com" &&!mlA.error, "mail_log 记 sent");
+{
+const bA = JSON.parse(mailCalls[0].opts.body);
+ok(bA.text.includes("mentor.html?s=EMP-V1601&k=mk_161111111111111111111111"), "实发邮件 text 含收件导师本人一键链接");
+ok(bA.html.includes("mentor.html?s=EMP-V1601&amp;k=mk_161111111111111111111111"), "实发邮件 html 一键链接 & 已转义");
+ok(!bA.text.includes("mk_162222222222222222222222") && !bA.html.includes("mk_162222222222222222222222"), "实发邮件不含其他导师（微信导师）的密钥");
+ok(!bA.subject.includes("mk_"), "实发邮件主题不含任何密钥");
+ok(!String(mlA.subject || "").includes("mk_") && !String(mlA.to_addr || "").includes("mk_") && !String(mlA.error || "").includes("mk_"), "mail_log 各字段不含密钥");
+}
 
 // ============ B：Resend 500 → 保持 queued + 记 failed + 主流程不报错 ============
 section("B：Resend 返回 500");

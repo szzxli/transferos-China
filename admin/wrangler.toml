@@ -11,3 +11,15 @@ database_name = "transferos-admin"
 # Workers & Pages -> D1 里新建一个名为 transferos-admin 的数据库，
 # 然后把它的 database_id 粘到这里（取消下一行的注释）：
 # database_id = "请粘贴你的数据库 ID"
+
+# v17 导师文件一次性投递：R2 对象存储绑定。桶 transferos-files 需先在
+# Cloudflare 后台 R2 里手动创建（步骤见 README「准备 R2 文件存储」），
+# 桶不存在时部署会报错；绑定缺失时上传/下载接口返回 files_not_configured。
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "transferos-files"
+
+# v17 定时清扫：每 15 分钟一次，扫满 24h 未下载的导师文件（删 R2 对象并置 expired）
+[triggers]
+crons = ["*/15 * * * *"]
+

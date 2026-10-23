@@ -75,6 +75,12 @@ const I18N = {
     "courses.termMeta": "{a} 门 · {b} 学分", "courses.unit": " 学分",
     "courses.empty": "暂无选课记录。",
     "msg.label": "给导师留言", "msg.ph": "写下你想对导师说的话…", "msg.send": "发送",
+    "file.title": "导师发来的文件",
+    "file.download": "下载",
+    "file.from": "发送导师：{name}",
+    "file.left": "剩余 {x}",
+    "file.downloaded": "已下载（服务器已删除）",
+    "file.expired": "已过期（已删除）",
     "msg.to": "发给", "msg.rolePrimary": "主导师", "msg.roleTopic": "专题导师",
     "msg.sending": "发送中…", "msg.emptyThread": "有问题随时在这里留言，导师会回复",
     "msg.you": "我", "msg.mentor": "导师",
@@ -534,6 +540,12 @@ const I18N = {
     "courses.termMeta": "{a} courses · {b} credits", "courses.unit": " cr",
     "courses.empty": "No courses recorded yet.",
     "msg.label": "Message your mentor", "msg.ph": "Write what you'd like to tell your mentor…", "msg.send": "Send",
+    "file.title": "Files from your mentor",
+    "file.download": "Download",
+    "file.from": "From: {name}",
+    "file.left": "{x} left",
+    "file.downloaded": "Downloaded (deleted from server)",
+    "file.expired": "Expired (deleted)",
     "msg.to": "Send to", "msg.rolePrimary": "Lead mentor", "msg.roleTopic": "Topic mentor",
     "msg.sending": "Sending…", "msg.emptyThread": "Questions? Leave a message here anytime — your mentor will reply.",
     "msg.you": "Me", "msg.mentor": "Mentor",
@@ -1243,7 +1255,7 @@ function renderTab(name) {
   if (name === "home") renderHome(lastData);
   else if (name === "growth") renderGrowth(lastData);
   else if (name === "plan") { renderPlan(lastData); renderMajor().catch(() => { /* 数据集加载失败已在 renderMajor 内提示 */ }); }
-  else if (name === "mentor") { renderMentor(lastData); renderParentNotes(lastData); }
+  else if (name === "mentor") { renderMentor(lastData); renderParentNotes(lastData); loadFiles(); }
   applyAccordions(name); // v13：展示收缩（默认展开规则见 applyAccordions）
 }
 function render(d) {
@@ -2872,6 +2884,77 @@ window.addEventListener("appinstalled", () => {
   try { localStorage.setItem(LS_INSTALL_DISMISSED, "1"); } catch (e) { /* 忽略 */ }
   const c = $("install-card"); if (c) c.hidden = true;
 });
+/* ===== v17 导师文件（学生侧）：导师沟通区文件卡 =====
+ * 数据来自 GET /api/client/files（只列本人 pending + 近 48h 内刚过期的文件，
+ * 不给直链）；下载走 GET /api/client/file/download（普通链接导航，浏览器原生
+ * 下载）。服务端一次性语义：下载完成即删、满 24h 自动删——点下载后本地先把
+ * 卡面翻成「已下载（服务器已删除）」并回拉列表对齐；过期文件显示「已过期」。
+ * 接口异常时整块隐藏，绝不影响留言等主流程。 */
+let lastFiles = null;          // 最近一次列表（服务端原样）
+const downloadedFileCards = []; // 本次打开内已点下载的文件（{filename}），翻卡面用
+function fmtBytes(n) {
+  const b = Number(n) || 0;
+  if (b < 1024) return b + " B";
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+  return (b / 1024 / 1024).toFixed(1) + " MB";
+}
+function fmtDur(sec) {
+  const s = Math.max(0, Number(sec) || 0);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return LANG === "zh" ? h + " 小时 " + m + " 分" : h + "h " + m + "m";
+}
+async function loadFiles() {
+  const wrap = $("msg-files");
+  if (!wrap) return;
+  const { s, k, api } = creds();
+  if (!s || !k) { wrap.hidden = true; return; }
+  try {
+    const resp = await fetch(api + "/api/client/files?s=" + encodeURIComponent(s) +
+      "&key=" + encodeURIComponent(k), { headers: { Accept: "application/json" } });
+    const d = await resp.json().catch(() => null);
+    if (!resp.ok || !d || !d.ok || !Array.isArray(d.files)) { wrap.hidden = true; return; }
+    lastFiles = d.files;
+    renderFiles();
+  } catch (e) { wrap.hidden = true; }
+}
+function renderFiles() {
+  const wrap = $("msg-files");
+  const box = $("file-list");
+  if (!wrap || !box) return;
+  const files = Array.isArray(lastFiles) ? lastFiles : [];
+  if (!files.length && !downloadedFileCards.length) { wrap.hidden = true; return; }
+  const { s, k, api } = creds();
+  wrap.hidden = false;
+  let html = files.map((f) => {
+    if (f.status === "expired") {
+      return '<div class="file-card done"><div class="file-name">' + esc(f.filename) + "</div>" +
+        '<div class="mut">' + esc(fmtBytes(f.size)) + " · " + esc(t("file.expired")) + "</div></div>";
+    }
+    const href = api + "/api/client/file/download?s=" + encodeURIComponent(s) +
+      "&key=" + encodeURIComponent(k) + "&id=" + encodeURIComponent(f.id);
+    return '<div class="file-card"><div class="file-name">' + esc(f.filename) + "</div>" +
+      '<div class="mut">' + esc(fmtBytes(f.size)) + " · " +
+      esc(fmt("file.from", { name: f.mentor_name || t("msg.mentor") })) + " · " +
+      esc(fmt("file.left", { x: fmtDur(f.seconds_left) })) + "</div>" +
+      '<a class="btn-primary file-dl" href="' + esc(href) + '" data-fname="' + esc(f.filename) + '">' +
+      esc(t("file.download")) + "</a></div>";
+  }).join("");
+  html += downloadedFileCards.map((c) =>
+    '<div class="file-card done"><div class="file-name">' + esc(c.filename) + "</div>" +
+    '<div class="mut">' + esc(t("file.downloaded")) + "</div></div>").join("");
+  box.innerHTML = html;
+  box.querySelectorAll(".file-dl").forEach((a) => a.addEventListener("click", () => {
+    const name = a.getAttribute("data-fname") || "";
+    // 下载由浏览器接管；本地翻卡面并稍后回拉列表（彼时该文件已不在 pending 中）
+    setTimeout(() => {
+      if (name && !downloadedFileCards.some((c) => c.filename === name)) {
+        downloadedFileCards.push({ filename: name });
+      }
+      loadFiles();
+    }, 1200);
+  }));
+}
+
 refreshInstallCard();
 applyI18n();
 personalizeManifest();

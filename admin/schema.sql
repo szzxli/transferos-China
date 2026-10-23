@@ -217,6 +217,13 @@ CREATE TABLE IF NOT EXISTS course_requirements(
 CREATE TABLE IF NOT EXISTS student_topic_mentors(
   id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, staff_id INTEGER,
   topic TEXT, created_at TEXT, UNIQUE(student_id, staff_id));
+-- v17 导师文件一次性投递（元数据；文件本体在 R2 桶 transferos-files，绑定 FILES；
+-- status: pending/downloaded/expired/withdrawn；运行时由 Worker ensureSchema 幂等建表，本文件仅作结构参考）
+CREATE TABLE IF NOT EXISTS mentor_files(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+  uploader_staff_id INTEGER, r2_key TEXT, filename TEXT, content_type TEXT,
+  size INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
+  created_at TEXT, expires_at TEXT, downloaded_at TEXT);
 
 -- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）
 INSERT OR IGNORE INTO agents(code, name, region, kind, active, created_at) VALUES

@@ -23,6 +23,12 @@
 
 > 备选：如果第 1 步部署时 wrangler 自动建了 D1，可以跳过第 2 步的新建，直接在 Bindings 里绑定已有的库。`wrangler.toml` 里已写好绑定名 `DB` 和库名；只有当部署报错找不到库时，才需要把数据库 ID 粘进 `wrangler.toml`（文件里有注释说明位置）。
 
+### 2b. 准备 R2 文件存储（v17 导师文件投递）
+
+1. Cloudflare 后台 → 左侧 **Storage & Databases** → **R2** → **Create bucket**，名字填 **`transferos-files`**（首次开通 R2 可能要求绑支付方式，免费额度内不收费）
+2. `wrangler.toml` 已写好绑定（`[[r2_buckets]]` binding=`FILES`、bucket_name=`transferos-files`），随代码自动生效；若走后台手动绑定：`transferos-admin` Worker → **Settings** → **Bindings** → **Add binding** → **R2 bucket** → 变量名 **`FILES`** → 选 `transferos-files`
+3. 桶没建 / 绑定缺失时，导师文件上传与学生下载会返回 `files_not_configured`（503），其余功能不受影响
+
 ### 3. 设置登录密码
 
 1. `transferos-admin` Worker → **Settings** → **Variables and Secrets**

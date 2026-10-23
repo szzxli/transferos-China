@@ -692,9 +692,20 @@ function mentorMailTo(staff) {
   const to = String(staff.contact_email || "").trim();
   return EMAIL_RE.test(to) ? to : null;
 }
+/* 导师工作台链接：有本人密钥时给一键链接（?s=工号/编号&k=密钥，与后台人员页展示的
+ * 工作台链接同一口径，s 取 emp_no、无则 id）；无导师或密钥缺失/为空时回退裸链接。
+ * 带密钥的链接只允许出现在发给该导师本人的邮件里，不得进主题/日志/其他渠道。 */
+function mentorWorkbenchUrl(mentor) {
+  const key = mentor && mentor.mentor_key ? String(mentor.mentor_key).trim() : "";
+  const loc = mentor ? String(mentor.emp_no || mentor.id || "").trim() : "";
+  if (!key || !loc) return MENTOR_WORKBENCH_URL;
+  return MENTOR_WORKBENCH_URL + "?s=" + encodeURIComponent(loc) + "&k=" + encodeURIComponent(key);
+}
 /* 通知邮件内容（纯函数）：只含元数据（学生名/事项摘要/时间）+ 工作台链接，
- * 绝不带留言正文等私密内容；签名只写 TransferOS，不出现真人姓名。 */
-function buildOutboxMail(eventType, studentName, summary, ts) {
+ * 绝不带留言正文等私密内容；签名只写 TransferOS，不出现真人姓名。
+ * 传入 mentor 时工作台链接为该导师本人的一键链接（含其密钥，仅发其本人邮箱）；
+ * 不传/无密钥则为裸链接。主题行永不含链接与密钥。 */
+function buildOutboxMail(eventType, studentName, summary, ts, mentor) {
   const name = String(studentName || "").trim() || "学生";
   const subjects = {
     student_message: "【TransferOS】" + name + " 发来一条留言",
@@ -702,19 +713,20 @@ function buildOutboxMail(eventType, studentName, summary, ts) {
     trail_revisit: "【TransferOS】" + name + " 有新的轨迹动态待回看",
   };
   const subject = subjects[eventType] || ("【TransferOS】" + name + " 有一条新通知");
+  const url = mentorWorkbenchUrl(mentor);
   const text = [
     "学生：" + name,
     "事项：" + (summary || ""),
     "时间：" + (ts || ""),
     "",
     "请登录导师工作台查看并回复：",
-    MENTOR_WORKBENCH_URL,
+    url,
     "",
     "— TransferOS",
   ].join("\n");
   const html = "<div style=\"font-family:sans-serif;font-size:14px;line-height:1.7;color:#222\">"
     + "<p>学生：" + esc(name) + "<br>事项：" + esc(summary || "") + "<br>时间：" + esc(ts || "") + "</p>"
-    + "<p>请登录导师工作台查看并回复：<br><a href=\"" + MENTOR_WORKBENCH_URL + "\">" + MENTOR_WORKBENCH_URL + "</a></p>"
+    + "<p>请登录导师工作台查看并回复：<br><a href=\"" + esc(url) + "\">" + esc(url) + "</a></p>"
     + "<p>— TransferOS</p></div>";
   return { subject, text, html };
 }
@@ -764,7 +776,7 @@ async function maybeAutoSendOutboxMail(env, db, mentor, outboxId, studentId, eve
       const s = await db.prepare("SELECT name FROM students WHERE id = ?").bind(studentId).first();
       if (s && s.name) stuName = s.name;
     } catch (e) { /* 学生名取不到时模板以「学生」兜底 */ }
-    const mail = buildOutboxMail(eventType, stuName, summary, ts);
+    const mail = buildOutboxMail(eventType, stuName, summary, ts, mentor);
     const r = await sendResendMail(env, to, mail.subject, mail.text, mail.html);
     if (r.ok) {
       await db.prepare(
@@ -792,6 +804,100 @@ async function pushOutbox(env, db, mentor, studentId, eventType, summary, refTyp
   const outboxId = r.meta.last_row_id;
   await maybeAutoSendOutboxMail(env, db, mentor, outboxId, studentId, eventType, cleanSummary, ts);
   return outboxId;
+}
+
+/* ======================== v17：导师文件一次性投递 ========================
+ * 创始人规则（不可改动）：导师仅可向名下学生（主导师/专题导师均可）发文件；
+ * 单文件 ≤5MB；每生 pending 总量 ≤25MB；全局 pending 总量 ≤2GB（总闸）；
+ * 类型白名单（扩展名 + MIME 双查）；满 24h 未下载自动删除（R2 对象 + 记录置
+ * expired）；学生下载完成即删（同文件不可二次下载，非 pending 下载返回 410）；
+ * 导师可在下载前撤回（仅限本人发送的）。家长端完全不暴露文件（无字段、无接口）。
+ * 存储：R2 绑定 FILES（bucket transferos-files，需创始人在 Cloudflare 手动建桶）；
+ * 元数据落 D1 mentor_files 表；r2_key 为随机串，不可猜测、不含身份信息。
+ * 额度可经 env 注入覆盖（FILE_MAX_BYTES / FILE_STUDENT_QUOTA_BYTES /
+ * FILE_GLOBAL_QUOTA_BYTES）——仅供测试模拟，生产不设即用下列默认值。 */
+const FILE_MAX_BYTES = 5 * 1024 * 1024;
+const FILE_STUDENT_QUOTA_BYTES = 25 * 1024 * 1024;
+const FILE_GLOBAL_QUOTA_BYTES = 2 * 1024 * 1024 * 1024;
+const FILE_TTL_MS = 24 * 3600 * 1000;
+const FILE_TYPE_MAP = {
+  pdf: ["application/pdf"],
+  png: ["image/png"],
+  jpg: ["image/jpeg"],
+  jpeg: ["image/jpeg"],
+  gif: ["image/gif"],
+  webp: ["image/webp"],
+  doc: ["application/msword"],
+  docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  xls: ["application/vnd.ms-excel"],
+  xlsx: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  ppt: ["application/vnd.ms-powerpoint"],
+  pptx: ["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+  txt: ["text/plain"],
+  zip: ["application/zip", "application/x-zip-compressed", "application/octet-stream"],
+};
+function fileLimits(env) {
+  const n = (v, d) => {
+    const x = Number(v);
+    return Number.isFinite(x) && x > 0 ? Math.floor(x) : d;
+  };
+  return {
+    maxBytes: n(env && env.FILE_MAX_BYTES, FILE_MAX_BYTES),
+    studentQuota: n(env && env.FILE_STUDENT_QUOTA_BYTES, FILE_STUDENT_QUOTA_BYTES),
+    globalQuota: n(env && env.FILE_GLOBAL_QUOTA_BYTES, FILE_GLOBAL_QUOTA_BYTES),
+  };
+}
+// mentorFileTypeOk（纯函数）：扩展名与 MIME 必须同时命中白名单才放行。
+function mentorFileTypeOk(filename, contentType) {
+  const name = String(filename || "");
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return false;
+  const mimes = FILE_TYPE_MAP[name.slice(dot + 1).toLowerCase()];
+  if (!mimes) return false;
+  const mime = String(contentType || "").split(";")[0].trim().toLowerCase();
+  return mimes.includes(mime);
+}
+function sanitizeFilename(name) {
+  const bad = new Set([..."\\/:*?\"<>|"]);
+  const clean = [...String(name || "")]
+    .map((ch) => (bad.has(ch) || ch.codePointAt(0) < 32 || ch.codePointAt(0) === 127 ? "_" : ch))
+    .join("").trim();
+  return clampStr(clean || "file", 200);
+}
+function genFileKey() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return "mf/" + [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+// 单行过期处置：删 R2 对象（失败不阻断）+ 记录置 expired。row 已非 pending 时返回 false。
+async function expireMentorFile(env, db, row) {
+  if (!row || row.status !== "pending") return false;
+  if (env && env.FILES) { try { await env.FILES.delete(row.r2_key); } catch (e) { /* 对象删除失败不阻断状态流转，下轮清扫兜底 */ } }
+  await db.prepare("UPDATE mentor_files SET status = 'expired' WHERE id = ? AND status = 'pending'").bind(row.id).run();
+  return true;
+}
+// 清扫：全部（或指定学生）到期的 pending 文件置 expired 并删对象。scheduled 与
+// 上传/列表/下载路径共用（双保险）。返回处置条数。
+async function sweepExpiredMentorFiles(env, db, studentId) {
+  const now = nowIso();
+  const q = studentId
+    ? await db.prepare("SELECT * FROM mentor_files WHERE status = 'pending' AND expires_at < ? AND student_id = ? ORDER BY id ASC LIMIT 500").bind(now, studentId).all()
+    : await db.prepare("SELECT * FROM mentor_files WHERE status = 'pending' AND expires_at < ? ORDER BY id ASC LIMIT 500").bind(now).all();
+  let n = 0;
+  for (const row of q.results || []) { if (await expireMentorFile(env, db, row)) n++; }
+  return n;
+}
+function mentorFileView(row, extra) {
+  const left = row.status === "pending"
+    ? Math.max(0, Math.floor((Date.parse(row.expires_at || "") - Date.now()) / 1000))
+    : 0;
+  return {
+    id: row.id, filename: row.filename, size: row.size,
+    content_type: row.content_type, status: row.status,
+    created_at: row.created_at, expires_at: row.expires_at,
+    downloaded_at: row.downloaded_at || null, seconds_left: left,
+    ...(extra || {}),
+  };
 }
 /* 家长成就（方案层事实事件）：已完成里程碑（成长时间线条目本身即已发生的事实）+
  * 已完成行动 + 已解决问题。只出标题与日期文本，绝不带成绩/GPA/课程/考试明细。 */
@@ -1222,6 +1328,15 @@ const DDL = [
   `CREATE TABLE IF NOT EXISTS mail_log(
     id INTEGER PRIMARY KEY AUTOINCREMENT, outbox_id INTEGER,
     to_addr TEXT, subject TEXT, status TEXT, error TEXT, created_at TEXT)`,
+  // ===== v17 新增表：导师文件一次性投递 =====
+  // 导师给名下学生发文件（R2 存对象、本表存元数据）：status pending 待下载 /
+  // downloaded 学生已下载（R2 对象已删）/ expired 满 24h 未下载自动清扫 /
+  // withdrawn 导师下载前撤回。r2_key 为不可猜测随机串，不含学生/导师信息。
+  `CREATE TABLE IF NOT EXISTS mentor_files(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    uploader_staff_id INTEGER, r2_key TEXT, filename TEXT, content_type TEXT,
+    size INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
+    created_at TEXT, expires_at TEXT, downloaded_at TEXT)`,
 ];
 // v10 迁移：students 补愿景（vision_text）与导师寄语（mentor_message / mentor_message_at）列，幂等
 
@@ -1413,7 +1528,7 @@ function jsonResp(req, data, status) {
 }
 
 // ===== 公开 API（无需登录，严格校验输入）=====
-async function handleApi(req, env, url) {
+async function handleApi(req, env, url, ctx) {
   const p = url.pathname;
   const db = env.DB;
 
@@ -2141,6 +2256,71 @@ async function handleApi(req, env, url) {
     return jsonResp(req, { ok: true, ...view });
   }
 
+  /* ===== v17 学生端文件：GET /api/client/files（本人待下载列表，不给直链）与
+   * GET /api/client/file/download?id=（一次性下载）=====
+   * 精确路径同样必须排在下面 /api/client/<locator> 正则之前。鉴权与学生端其它
+   * 接口同一口径（locator + client_key 常量时间比对，未授权一律 404，不暴露
+   * 学生是否存在）。列表主体为 pending 文件；另附近 48h 内刚置 expired 的文件
+   * （仅供前端显示「已过期」，其 R2 对象已删除、不可下载）。downloaded/withdrawn
+   * 不下发。下载：归属校验后非 pending 一律 410；pending 但已过期 → 当场清扫
+   * 并 410（与 scheduled 清扫双保险）；成功则流式返回，响应交出后经 ctx.waitUntil
+   * 删除 R2 对象并置 downloaded + downloaded_at（同一文件不可二次下载）。 */
+  if (p === "/api/client/files" || p === "/api/client/file/download") {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    await ensureSchema(db);
+    const locator = url.searchParams.get("s") || "";
+    const student = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(locator).first();
+    const key = url.searchParams.get("key") || "";
+    if (!student || !student.client_key || !timingSafeEq(key, String(student.client_key))) {
+      return jsonResp(req, { ok: false, error: "not found" }, 404);
+    }
+    if (p === "/api/client/files") {
+      await sweepExpiredMentorFiles(env, db, student.id);
+      const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+      const rows = (await db.prepare(
+        `SELECT f.*, s.name AS mentor_name FROM mentor_files f
+         LEFT JOIN staff s ON s.id = f.uploader_staff_id
+         WHERE f.student_id = ? AND (f.status = 'pending' OR (f.status = 'expired' AND f.expires_at >= ?))
+         ORDER BY f.id DESC LIMIT 50`).bind(student.id, since).all()).results || [];
+      return jsonResp(req, { ok: true, files: rows.map((r) => mentorFileView(r, { mentor_name: r.mentor_name || "" })) });
+    }
+    const fid = toInt(url.searchParams.get("id"), 0);
+    const row = fid ? await db.prepare(
+      `SELECT * FROM mentor_files WHERE id = ? AND student_id = ?`).bind(fid, student.id).first() : null;
+    if (!row) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    if (row.status !== "pending") return jsonResp(req, { ok: false, error: "gone" }, 410);
+    if (Date.parse(row.expires_at || "") <= Date.now()) {
+      await expireMentorFile(env, db, row);
+      return jsonResp(req, { ok: false, error: "gone" }, 410);
+    }
+    if (!env.FILES) return jsonResp(req, { ok: false, error: "files_not_configured" }, 503);
+    const obj = await env.FILES.get(row.r2_key);
+    if (!obj) {
+      await expireMentorFile(env, db, row);
+      return jsonResp(req, { ok: false, error: "gone" }, 410);
+    }
+    const asciiName = row.filename.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "_");
+    const dlHeaders = {
+      "Content-Type": row.content_type || (obj.httpMetadata && obj.httpMetadata.contentType) || "application/octet-stream",
+      "Content-Disposition": "attachment; filename=\"" + asciiName + "\"; filename*=UTF-8''" + encodeURIComponent(row.filename),
+      "Cache-Control": "no-store",
+    };
+    if (obj.size) dlHeaders["Content-Length"] = String(obj.size);
+    const resp = new Response(obj.body, { status: 200, headers: dlHeaders });
+    const cleanup = (async () => {
+      try { await env.FILES.delete(row.r2_key); } catch (e) { /* 对象删除失败不清状态亦不可再下（下方仍置 downloaded） */ }
+      try {
+        await db.prepare(
+          `UPDATE mentor_files SET status = 'downloaded', downloaded_at = ? WHERE id = ? AND status = 'pending'`
+        ).bind(nowIso(), row.id).run();
+      } catch (e) { /* 状态落库失败仅影响展示 */ }
+    })();
+    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(cleanup);
+    return resp;
+  }
+
   const clientApiMatch = p.match(/^\/api\/client\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
   if (clientApiMatch) {
     if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
@@ -2469,6 +2649,92 @@ async function handleApi(req, env, url) {
     if (!staff || !staff.mentor_key || !timingSafeEq(String(key || ""), String(staff.mentor_key))) return null;
     return staff;
   };
+  /* ===== v17 导师文件一次性投递（导师端三接口）=====
+   * 路由必须排在下方 mentorApiMatch 之前：其正则会吞 /api/mentor/files 等单段
+   * 路径，且非 GET 在此会先被 405 挡下。鉴权沿用工作台口径（s=工号 +
+   * key=mentor_key，findMentor 定位）；关系判定沿用 mentorStudentRelation
+   * （主导师/专题导师均可）。无关系返回 404 + error "forbidden"：状态码沿用
+   * 本组接口「不暴露学生存在性」口径，error code 按创始人清单明确给出。 */
+  if (p === "/api/mentor/file") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let fd;
+    try { fd = await req.formData(); } catch (e) { return jsonResp(req, { ok: false, error: "bad_form" }, 400); }
+    await ensureSchema(db);
+    const staff = await findMentor(String(fd.get("s") || ""), String(fd.get("key") || ""));
+    if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const studentId = toInt(fd.get("student_id"), 0);
+    const stu = studentId ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(studentId).first() : null;
+    const rel = stu ? await mentorStudentRelation(db, staff, stu) : null;
+    if (!stu || !rel) return jsonResp(req, { ok: false, error: "forbidden" }, 404);
+    const file = fd.get("file");
+    if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function") {
+      return jsonResp(req, { ok: false, error: "file_required" }, 400);
+    }
+    const filename = sanitizeFilename(file.name || "");
+    const contentType = String(file.type || "").split(";")[0].trim().toLowerCase();
+    const size = Number(file.size) || 0;
+    const limits = fileLimits(env);
+    // 校验顺序（创始人定版）：关系（上方）→ 类型 → 单文件 5MB → 学生额度 → 全局额度
+    if (!mentorFileTypeOk(filename, contentType)) return jsonResp(req, { ok: false, error: "bad_type" }, 400);
+    if (size > limits.maxBytes) return jsonResp(req, { ok: false, error: "file_too_large" }, 413);
+    if (!env.FILES) return jsonResp(req, { ok: false, error: "files_not_configured" }, 503);
+    // 额度统计前先清扫到期文件，避免已过期 pending 占额误拒新传
+    await sweepExpiredMentorFiles(env, db);
+    const stuSum = await db.prepare(
+      `SELECT COALESCE(SUM(size), 0) AS total FROM mentor_files WHERE student_id = ? AND status = 'pending'`
+    ).bind(stu.id).first();
+    if ((stuSum ? Number(stuSum.total) || 0 : 0) + size > limits.studentQuota) {
+      return jsonResp(req, { ok: false, error: "student_quota" }, 409);
+    }
+    const allSum = await db.prepare(
+      `SELECT COALESCE(SUM(size), 0) AS total FROM mentor_files WHERE status = 'pending'`).first();
+    if ((allSum ? Number(allSum.total) || 0 : 0) + size > limits.globalQuota) {
+      return jsonResp(req, { ok: false, error: "global_quota" }, 409);
+    }
+    const buf = await file.arrayBuffer();
+    const r2Key = genFileKey();
+    await env.FILES.put(r2Key, buf, { httpMetadata: { contentType } });
+    const created = nowIso();
+    const expires = new Date(Date.now() + FILE_TTL_MS).toISOString();
+    const ins = await db.prepare(
+      `INSERT INTO mentor_files(student_id, uploader_staff_id, r2_key, filename, content_type, size, status, created_at, expires_at, downloaded_at)
+       VALUES(?, ?, ?, ?, ?, ?, 'pending', ?, ?, NULL)`
+    ).bind(stu.id, staff.id, r2Key, filename, contentType, size, created, expires).run();
+    const row = await db.prepare(`SELECT * FROM mentor_files WHERE id = ?`).bind(ins.meta.last_row_id).first();
+    return jsonResp(req, { ok: true, file: mentorFileView(row) });
+  }
+  if (p === "/api/mentor/files") {
+    if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
+    await ensureSchema(db);
+    const staff = await findMentor(url.searchParams.get("s") || "", url.searchParams.get("key") || "");
+    if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const studentId = toInt(url.searchParams.get("student_id"), 0);
+    const stu = studentId ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(studentId).first() : null;
+    const rel = stu ? await mentorStudentRelation(db, staff, stu) : null;
+    if (!stu || !rel) return jsonResp(req, { ok: false, error: "forbidden" }, 404);
+    await sweepExpiredMentorFiles(env, db, stu.id);
+    const rows = (await db.prepare(
+      `SELECT * FROM mentor_files WHERE student_id = ? AND uploader_staff_id = ? ORDER BY id DESC LIMIT 100`
+    ).bind(stu.id, staff.id).all()).results || [];
+    return jsonResp(req, { ok: true, files: rows.map((r) => mentorFileView(r)) });
+  }
+  if (p === "/api/mentor/file/withdraw") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const staff = await findMentor(String(body.s || ""), String(body.key || ""));
+    if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const fid = toInt(body.id, 0);
+    const row = fid ? await db.prepare(`SELECT * FROM mentor_files WHERE id = ?`).bind(fid).first() : null;
+    // 仅可撤回本人发送的；他人文件与不存在同口径 404
+    if (!row || row.uploader_staff_id !== staff.id) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    if (row.status !== "pending") return jsonResp(req, { ok: false, error: "not_pending" }, 409);
+    if (env.FILES) { try { await env.FILES.delete(row.r2_key); } catch (e) { /* 删除失败仍置 withdrawn，清扫兜底 */ } }
+    await db.prepare(`UPDATE mentor_files SET status = 'withdrawn' WHERE id = ? AND status = 'pending'`).bind(row.id).run();
+    return jsonResp(req, { ok: true, id: row.id, status: "withdrawn" });
+  }
+
   const mentorApiMatch = p.match(/^\/api\/mentor\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
   if (mentorApiMatch && mentorApiMatch[1] !== "reply") {
     if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
@@ -5853,14 +6119,14 @@ async function handleAdmin(req, env, url) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const p = url.pathname;
     try {
       if (p.startsWith("/api/")) {
         if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(req) });
         if (!env.DB) return jsonResp(req, { ok: false, error: "db not configured" }, 500);
-        return await handleApi(req, env, url);
+        return await handleApi(req, env, url, ctx);
       }
       if (p === "/admin" || p.startsWith("/admin/")) {
         if (!env.ADMIN_KEY) {
@@ -5883,7 +6149,20 @@ export default {
       });
     }
   },
+  /* v17 定时清扫（wrangler.toml [triggers] crons 每 15 分钟）：导师文件满 24h
+   * 未下载 → 删 R2 对象 + 记录置 expired。与 fetch 路由完全独立，异常只记日志
+   * 不外抛；下载/列表/上传路径另有单条过期判定与懒清扫双保险。 */
+  async scheduled(event, env, ctx) {
+    try {
+      if (!env.DB) return;
+      await ensureSchema(env.DB);
+      const n = await sweepExpiredMentorFiles(env, env.DB);
+      if (n > 0) console.log("mentor files expired sweep:", n);
+    } catch (e) {
+      console.log("mentor files sweep failed:", e && e.message ? e.message : String(e));
+    }
+  },
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, complianceFlag, gradePoints, normCourseCode, parsePrereqCodes, matchRequirements, normProblemInput, normTrailExtras, normRequirementSets, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT, PROBLEM_DOMAINS, PROBLEM_PROGRESS, PROBLEM_RATE_LIMIT, TRAIL_ROLES, TRAIL_SOURCES, REQ_BLOCKS, FEELING_TAGS, KEY_DATE_KINDS, MENTOR_STATUSES, NOTIFY_CHANNELS, OUTBOX_STATUSES, EVENT_TYPES, PARENT_NOTE_MAX_LEN, genMentorKey, mentorNotifiable, mentorContacts, mentorMailTo, buildOutboxMail, computeUpcomingReminders, buildAchievements };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, complianceFlag, gradePoints, normCourseCode, parsePrereqCodes, matchRequirements, normProblemInput, normTrailExtras, normRequirementSets, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT, PROBLEM_DOMAINS, PROBLEM_PROGRESS, PROBLEM_RATE_LIMIT, TRAIL_ROLES, TRAIL_SOURCES, REQ_BLOCKS, FEELING_TAGS, KEY_DATE_KINDS, MENTOR_STATUSES, NOTIFY_CHANNELS, OUTBOX_STATUSES, EVENT_TYPES, PARENT_NOTE_MAX_LEN, genMentorKey, mentorNotifiable, mentorContacts, mentorMailTo, buildOutboxMail, mentorWorkbenchUrl, computeUpcomingReminders, buildAchievements, mentorFileTypeOk, fileLimits, sanitizeFilename, FILE_MAX_BYTES, FILE_STUDENT_QUOTA_BYTES, FILE_GLOBAL_QUOTA_BYTES, FILE_TTL_MS };
