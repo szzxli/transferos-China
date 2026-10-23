@@ -364,3 +364,8 @@ input[type="number"], select { font-size: 15px; }
 .mail-panel{margin-top:12px;background:#fff;border:1px dashed #16453a;border-radius:10px;padding:12px 14px;text-align:left}
 .mail-panel p{margin:6px 0;font-size:14.5px;line-height:1.6}
 .mini-btn{background:#16453a;color:#fff;border:0;border-radius:999px;padding:3px 12px;font-size:12.5px;cursor:pointer;vertical-align:1px}
+
+/* v42: case CSCSE certificate */
+.case-cert{margin:16px 0 0}
+.case-cert img{width:230px;max-width:62%;height:auto;border:1px solid #e2e6e2;border-radius:10px;display:block}
+.case-cert figcaption{font-size:12.5px;color:#6a6f6a;margin-top:7px;line-height:1.6}
