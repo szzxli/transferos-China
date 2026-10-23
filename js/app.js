@@ -120,11 +120,18 @@ function mailConsult(source, btn) {
   if (old) old.remove();
   var d = document.createElement("div");
   d.className = "mail-panel";
-  d.innerHTML = '<p>收件人：<b>info@zhuanuc.com</b> <button type="button" class="mini-btn" onclick="togCopy(\'info@zhuanuc.com\', this)">复制邮箱</button></p>' +
+  var wx = "";
+  if (typeof wechatBlockHTML === "function") { wx = wechatBlockHTML(subject); }
+  else if (typeof CHAT_CONFIG !== "undefined" && CHAT_CONFIG.wechatQr) {
+    wx = '<div class="lead-wx"><b>① 微信（最快）</b><img class="lead-qr" src="' + CHAT_CONFIG.wechatQr + '" alt="客服微信二维码"><p>微信扫一扫加好友，昵称「' + esc(CHAT_CONFIG.wechatId) + '」，加好友时请带备注：<b>' + esc(subject) + '</b></p></div>';
+  }
+  d.innerHTML = wx +
+    '<div class="lead-mail"><b>② 邮件（打开你自己的邮箱窗口写）</b>' +
+    '<p>收件人：<b>info@zhuanuc.com</b> <button type="button" class="mini-btn" onclick="togCopy(\'info@zhuanuc.com\', this)">复制邮箱</button></p>' +
     '<p>主题请写：<b>' + esc(subject) + '</b></p>' +
     '<p class="hint">点下面按钮会打开你的邮件应用并自动填好；如果点了没反应，就复制上面的邮箱和主题，手动发一封到这个邮箱。</p>' +
     '<p><a class="btn" href="' + mailto + '">✉️ 打开邮件应用</a></p>' +
-    '<p class="hint">用网页邮箱？<a target="_blank" rel="noopener" href="https://mail.google.com/mail/?view=cm&fs=1&to=info@zhuanuc.com&su=' + encodeURIComponent(subject) + '">用 Gmail 写</a> · <a target="_blank" rel="noopener" href="https://mail.qq.com/cgi-bin/qm_share?t=qm_mailme&email=info@zhuanuc.com">用 QQ 邮箱写</a>（收件人已填好，Gmail 连主题一起填好）</p>';
+    '<p class="hint">用网页邮箱？<a target="_blank" rel="noopener" href="https://mail.google.com/mail/?view=cm&fs=1&to=info@zhuanuc.com&su=' + encodeURIComponent(subject) + '">用 Gmail 写</a>（海外或可科学上网时可用） · <a target="_blank" rel="noopener" href="https://mail.qq.com/cgi-bin/qm_share?t=qm_mailme&email=info@zhuanuc.com">用 QQ 邮箱写</a>（收件人已填好，Gmail 连主题一起填好）</p></div>';
   card.appendChild(d);
   if (d.scrollIntoView) d.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }

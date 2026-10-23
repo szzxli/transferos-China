@@ -365,6 +365,12 @@ input[type="number"], select { font-size: 15px; }
 .mail-panel p{margin:6px 0;font-size:14.5px;line-height:1.6}
 .mini-btn{background:#16453a;color:#fff;border:0;border-radius:999px;padding:3px 12px;font-size:12.5px;cursor:pointer;vertical-align:1px}
 
+/* v44: wechat-first contact block */
+.lead-wx{margin:10px 0;padding:10px 12px;background:#f2f7f3;border:1px solid #d8e4d8;border-radius:10px;text-align:left}
+.lead-qr{width:118px;height:118px;display:block;margin:8px 0;border-radius:8px}
+.lead-wx p{margin:4px 0;font-size:13.5px;line-height:1.6}
+.lead-mail{margin-top:10px;text-align:left}
+
 /* v42: case CSCSE certificate */
 .case-cert{margin:16px 0 0}
 .case-cert img{width:230px;max-width:62%;height:auto;border:1px solid #e2e6e2;border-radius:10px;display:block}
