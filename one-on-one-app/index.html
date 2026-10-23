@@ -11,6 +11,24 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.json">
+<script>
+/* v14.2 个性化 manifest 抢先改指：必须在 <head> 里同步执行，赶在浏览器读取
+ * manifest 链接之前（v14.1 把改指放在 app.js 末尾，iOS 真机复测仍落门页——
+ * iOS 对晚改指的 manifest 链接可能已按初始值快照）。凭据来源与 app.js
+ * creds() 一致：URL 参数优先，其次本机已记住的。app.js 的 personalizeManifest
+ * 保留作兜底（门页手动输入凭据后也会调用）。 */
+(function () {
+  try {
+    var q = new URLSearchParams(location.search);
+    var s = q.get("s") || localStorage.getItem("ooo_student_id") || "";
+    var k = q.get("k") || localStorage.getItem("ooo_client_key") || "";
+    var api = (q.get("api") || localStorage.getItem("ooo_api_base") || "https://transferos-admin.szzxli711.workers.dev").replace(/\/+$/, "");
+    if (!s || !k) return;
+    var link = document.querySelector('link[rel="manifest"]');
+    if (link) link.href = api + "/api/manifest/client/" + encodeURIComponent(s) + "?key=" + encodeURIComponent(k);
+  } catch (e) { /* 抢先改指失败不影响主流程 */ }
+})();
+</script>
 <link rel="apple-touch-icon" href="icon-180.png">
 <script>window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();window.__bipEvent=e;});</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2316453a'/%3E%3Ccircle cx='50' cy='50' r='25' fill='none' stroke='%23c9f06b' stroke-width='9'/%3E%3Ccircle cx='50' cy='50' r='7' fill='%23c9f06b'/%3E%3C/svg%3E">
@@ -414,9 +432,9 @@
   <button type="button" class="tab-btn" data-tab="mentor"><span class="tab-ic" aria-hidden="true">✎</span><span data-i18n="tab.mentor">导师</span><i class="dot" id="tab-dot" hidden></i></button>
 </nav>
 
-<script src="private.js"></script>
-<script src="problems.js"></script>
-<script src="majors.js"></script>
-<script src="app.js"></script>
+<script src="private.js?v=20261023.2"></script>
+<script src="problems.js?v=20261023.2"></script>
+<script src="majors.js?v=20261023.2"></script>
+<script src="app.js?v=20261023.2"></script>
 </body>
 </html>

@@ -10,6 +10,22 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#16453a">
 <link rel="manifest" href="manifest-parent.json">
+<script>
+/* v14.2 个性化 manifest 抢先改指：与学生端同一机制——<head> 里同步执行，赶在
+ * 浏览器读取 manifest 链接之前。凭据来源与 parent.js creds() 一致：URL 参数
+ * （s 与 p）优先，其次本机已记住的。parent.js 的 personalizeManifest 保留作兜底。 */
+(function () {
+  try {
+    var q = new URLSearchParams(location.search);
+    var s = q.get("s") || localStorage.getItem("oop_parent_id") || "";
+    var k = q.get("p") || localStorage.getItem("oop_parent_key") || "";
+    var api = (q.get("api") || localStorage.getItem("oop_parent_api") || "https://transferos-admin.szzxli711.workers.dev").replace(/\/+$/, "");
+    if (!s || !k) return;
+    var link = document.querySelector('link[rel="manifest"]');
+    if (link) link.href = api + "/api/manifest/parent/" + encodeURIComponent(s) + "?key=" + encodeURIComponent(k);
+  } catch (e) { /* 抢先改指失败不影响主流程 */ }
+})();
+</script>
 <script>window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();window.__bipEvent=e;});</script>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -160,6 +176,6 @@
   <button class="tab-btn" type="button" data-tab="mentor"><span class="tab-ic">💬</span><span data-i18n="tab.mentor">导师</span><span class="dot" id="tab-dot" hidden></span></button>
 </nav>
 
-<script src="parent.js"></script>
+<script src="parent.js?v=20261023.2"></script>
 </body>
 </html>

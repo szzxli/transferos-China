@@ -74,5 +74,49 @@ section("D. 家长页");
   ok(mlink(w2) === "manifest-parent.json", "家长页无凭据时链接不动（静态 manifest-parent.json）");
 }
 
+section("E. v14.2 head 内联脚本同步改指（不加载 app.js，eval 后立即断言）");
+function headInline(html, marker) {
+  const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  return blocks.find((b) => b.includes(marker)) || null;
+}
+const S_INLINE = headInline(HTML, "/api/manifest/client/");
+const P_INLINE = headInline(PHTML, "/api/manifest/parent/");
+ok(!!S_INLINE, "学生页 <head> 内存在个性化 manifest 内联脚本");
+ok(!!P_INLINE, "家长页 <head> 内存在个性化 manifest 内联脚本");
+{
+  const dom = new JSDOM(HTML, { url: "https://zhuanuc.com/one-on-one-app/?s=fix&k=key-fix&api=https://api.test", runScripts: "outside-only" });
+  dom.window.eval(S_INLINE);
+  ok(mlink(dom.window) === "https://api.test/api/manifest/client/fix?key=key-fix", "学生：仅内联脚本执行后 manifest 已同步改指：" + mlink(dom.window));
+}
+{
+  const dom = new JSDOM(HTML, { url: "https://zhuanuc.com/one-on-one-app/", runScripts: "outside-only" });
+  dom.window.localStorage.setItem("ooo_student_id", "fix");
+  dom.window.localStorage.setItem("ooo_client_key", "key-fix");
+  dom.window.localStorage.setItem("ooo_api_base", "https://api.test");
+  dom.window.eval(S_INLINE);
+  ok(mlink(dom.window) === "https://api.test/api/manifest/client/fix?key=key-fix", "学生：无 URL 参数、靠 localStorage 时内联脚本同样改指");
+}
+{
+  const dom = new JSDOM(HTML, { url: "https://zhuanuc.com/one-on-one-app/", runScripts: "outside-only" });
+  dom.window.eval(S_INLINE);
+  ok(mlink(dom.window) === "manifest.json", "学生：无凭据时内联脚本不动 manifest 链接");
+}
+{
+  const dom = new JSDOM(PHTML, { url: "https://zhuanuc.com/one-on-one-app/parent.html?s=fix&p=pkey-fix&api=https://api.test", runScripts: "outside-only" });
+  dom.window.eval(P_INLINE);
+  ok(mlink(dom.window) === "https://api.test/api/manifest/parent/fix?key=pkey-fix", "家长：仅内联脚本执行后 manifest 已同步改指：" + mlink(dom.window));
+}
+{
+  const dom = new JSDOM(PHTML, { url: "https://zhuanuc.com/one-on-one-app/parent.html", runScripts: "outside-only" });
+  dom.window.eval(P_INLINE);
+  ok(mlink(dom.window) === "manifest-parent.json", "家长：无凭据时内联脚本不动 manifest 链接");
+}
+
+section("F. v14.2 JS 引用带版本参数（破缓存）");
+for (const f of ["private.js", "problems.js", "majors.js", "app.js"]) {
+  ok(HTML.includes('src="' + f + "?v="), "学生页 " + f + " 带 ?v= 版本参数");
+}
+ok(PHTML.includes('src="parent.js?v='), "家长页 parent.js 带 ?v= 版本参数");
+
 console.log("\n==== app-manifest: " + pass + " passed, " + fail + " failed ====");
 process.exit(fail ? 1 : 0);
