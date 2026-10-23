@@ -311,6 +311,10 @@
         <h2 data-i18n="card.messages">导师沟通</h2>
         <div id="msg-thread"></div>
         <form id="msg-form">
+          <div id="msg-mentor-row" hidden>
+            <label class="msg-label" for="msg-mentor" data-i18n="msg.to">发给</label>
+            <select id="msg-mentor"></select>
+          </div>
           <label class="msg-label" for="msg-input" data-i18n="msg.label">给导师留言</label>
           <textarea id="msg-input" rows="3" maxlength="500" data-i18n-ph="msg.ph" placeholder="写下你想对导师说的话…"></textarea>
           <div class="msg-bar">
@@ -446,6 +450,6 @@
 <script src="private.js?v=20261023.2"></script>
 <script src="problems.js?v=20261023.2"></script>
 <script src="majors.js?v=20261023.2"></script>
-<script src="app.js?v=20261023.2"></script>
+<script src="app.js?v=20261023.3"></script>
 </body>
 </html>

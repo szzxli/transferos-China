@@ -45,6 +45,10 @@ const I18N = {
     "wb.notifiable": "可通知",
     "wb.notNotifiable": "不可通知（请联系管理员补齐联系方式）",
     "wb.correction": "课程数据纠错",
+    "wb.topicBadge": "专题导师",
+    "wb.thread": "留言线程",
+    "wb.myTrail": "我写的导师轨迹",
+    "wb.noTrail": "暂无我写的轨迹",
     "cm.inbox": "收件箱",
     "cm.loading": "正在加载…",
     "cm.inboxFail": "收件箱加载失败，稍后重进页面试试。",
@@ -97,6 +101,10 @@ const I18N = {
     "wb.notifiable": "Reachable",
     "wb.notNotifiable": "Not reachable (ask the admin to complete your contact info)",
     "wb.correction": "Course data correction",
+    "wb.topicBadge": "Topic mentor",
+    "wb.thread": "Message thread",
+    "wb.myTrail": "Trail entries I wrote",
+    "wb.noTrail": "No trail entries yet",
     "cm.inbox": "Inbox",
     "cm.loading": "Loading…",
     "cm.inboxFail": "Inbox failed to load — reopen the page in a moment.",
@@ -200,6 +208,8 @@ function render(d) {
   box.querySelectorAll("[data-reply]").forEach((btn) => btn.addEventListener("click", () => sendReply(btn)));
 }
 function studentHtml(blk, i) {
+  // v15：专题学生走裁剪卡（只有专题、与本人的留言线程、本人轨迹与回复框）
+  if (blk.relation === "topic") return topicStudentHtml(blk, i);
   const stu = blk.student;
   const evs = blk.recent_events.length
     ? blk.recent_events.map((e) =>
@@ -231,6 +241,34 @@ function studentHtml(blk, i) {
     '<h3 class="sub-h">' + esc(t("wb.needs")) + "</h3>" + probs + acts +
     '<p class="mut" style="margin:8px 0 0">' + esc(fmt("wb.revisit", { n: blk.trail_revisit_pending })) + "</p>" +
     '<h3 class="sub-h">' + esc(t("wb.reply")) + "</h3>" + unread +
+    '<form class="wb-reply-form" onsubmit="return false">' +
+    '<textarea rows="2" maxlength="500" placeholder="' + esc(t("wb.replyPh")) + '" id="wb-reply-' + i + '"></textarea>' +
+    '<div class="msg-bar"><span class="mut" id="wb-status-' + i + '"></span>' +
+    '<button type="button" class="btn-send" data-reply="' + i + '" data-student="' + stu.id + '">' + esc(t("wb.send")) + "</button></div></form>" +
+    "</section>";
+}
+/* v15 专题学生卡（裁剪视图）：与主导师卡分开渲染——服务端只下发本人线程与本人轨迹，
+ * 这里也只渲染这三块，回复仍走 /api/mentor/reply（服务端按关系再校验一次）。 */
+function topicStudentHtml(blk, i) {
+  const stu = blk.student;
+  const msgs = (blk.messages || []).length
+    ? blk.messages.map((m) => {
+        const mine = m.sender === "mentor";
+        const when = String(m.created_at || "").slice(0, 16).replace("T", " ");
+        return '<div class="msg-row ' + (mine ? "mine" : "mentor") + '">' +
+          '<div class="msg-meta">' + esc(m.sender_label || "") + (when ? " · " + esc(when) : "") + "</div>" +
+          '<div class="msg-bubble">' + esc(m.body || "") + "</div></div>";
+      }).join("")
+    : '<p class="empty">' + esc(t("wb.noUnread")) + "</p>";
+  const trails = (blk.trail_entries || []).length
+    ? blk.trail_entries.map((e) =>
+        '<div class="know-item"><div class="know-body">' + esc(e.spirit_line || "") + "</div>" +
+        '<div class="mut">' + esc(String(e.created_at || "").slice(0, 16).replace("T", " ")) + "</div></div>").join("")
+    : '<p class="empty">' + esc(t("wb.noTrail")) + "</p>";
+  return '<section class="card"><h2>' + esc(stu.name || "") +
+    ' <span class="pill">' + esc(t("wb.topicBadge")) + (blk.topic ? "：" + esc(blk.topic) : "") + "</span></h2>" +
+    '<h3 class="sub-h">' + esc(t("wb.thread")) + "</h3>" + msgs +
+    '<h3 class="sub-h">' + esc(t("wb.myTrail")) + "</h3>" + trails +
     '<form class="wb-reply-form" onsubmit="return false">' +
     '<textarea rows="2" maxlength="500" placeholder="' + esc(t("wb.replyPh")) + '" id="wb-reply-' + i + '"></textarea>' +
     '<div class="msg-bar"><span class="mut" id="wb-status-' + i + '"></span>' +

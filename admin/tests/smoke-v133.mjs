@@ -79,8 +79,10 @@ section("纠错提交：类型落库 / 代码规范化 / 导师侧可辨识");
   const cd = await getClient("v133a", impA.client_key);
   const mine = cd.messages.find((m) => m.sender === "student");
   ok(!!mine && mine.category === "data_correction", "学生端留言列表回带 category（本人可见已标记）");
-  ok(Object.keys(mine).sort().join(",") === "body,category,created_at,id,sender,sender_label",
-    "学生端留言字段白名单恰为 6 项（v13.3 新增 category）");
+  // v15 更新：白名单扩为 8 项——新增 mentor_id / mentor_name（多导师线程区分回复者，
+  // 均为公开定位信息，不含密钥类字段）；其余字段仍严格按白名单下发。
+  ok(Object.keys(mine).sort().join(",") === "body,category,created_at,id,mentor_id,mentor_name,sender,sender_label",
+    "学生端留言字段白名单恰为 8 项（v13.3 新增 category；v15 新增 mentor_id / mentor_name）");
   const ev = q1("SELECT summary FROM student_events WHERE student_id = ? AND event_type = 'message_student' ORDER BY id DESC LIMIT 1", impA.student_id);
   ok(!!ev && ev.summary.includes("纠错"), "事件流摘要标注为纠错（后台时间线可辨识）");
   const ob = q("SELECT summary FROM notifications_outbox WHERE student_id = ? AND event_type = 'student_message'", impA.student_id);

@@ -75,6 +75,7 @@ const I18N = {
     "courses.termMeta": "{a} 门 · {b} 学分", "courses.unit": " 学分",
     "courses.empty": "暂无选课记录。",
     "msg.label": "给导师留言", "msg.ph": "写下你想对导师说的话…", "msg.send": "发送",
+    "msg.to": "发给", "msg.rolePrimary": "主导师", "msg.roleTopic": "专题导师",
     "msg.sending": "发送中…", "msg.emptyThread": "有问题随时在这里留言，导师会回复",
     "msg.you": "我", "msg.mentor": "导师",
     "msg.errEmpty": "先写点内容再发送。", "msg.errTooLong": "留言最多 500 字。",
@@ -533,6 +534,7 @@ const I18N = {
     "courses.termMeta": "{a} courses · {b} credits", "courses.unit": " cr",
     "courses.empty": "No courses recorded yet.",
     "msg.label": "Message your mentor", "msg.ph": "Write what you'd like to tell your mentor…", "msg.send": "Send",
+    "msg.to": "Send to", "msg.rolePrimary": "Lead mentor", "msg.roleTopic": "Topic mentor",
     "msg.sending": "Sending…", "msg.emptyThread": "Questions? Leave a message here anytime — your mentor will reply.",
     "msg.you": "Me", "msg.mentor": "Mentor",
     "msg.errEmpty": "Write something first.", "msg.errTooLong": "Messages are limited to 500 characters.",
@@ -1592,7 +1594,25 @@ function renderMentor(d) {
       (k.body ? '<div class="know-body">' + esc(k.body) + "</div>" : "") +
       "</div>").join("");
   } else { ksec.hidden = true; }
+  renderMentorPicker(d);
   renderThread(d);
+}
+/* v15 多导师：留言收件人选择——导师多于一人时才出现；默认主导师，
+ * 专题导师显示为「姓名（专题导师：专题名）」。单导师/无导师时整行隐藏，发送口径与 v14 一致。 */
+function renderMentorPicker(d) {
+  const row = $("msg-mentor-row"), sel = $("msg-mentor");
+  if (!row || !sel) return;
+  const mentors = (d && d.mentors) || [];
+  if (mentors.length <= 1) { row.hidden = true; sel.innerHTML = ""; return; }
+  const cur = sel.value;
+  sel.innerHTML = mentors.map((m) => {
+    const label = m.role === "topic"
+      ? (m.name || "") + "（" + t("msg.roleTopic") + (m.topic ? "：" + m.topic : "") + "）"
+      : (m.name || "") + "（" + t("msg.rolePrimary") + "）";
+    return '<option value="' + m.id + '">' + esc(label) + "</option>";
+  }).join("");
+  if (cur && mentors.some((m) => String(m.id) === cur)) sel.value = cur;
+  row.hidden = false;
 }
 function renderThread(d) {
   const msgs = (d && d.messages) || [];
@@ -1603,7 +1623,7 @@ function renderThread(d) {
   }
   box.innerHTML = msgs.map((m) => {
     const mine = m.sender === "student";
-    const who = mine ? t("msg.you") : t("msg.mentor");
+    const who = mine ? t("msg.you") : (m.mentor_name || t("msg.mentor"));
     const when = m.created_at ? String(m.created_at).slice(0, 16).replace("T", " ") : "";
     return '<div class="msg-row ' + (mine ? "mine" : "mentor") + '">' +
       '<div class="msg-meta">' + esc(who) + (when ? " · " + esc(when) : "") + "</div>" +
@@ -1624,11 +1644,15 @@ async function sendMessage(ev) {
   btn.disabled = true; btn.textContent = t("msg.sending");
   showMsgErr("");
   const { s, k, api } = creds();
+  // v15：选了收件导师（多导师时）随留言带 mentor_id；未显示选择器时不带，服务端按默认主导师处理
+  const payload = { s, key: k, body: text };
+  const mRow = $("msg-mentor-row"), mSel = $("msg-mentor");
+  if (mSel && mRow && !mRow.hidden && mSel.value) payload.mentor_id = Number(mSel.value);
   try {
     const resp = await fetch(api + "/api/client/message", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ s, key: k, body: text }),
+      body: JSON.stringify(payload),
     });
     if (resp.status === 404) { showMsgErr(t("msg.errGone")); return; }
     if (resp.status === 429) { showMsgErr(t("msg.errFreq")); return; }

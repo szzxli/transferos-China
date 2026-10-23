@@ -638,6 +638,35 @@ async function resolveStudentMentor(db, student) {
   if (!student || !student.mentor_id) return null;
   return db.prepare(`SELECT * FROM staff WHERE id = ?`).bind(student.mentor_id).first();
 }
+/* v15 多导师：导师身份与关系解析。
+ * 已登记导师 = 导师状态为已登记/已核验，或 kind / role 标为导师；
+ * 专题导师候选还须已有工作台密钥（mentor_key）——没有密钥就发不出工作台链接。 */
+function isMentorStaff(staff) {
+  if (!staff) return false;
+  return !!(MENTOR_STATUSES[staff.mentor_status] || staff.kind === "mentor" || staff.role === "mentor");
+}
+function isTopicMentorCandidate(staff) {
+  return isMentorStaff(staff) && !!(staff && staff.mentor_key);
+}
+/* 某学生的全部专题导师指派（带导师姓名/编号），按指派顺序。 */
+async function topicAssignmentsOf(db, studentId) {
+  return (await db.prepare(
+    `SELECT tm.id AS assign_id, tm.topic AS topic, tm.staff_id AS staff_id,
+            s.name AS staff_name, s.emp_no AS staff_emp_no
+     FROM student_topic_mentors tm JOIN staff s ON s.id = tm.staff_id
+     WHERE tm.student_id = ? ORDER BY tm.id ASC`).bind(studentId).all()).results || [];
+}
+/* 学生与导师的关系：{ relation: "primary" }（主导师）/ { relation: "topic", topic }（专题导师）/
+ * null（无关系）。导师接口的权限分流以此为准，无关系一律按不存在处理（404）。 */
+async function mentorStudentRelation(db, staff, student) {
+  if (!staff || !student) return null;
+  if (student.mentor_id && Number(student.mentor_id) === Number(staff.id)) return { relation: "primary" };
+  const asg = await db.prepare(
+    `SELECT * FROM student_topic_mentors WHERE student_id = ? AND staff_id = ?`
+  ).bind(student.id, staff.id).first();
+  if (asg) return { relation: "topic", topic: asg.topic || "" };
+  return null;
+}
 /* 事件流写入（方案层事件 only；summary 为一句摘要，调用方不得放私密正文/标题）。 */
 async function logEvent(db, studentId, eventType, objectId, summary) {
   try {
@@ -1072,6 +1101,13 @@ const DDL = [
   `CREATE TABLE IF NOT EXISTS student_events(
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     event_type TEXT, object_id INTEGER, summary TEXT, created_at TEXT)`,
+  // ===== v15 新增表：多导师——学生专题导师指派 =====
+  // 主导师仍走 students.mentor_id（唯一、规划整合负责人、视图全量）；专题导师可多人，
+  // 按 (student_id, staff_id) 唯一，一条指派一个专题（topic 自由文本，如「创业」）。
+  // 专题导师视图按最小权限裁剪（只见本人线程与本人轨迹），口径见导师接口注释。
+  `CREATE TABLE IF NOT EXISTS student_topic_mentors(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, staff_id INTEGER,
+    topic TEXT, created_at TEXT, UNIQUE(student_id, staff_id))`,
 ];
 // v10 迁移：students 补愿景（vision_text）与导师寄语（mentor_message / mentor_message_at）列，幂等
 
@@ -1586,8 +1622,25 @@ async function handleApi(req, env, url) {
     // v13：留言必须有主——学生已分配默认导师时，目标导师必须已注册且可通知；
     // 指向未注册/不可通知导师 → 明确 409，不落库、不进无主收件箱。
     // 未分配导师（存量学生）沿用旧口径落库（mentor_id 为 NULL、无发件箱），后台补分配后即纳入通知链。
+    // v15：学生可指定收件导师（body.mentor_id = staff.id）——主导师或已指派的专题导师；
+    // 指定未指派/不存在的导师 → 400，不落库；未指定时沿用 v13 口径（默认主导师）。
+    // 发件箱随所选导师走（下方 pushOutbox 用解析出的 mentor），专题导师只收到发给自己的留言通知。
     let mentor = null;
-    if (student.mentor_id) {
+    const wantMentorId = toInt(body && body.mentor_id, 0);
+    if (wantMentorId) {
+      if (student.mentor_id && wantMentorId === Number(student.mentor_id)) {
+        mentor = await resolveStudentMentor(db, student);
+      } else {
+        const asg = await db.prepare(
+          `SELECT * FROM student_topic_mentors WHERE student_id = ? AND staff_id = ?`
+        ).bind(student.id, wantMentorId).first();
+        if (!asg) return jsonResp(req, { ok: false, error: "bad mentor_id" }, 400);
+        mentor = await db.prepare(`SELECT * FROM staff WHERE id = ?`).bind(wantMentorId).first();
+      }
+      if (!mentorNotifiable(mentor)) {
+        return jsonResp(req, { ok: false, error: "mentor_not_notifiable" }, 409);
+      }
+    } else if (student.mentor_id) {
       mentor = await resolveStudentMentor(db, student);
       if (!mentorNotifiable(mentor)) {
         return jsonResp(req, { ok: false, error: "mentor_not_notifiable" }, 409);
@@ -1613,7 +1666,7 @@ async function handleApi(req, env, url) {
     }
     return jsonResp(req, {
       ok: true,
-      message: { id: r.meta.last_row_id, sender: "student", body: storedBody, created_at: ts, category: category || "" },
+      message: { id: r.meta.last_row_id, sender: "student", body: storedBody, created_at: ts, category: category || "", mentor_id: mentor ? mentor.id : null },
     });
   }
 
@@ -1955,7 +2008,7 @@ async function handleApi(req, env, url) {
     const rowsOf = (r) => r.results || [];
     const [goal, goalLines, snaps, exams, courses, meetings, milestones, keyDates,
       actionRows, adviceRows, messageRows, problemRows, parentNoteRows, trailRows,
-      reqSets, reqRowsAll] = await Promise.all([
+      reqSets, reqRowsAll, primaryMentorRow, topicAssignRows] = await Promise.all([
       db.prepare(`SELECT * FROM student_goals WHERE student_id = ?`).bind(sid).first(),
       db.prepare(
         `SELECT * FROM student_goal_lines WHERE student_id = ? ORDER BY priority ASC, id ASC LIMIT 100`).bind(sid).all().then(rowsOf),
@@ -1994,6 +2047,15 @@ async function handleApi(req, env, url) {
       // reqSets 为空时本查询结果不被使用，提前并行取数不改变响应。
       db.prepare(
         `SELECT * FROM course_requirements WHERE student_id = ? ORDER BY sort ASC, id ASC LIMIT 1000`).bind(sid).all().then(rowsOf),
+      // —— v15 多导师：主导师档案（只取姓名/编号）与专题导师指派（带导师姓名/编号/专题）——
+      // 只下发学生留言选人所需的公开定位信息，绝不下发 mentor_key 等密钥类字段。
+      student.mentor_id
+        ? db.prepare(`SELECT id, name, emp_no FROM staff WHERE id = ?`).bind(student.mentor_id).first()
+        : Promise.resolve(null),
+      db.prepare(
+        `SELECT tm.topic AS topic, s.id AS staff_id, s.name AS staff_name, s.emp_no AS staff_emp_no
+         FROM student_topic_mentors tm JOIN staff s ON s.id = tm.staff_id
+         WHERE tm.student_id = ? ORDER BY tm.id ASC`).bind(sid).all().then(rowsOf),
     ]);
     // 未读计数在标记已读之前计算：本次下发的 unread_mentor 反映「打开 APP 时有几条导师留言未读」，
     // 标记后下次 GET 归零；前端据此在「导师」页签亮红点。
@@ -2019,6 +2081,15 @@ async function handleApi(req, env, url) {
         match: reqs.length ? matchRequirements(courses, reqs) : null,
       };
     });
+    // —— v15：留言导师名解析（线程里区分主导师/专题导师的回复；只查留言出现过的导师姓名）——
+    const msgMentorIds = [...new Set(messageRows.map((m) => m.mentor_id).filter(Boolean))];
+    const msgMentorNames = {};
+    if (msgMentorIds.length) {
+      const nameRows = (await db.prepare(
+        `SELECT id, name FROM staff WHERE id IN (${msgMentorIds.map(() => "?").join(",")})`
+      ).bind(...msgMentorIds).all()).results || [];
+      for (const r of nameRows) msgMentorNames[r.id] = r.name || "";
+    }
     const lineOut = (l) => ({
       id: l.id, name: l.name || "", line_type: l.line_type || "",
       line_type_label: LINE_TYPES[l.line_type] || l.line_type || "",
@@ -2092,8 +2163,21 @@ async function handleApi(req, env, url) {
       messages: messageRows.map((m) => ({
         id: m.id, sender: m.sender || "", sender_label: MESSAGE_SENDERS[m.sender] || m.sender || "",
         body: m.body || "", created_at: m.created_at || "", category: m.category || "",
+        mentor_id: m.mentor_id || null,
+        mentor_name: m.mentor_id ? (msgMentorNames[m.mentor_id] || "") : "",
       })),
       unread_mentor: unreadMentor,
+      // —— v15 多导师：可选收件导师（主导师在前、专题导师随后；只有定位符/姓名/专题，无密钥）——
+      mentors: [
+        ...(primaryMentorRow ? [{
+          id: primaryMentorRow.id, emp_no: primaryMentorRow.emp_no || "",
+          name: primaryMentorRow.name || "", role: "primary", topic: "",
+        }] : []),
+        ...topicAssignRows.map((r) => ({
+          id: r.staff_id, emp_no: r.staff_emp_no || "",
+          name: r.staff_name || "", role: "topic", topic: r.topic || "",
+        })),
+      ],
       // —— v12 ——
       problems: problemRows.map(problemOut),
       mentor_trail: trailRows.map((r) => ({
@@ -2222,9 +2306,11 @@ async function handleApi(req, env, url) {
 
   // ===== v13 导师工作台 API =====
   // 本期口径：每位导师一个专属密钥链接（staff.mentor_key，后台人员页查看/重置），不做账号体系。
-  // GET /api/mentor/<staff id 或 emp_no>?key=<mentor_key>：只返回其名下学生（students.mentor_id = staff.id）
-  // 的方案层内容：一屏三块（近期动态 / 她的需求 / 待回复）。交叉密钥（client_key/parent_key）一律 404；
+  // GET /api/mentor/<staff id 或 emp_no>?key=<mentor_key>：返回其名下学生的方案层内容
+  // （一屏三块：近期动态 / 她的需求 / 待回复）。交叉密钥（client_key/parent_key）一律 404；
   // 响应不含私密层（本就零服务器数据）、不含家长一句话与家长留言。
+  // v15：名下学生 = 主导师学生（students.mentor_id = staff.id，全量）+ 专题指派学生
+  // （student_topic_mentors，裁剪视图，见下方专题块注释）。
   const findMentor = async (locator, key) => {
     const staff = /^\d+$/.test(locator)
       ? await db.prepare(`SELECT * FROM staff WHERE id = ?`).bind(parseInt(locator, 10)).first()
@@ -2254,6 +2340,7 @@ async function handleApi(req, env, url) {
         `SELECT * FROM student_messages WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0 ORDER BY id ASC LIMIT 50`).bind(stu.id).all()).results || [];
       studentBlocks.push({
         student: { id: stu.id, name: stu.name || "", slug: stu.slug || "", stage: stu.stage || "", stage_label: DELIVERY_STAGES[stu.stage] || stu.stage || "" },
+        relation: "primary",
         recent_events: evRows.map((e) => ({
           id: e.id, event_type: e.event_type || "", event_label: EVENT_TYPES[e.event_type] || e.event_type || "",
           summary: e.summary || "", created_at: e.created_at || "",
@@ -2275,6 +2362,51 @@ async function handleApi(req, env, url) {
         })),
       });
     }
+    // —— v15：专题学生（裁剪视图，最小权限）——
+    // 只给：学生姓名/slug、专题、与该导师往来的留言线程（student_messages.mentor_id = 本人）、
+    // 本人撰写的导师轨迹条目。不查事件流/问题/待办/目标/考试/选课/状态快照/家长线——
+    // 那些一律不进响应。会议记录不给：student_meetings 只有自由文本主题、没有专题归属字段，
+    // 按专题过滤不可靠，宁缺勿漏。轨迹归属按 mentor_name 文本与本人姓名匹配（轨迹表无
+    // staff_id 列，存量口径如此；导师改名/同名时可能漏配，后台改名须同步轨迹署名）。
+    const topicAssigns = (await db.prepare(
+      `SELECT tm.topic AS topic, s.id AS stu_id, s.name AS stu_name, s.slug AS stu_slug
+       FROM student_topic_mentors tm JOIN students s ON s.id = tm.student_id
+       WHERE tm.staff_id = ? ORDER BY tm.id ASC LIMIT 50`).bind(staff.id).all()).results || [];
+    for (const asg of topicAssigns) {
+      if (myStudents.some((s) => s.id === asg.stu_id)) continue; // 同时是主导师学生时以主视图为准
+      const [threadRows, trailRows] = await Promise.all([
+        db.prepare(
+          `SELECT * FROM student_messages WHERE student_id = ? AND mentor_id = ? ORDER BY id ASC LIMIT 500`
+        ).bind(asg.stu_id, staff.id).all().then((r) => r.results || []),
+        db.prepare(
+          `SELECT * FROM mentor_trail_entries WHERE student_id = ? AND mentor_name = ? ORDER BY id DESC LIMIT 100`
+        ).bind(asg.stu_id, staff.name || "").all().then((r) => r.results || []),
+      ]);
+      const msgOut = (m) => ({
+        id: m.id, sender: m.sender || "", sender_label: MESSAGE_SENDERS[m.sender] || m.sender || "",
+        body: m.body || "", created_at: m.created_at || "", category: m.category || "",
+      });
+      studentBlocks.push({
+        student: { id: asg.stu_id, name: asg.stu_name || "", slug: asg.stu_slug || "" },
+        relation: "topic",
+        topic: asg.topic || "",
+        // 以下四键仅为与主导师块的形状兼容（工作台前端按块渲染），专题视图恒为空
+        recent_events: [], open_problems: [], pending_actions: [], trail_revisit_pending: 0,
+        unread_messages: threadRows
+          .filter((m) => m.sender === "student" && !m.read_by_mentor).map(msgOut),
+        messages: threadRows.map(msgOut),
+        trail_entries: trailRows.map((r) => ({
+          id: r.id, meeting_id: r.meeting_id || null,
+          mentor_name: r.mentor_name || "", mentor_role: r.mentor_role || "",
+          spirit_line: r.spirit_line || "", key_judgments: r.key_judgments || "",
+          student_takeaway: r.takeaway_local ? "" : (r.student_takeaway || ""),
+          takeaway_local: !!r.takeaway_local,
+          followup_actions: r.followup_actions || "",
+          revisit_result: r.revisit_result || "", revisit_due: r.revisit_due || "",
+          created_at: r.created_at || "", updated_at: r.updated_at || "",
+        })),
+      });
+    }
     return jsonResp(req, {
       ok: true,
       mentor: {
@@ -2290,6 +2422,8 @@ async function handleApi(req, env, url) {
   // 回复只进既有留言通道（student_messages, sender='mentor'）；同时把该学生名下 queued 的
   // student_message 发件箱记录推进到 responded，并把该学生未读留言标已读；回复记入事件流。
   // student_id 必须是该导师名下学生，否则 404（不暴露存在性）。
+  // v15：名下学生 = 主导师学生 + 专题指派学生。专题导师只能回复学生线（channel=parent → 404）、
+  // 标已读只动与自己的线程（mentor_id = 本人），不碰主导师线程的未读状态。
   if (p === "/api/mentor/reply") {
     if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
     let body;
@@ -2299,8 +2433,10 @@ async function handleApi(req, env, url) {
     if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
     const sid = toInt(body && body.student_id, 0);
     const stu = sid ? await db.prepare(
-      `SELECT * FROM students WHERE id = ? AND mentor_id = ?`).bind(sid, staff.id).first() : null;
-    if (!stu) return jsonResp(req, { ok: false, error: "not found" }, 404);
+      `SELECT * FROM students WHERE id = ?`).bind(sid).first() : null;
+    const rel = stu ? await mentorStudentRelation(db, staff, stu) : null;
+    if (!stu || !rel) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const isTopic = rel.relation === "topic";
     const text = String((body && body.body) || "").trim();
     if (!text) return jsonResp(req, { ok: false, error: "message required" }, 400);
     if ([...text].length > MESSAGE_MAX_LEN) {
@@ -2309,7 +2445,9 @@ async function handleApi(req, env, url) {
     // v14 沟通台：channel='parent' 时回复进家长对话线（parent_messages），语义与后台
     // parent_message_reply 完全一致（普通插入，不记学生事件流、不进发件箱）；
     // 同时把该学生家长未读留言标导师已读。缺省/其它值沿用学生通道（v13 行为不变）。
+    // v15：专题导师无家长线权限——channel='parent' 对专题关系一律 404（不暴露家长线存在性）。
     if (String((body && body.channel) || "") === "parent") {
+      if (isTopic) return jsonResp(req, { ok: false, error: "not found" }, 404);
       const pts = nowIso();
       const pr = await db.prepare(
         `INSERT INTO parent_messages(student_id, sender, body, created_at, read_by_parent, read_by_mentor)
@@ -2328,9 +2466,16 @@ async function handleApi(req, env, url) {
       `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor, mentor_id)
        VALUES(?, 'mentor', ?, ?, 0, 1, ?)`
     ).bind(stu.id, text, ts, staff.id).run();
-    await db.prepare(
-      `UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0`
-    ).bind(stu.id).run();
+    if (isTopic) {
+      // v15：专题导师回复只把与自己的线程标已读，不动主导师线程的未读状态
+      await db.prepare(
+        `UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0 AND mentor_id = ?`
+      ).bind(stu.id, staff.id).run();
+    } else {
+      await db.prepare(
+        `UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0`
+      ).bind(stu.id).run();
+    }
     await db.prepare(
       `UPDATE notifications_outbox SET status = 'responded', updated_at = ?
        WHERE mentor_staff_id = ? AND student_id = ? AND event_type = 'student_message' AND status IN ('queued','sent')`
@@ -2349,34 +2494,56 @@ async function handleApi(req, env, url) {
   // 顶部汇总 total_unread（未读总条数）与 pending_threads（有未读的线数）。
   // 无任何留言的学生不产生条目；导师无指派学生 → threads 为空数组（诚实空态）。
   // 查询纪律：学生列表 1 条 + 每学生 4 条小查询全部 Promise.all 并行（与 2026-10-22 性能修复同口径）。
+  // v15：专题指派学生也进收件箱，但只有学生线、且只统计/展示与该导师往来的留言
+  // （mentor_id = 本人）；家长线对专题导师完全不可见（不查 parent_messages）。
   const mentorInboxMatch = p.match(/^\/api\/mentor\/inbox\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
   if (mentorInboxMatch) {
     if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
     await ensureSchema(db);
     const staff = await findMentor(mentorInboxMatch[1], url.searchParams.get("key") || "");
     if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
-    const myStudents = (await db.prepare(
+    const primaryStudents = (await db.prepare(
       `SELECT id, name, slug FROM students WHERE mentor_id = ? ORDER BY id ASC LIMIT 50`).bind(staff.id).all()).results || [];
-    const perStudent = await Promise.all(myStudents.map(async (stu) => {
+    const topicAssigns = (await db.prepare(
+      `SELECT tm.topic AS topic, s.id AS stu_id, s.name AS stu_name, s.slug AS stu_slug
+       FROM student_topic_mentors tm JOIN students s ON s.id = tm.student_id
+       WHERE tm.staff_id = ? ORDER BY tm.id ASC LIMIT 50`).bind(staff.id).all()).results || [];
+    const rels = primaryStudents.map((stu) => ({ stu, relation: "primary", topic: "" }));
+    for (const a of topicAssigns) {
+      if (primaryStudents.some((s) => s.id === a.stu_id)) continue; // 主导师关系优先
+      rels.push({ stu: { id: a.stu_id, name: a.stu_name, slug: a.stu_slug }, relation: "topic", topic: a.topic || "" });
+    }
+    const perStudent = await Promise.all(rels.map(async ({ stu, relation, topic }) => {
+      const isTopic = relation === "topic";
       const [sLast, sUnread, pLast, pUnread] = await Promise.all([
-        db.prepare(`SELECT id, sender, body, created_at, category FROM student_messages WHERE student_id = ? ORDER BY id DESC LIMIT 1`).bind(stu.id).first(),
-        db.prepare(`SELECT COUNT(*) AS n FROM student_messages WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0`).bind(stu.id).first(),
-        db.prepare(`SELECT id, sender, body, created_at FROM parent_messages WHERE student_id = ? ORDER BY id DESC LIMIT 1`).bind(stu.id).first(),
-        db.prepare(`SELECT COUNT(*) AS n FROM parent_messages WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0`).bind(stu.id).first(),
+        isTopic
+          ? db.prepare(`SELECT id, sender, body, created_at, category FROM student_messages WHERE student_id = ? AND mentor_id = ? ORDER BY id DESC LIMIT 1`).bind(stu.id, staff.id).first()
+          : db.prepare(`SELECT id, sender, body, created_at, category FROM student_messages WHERE student_id = ? ORDER BY id DESC LIMIT 1`).bind(stu.id).first(),
+        isTopic
+          ? db.prepare(`SELECT COUNT(*) AS n FROM student_messages WHERE student_id = ? AND mentor_id = ? AND sender = 'student' AND read_by_mentor = 0`).bind(stu.id, staff.id).first()
+          : db.prepare(`SELECT COUNT(*) AS n FROM student_messages WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0`).bind(stu.id).first(),
+        isTopic
+          ? Promise.resolve(null)
+          : db.prepare(`SELECT id, sender, body, created_at FROM parent_messages WHERE student_id = ? ORDER BY id DESC LIMIT 1`).bind(stu.id).first(),
+        isTopic
+          ? Promise.resolve(null)
+          : db.prepare(`SELECT COUNT(*) AS n FROM parent_messages WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0`).bind(stu.id).first(),
       ]);
-      return { stu, sLast, sUnread: sUnread ? sUnread.n : 0, pLast, pUnread: pUnread ? pUnread.n : 0 };
+      return { stu, relation, topic, sLast, sUnread: sUnread ? sUnread.n : 0, pLast, pUnread: pUnread ? pUnread.n : 0 };
     }));
     const threads = [];
-    for (const { stu, sLast, sUnread, pLast, pUnread } of perStudent) {
+    for (const { stu, relation, topic, sLast, sUnread, pLast, pUnread } of perStudent) {
       if (sLast) threads.push({
         student_id: stu.id, student_name: stu.name || "", slug: stu.slug || "",
         channel: "student", channel_label: "学生留言",
+        relation, topic,
         last: { id: sLast.id, sender: sLast.sender || "", body: String(sLast.body || "").slice(0, 120), created_at: sLast.created_at || "", category: sLast.category || "" },
         unread: sUnread,
       });
       if (pLast) threads.push({
         student_id: stu.id, student_name: stu.name || "", slug: stu.slug || "",
         channel: "parent", channel_label: "家长留言",
+        relation, topic,
         last: { id: pLast.id, sender: pLast.sender || "", body: String(pLast.body || "").slice(0, 120), created_at: pLast.created_at || "" },
         unread: pUnread,
       });
@@ -2395,6 +2562,8 @@ async function handleApi(req, env, url) {
   // （沿用既有 read_by_mentor 机制），unread_before 返回打开前的对方未读数。
   // 学生不属于该导师 → 404（不暴露存在性）；家长线只查 parent_messages，学生线只查
   // student_messages，两条线数据互不串。
+  // v15：专题导师同样可开学生线，但只见与自己的往来（mentor_id = 本人），标已读也只动
+  // 自己线程；家长线对专题导师一律 404（不暴露家长线存在性）。
   const mentorThreadMatch = p.match(/^\/api\/mentor\/thread\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
   if (mentorThreadMatch) {
     if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
@@ -2403,9 +2572,12 @@ async function handleApi(req, env, url) {
     if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
     const sid = toInt(url.searchParams.get("student_id"), 0);
     const stu = sid ? await db.prepare(
-      `SELECT id, name, slug FROM students WHERE id = ? AND mentor_id = ?`).bind(sid, staff.id).first() : null;
-    if (!stu) return jsonResp(req, { ok: false, error: "not found" }, 404);
+      `SELECT id, name, slug, mentor_id FROM students WHERE id = ?`).bind(sid).first() : null;
+    const rel = stu ? await mentorStudentRelation(db, staff, stu) : null;
+    if (!stu || !rel) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const isTopic = rel.relation === "topic";
     const channel = url.searchParams.get("channel") === "parent" ? "parent" : "student";
+    if (channel === "parent" && isTopic) return jsonResp(req, { ok: false, error: "not found" }, 404);
     if (channel === "parent") {
       const rows = (await db.prepare(
         `SELECT * FROM parent_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(stu.id).all()).results || [];
@@ -2425,13 +2597,22 @@ async function handleApi(req, env, url) {
         })),
       });
     }
-    const rows = (await db.prepare(
-      `SELECT * FROM student_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(stu.id).all()).results || [];
+    const rows = (await (isTopic
+      ? db.prepare(
+        `SELECT * FROM student_messages WHERE student_id = ? AND mentor_id = ? ORDER BY id ASC LIMIT 500`).bind(stu.id, staff.id).all()
+      : db.prepare(
+        `SELECT * FROM student_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(stu.id).all())).results || [];
     const unreadBefore = rows.filter((m) => m.sender === "student" && !m.read_by_mentor).length;
     if (unreadBefore) {
-      await db.prepare(
-        `UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0`
-      ).bind(stu.id).run();
+      if (isTopic) {
+        await db.prepare(
+          `UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND mentor_id = ? AND sender = 'student' AND read_by_mentor = 0`
+        ).bind(stu.id, staff.id).run();
+      } else {
+        await db.prepare(
+          `UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0`
+        ).bind(stu.id).run();
+      }
     }
     return jsonResp(req, {
       ok: true,
@@ -4296,6 +4477,22 @@ async function pageClient(env, url, sid) {
       ${mentorOptions.map((m) => `<option value="${m.id}"${student.mentor_id === m.id ? " selected" : ""}>${esc(m.name || "")}（${esc(m.emp_no || "")}）${mentorNotifiable(m) ? "" : " · 不可通知"}</option>`).join("")}
     </select></div><div><label>&nbsp;</label><button type="submit">保存导师</button></div></div>
   </form></div>`;
+  // v15：专题导师指派管理——候选 = 已登记导师且有工作台密钥，排除主导师本人（主视图已全量）
+  // 与已指派者。外部导师（学生自带）走同一流程：先在人员页建档登记、生成工作台密钥，
+  // 再回到本页指派，无特殊通道。
+  const topicAssignRows = await topicAssignmentsOf(db, sid);
+  const topicCandidates = mentorOptions.filter((m) =>
+    isTopicMentorCandidate(m) && m.id !== student.mentor_id &&
+    !topicAssignRows.some((r) => r.staff_id === m.id));
+  const topicMentorCardHtml = `
+  <div class="card"><h2>专题导师（v15 · 多导师）</h2>
+  <p class="mut">主导师唯一负责全量；专题导师只看与自己往来的留言线程和本人轨迹，看不到目标、考试、选课、状态与家长线。外部导师（学生自带）同样先在<a href="/admin/staff">人员页</a>建档登记并生成工作台密钥，再回到这里指派。</p>
+  ${topicAssignRows.length ? `<div class="wrap"><table><tr><th>导师</th><th>编号</th><th>专题</th><th></th></tr>${topicAssignRows.map((r) => `<tr><td>${esc(r.staff_name || "")}</td><td>${esc(r.staff_emp_no || "")}</td><td>${esc(r.topic || "")}</td><td><form method="post" style="margin:0" onsubmit="return confirm('确定移除该专题导师指派？移除后该导师立即无法再看这名学生。')"><input type="hidden" name="action" value="topic_mentor_remove"><input type="hidden" name="id" value="${r.assign_id}"><button class="small danger" type="submit">移除</button></form></td></tr>`).join("")}</table></div>` : `<p class="mut">暂未指派专题导师。</p>`}
+  <form method="post"><input type="hidden" name="action" value="topic_mentor_add">
+    <div class="row"><div style="flex:2"><label>选择专题导师（已登记且有工作台密钥）</label><select name="topic_staff_id">
+      ${topicCandidates.length ? topicCandidates.map((m) => `<option value="${m.id}">${esc(m.name || "")}（${esc(m.emp_no || "")}）</option>`).join("") : `<option value="0">（暂无候选：请先在人员页登记导师并生成工作台密钥）</option>`}
+    </select></div><div style="flex:2"><label>专题名 *</label><input name="topic" required maxlength="40" placeholder="如 创业 / 护理考试 / 文书"></div><div><label>&nbsp;</label><button type="submit">添加指派</button></div></div>
+  </form></div>`;
   const evRows13 = (await db.prepare(
     `SELECT * FROM student_events WHERE student_id = ? ORDER BY id DESC LIMIT 100`).bind(sid).all()).results || [];
   const timelineHtml = `
@@ -4957,7 +5154,7 @@ async function pageClient(env, url, sid) {
   </form>
   </div>`;
   return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery",
-    hero + mentorCardHtml + goalCard + statusCard + examCard + courseCard + meetingCard + trailCard +
+    hero + mentorCardHtml + topicMentorCardHtml + goalCard + statusCard + examCard + courseCard + meetingCard + trailCard +
     milestoneCard + keyDateCard + actionCard + adviceCard + problemCard + reqsetCard + messageCard + parentCard + timelineHtml));
 }
 async function postClient(req, env, sidFromPath) {
@@ -4975,6 +5172,27 @@ async function postClient(req, env, sidFromPath) {
       await db.prepare("UPDATE students SET mentor_id = ?, updated_at = ? WHERE id = ?")
         .bind(mid || null, nowIso(), sid).run();
     }
+    return redirect(back);
+  }
+  // v15：专题导师指派添加——候选校验与客户端页同口径（已登记导师 + 工作台密钥 + 专题名必填）；
+  // 重复指派由 (student_id, staff_id) 唯一约束兜底，冲突静默忽略。
+  if (action === "topic_mentor_add") {
+    const mid = toInt(fd.get("topic_staff_id"), 0);
+    const topic = clampStr(fd.get("topic"), 40);
+    const cand = mid ? await db.prepare("SELECT * FROM staff WHERE id=?").bind(mid).first() : null;
+    const stuRow = await db.prepare("SELECT mentor_id FROM students WHERE id=?").bind(sid).first();
+    if (cand && isTopicMentorCandidate(cand) && topic && mid !== (stuRow ? stuRow.mentor_id || 0 : 0)) {
+      try {
+        await db.prepare("INSERT INTO student_topic_mentors(student_id, staff_id, topic, created_at) VALUES(?,?,?,?)")
+          .bind(sid, mid, topic, nowIso()).run();
+      } catch (e) { /* 唯一约束：已指派则忽略 */ }
+    }
+    return redirect(back);
+  }
+  // v15：专题导师指派移除（立即生效：导师侧全部接口按关系解析，当场失去访问）
+  if (action === "topic_mentor_remove") {
+    await db.prepare("DELETE FROM student_topic_mentors WHERE id=? AND student_id=?")
+      .bind(toInt(fd.get("id"), 0), sid).run();
     return redirect(back);
   }
   if (action === "key_rotate") {

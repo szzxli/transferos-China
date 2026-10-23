@@ -212,6 +212,11 @@ CREATE TABLE IF NOT EXISTS course_requirements(
   block TEXT DEFAULT 'prereq', course_code TEXT, course_name TEXT,
   credits REAL, min_grade TEXT, prereq_codes TEXT, sort INTEGER DEFAULT 0,
   created_at TEXT, updated_at TEXT);
+-- v15 多导师：学生专题导师指派（主导师走 students.mentor_id 唯一负责；专题导师可多人，
+-- (student_id, staff_id) 唯一；运行时由 Worker ensureSchema 幂等建表，本文件仅作结构参考）
+CREATE TABLE IF NOT EXISTS student_topic_mentors(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, staff_id INTEGER,
+  topic TEXT, created_at TEXT, UNIQUE(student_id, staff_id));
 
 -- 种子数据：4 个种子代理 + 2 个自有渠道（重复执行不会插入第二遍）
 INSERT OR IGNORE INTO agents(code, name, region, kind, active, created_at) VALUES
