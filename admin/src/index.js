@@ -737,12 +737,15 @@ function buildOutboxMail(eventType, studentName, summary, ts, mentor) {
 async function sendResendMail(env, to, subject, text, html) {
   const key = env && env.RESEND_API_KEY;
   if (!key) return { ok: false, skipped: true, error: "mail_not_configured" };
+  // 2026-10-24：发件人可在 Cloudflare 设 MAIL_FROM 秘密覆盖（默认 info@）；
+  // support@ 就绪后改这一个秘密，全链路（系统 + 手动）一起切换，无需改代码。
+  const from = (env && env.MAIL_FROM ? String(env.MAIL_FROM).trim() : "") || MAIL_FROM;
   try {
     const ctrl = typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined;
     const res = await fetch(RESEND_API_URL, {
       method: "POST",
       headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: MAIL_FROM, to: [to], subject, text, html }),
+      body: JSON.stringify({ from, to: [to], subject, text, html }),
       signal: ctrl,
     });
     if (!res.ok) {
@@ -1683,6 +1686,31 @@ async function handleApi(req, env, url, ctx) {
       + "<p>收到本邮件即表示邮件通道已打通，无需回复。</p>"
       + "<p>— TransferOS</p></div>";
     const r = await sendResendMail(env, to, subject, text, html);
+    await logMailRow(db, null, to, subject, r.ok ? "sent" : "failed", r.ok ? null : r.error);
+    if (!r.ok) return jsonResp(req, { ok: false, error: r.error || "send failed" }, 502);
+    return jsonResp(req, { ok: true, id: r.id, to });
+  }
+
+  // 2026-10-24 后台手动发信接口（导师通知统一走 info@ 的手动通道）。
+  // POST /api/admin/mail/send { to, subject, text }：经 Resend 从 MAIL_FROM
+  // （默认 info@）发出一封纯文本邮件并记 mail_log。鉴权：管理员登录态或
+  // Bearer 令牌二选一；单收件人、正文上限 5000 字，防批量滥用。
+  if (p === "/api/admin/mail/send") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    const bearer = String(req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    const authed = (await isAuthed(req, env)) || (env.LEAD_API_TOKEN && bearer && timingSafeEq(bearer, env.LEAD_API_TOKEN));
+    if (!authed) return jsonResp(req, { ok: false, error: "unauthorized" }, 401);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    const to = clampStr(body && body.to, 120);
+    if (!EMAIL_RE.test(to)) return jsonResp(req, { ok: false, error: "bad email" }, 400);
+    const subject = clampStr(body && body.subject, 200);
+    if (!subject) return jsonResp(req, { ok: false, error: "subject required" }, 400);
+    const text = clampStr(body && body.text, 5000);
+    if (!text) return jsonResp(req, { ok: false, error: "text required" }, 400);
+    if (!env.RESEND_API_KEY) return jsonResp(req, { ok: false, error: "mail_not_configured" }, 503);
+    await ensureSchema(db);
+    const r = await sendResendMail(env, to, subject, text, null);
     await logMailRow(db, null, to, subject, r.ok ? "sent" : "failed", r.ok ? null : r.error);
     if (!r.ok) return jsonResp(req, { ok: false, error: r.error || "send failed" }, 502);
     return jsonResp(req, { ok: true, id: r.id, to });
