@@ -600,7 +600,7 @@ const NOTIFY_CHANNELS = { email: "邮箱", phone: "电话", wechat: "微信", ad
 const OUTBOX_STATUSES = { queued: "待转达", sent: "已转达", responded: "已回复" };
 const EVENT_TYPES = {
   action_completed: "完成行动", problem_opened: "提出问题", problem_resolved: "问题解决",
-  problem_escalated: "问题升级导师", message_student: "学生留言", message_mentor: "导师回复",
+  problem_escalated: "问题升级导师", mentor_forwarded: "导师转给创始人", message_student: "学生留言", message_mentor: "导师回复",
   mentor_reply: "导师回复", parent_note_sent: "给爸妈的一句话", parent_note_withdrawn: "撤回一句话",
   trail_created: "导师轨迹新增", parent_update_published: "家长更新发布",
 };
@@ -2743,6 +2743,46 @@ async function handleApi(req, env, url, ctx) {
     if (env.FILES) { try { await env.FILES.delete(row.r2_key); } catch (e) { /* 删除失败仍置 withdrawn，清扫兜底 */ } }
     await db.prepare(`UPDATE mentor_files SET status = 'withdrawn' WHERE id = ? AND status = 'pending'`).bind(row.id).run();
     return jsonResp(req, { ok: true, id: row.id, status: "withdrawn" });
+  }
+
+  // 2026-10-24 导师轻量改进：转给创始人（一次转发，非引擎）。
+  // POST /api/mentor/forward { s, key, student_id, channel }：把当前线程最新一条
+  // 对方留言 + 学生阶段转给创始人（EMP-001）的发件箱；创始人邮箱渠道时自动发信。
+  // 创始人本人调用返回 is_founder；专题导师 parent 通道沿用回复口径一律 404。
+  if (p === "/api/mentor/forward") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const staff = await findMentor(String((body && body.s) || "").trim(), String((body && body.key) || ""));
+    if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const founder = await db.prepare(`SELECT * FROM staff WHERE emp_no = ?`).bind("EMP-001").first();
+    if (!founder) return jsonResp(req, { ok: false, error: "founder not found" }, 500);
+    if (staff.id === founder.id) return jsonResp(req, { ok: false, error: "is_founder" }, 400);
+    const sid = toInt(body && body.student_id, 0);
+    const stu = sid ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(sid).first() : null;
+    const rel = stu ? await mentorStudentRelation(db, staff, stu) : null;
+    if (!stu || !rel) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const isTopic = rel.relation === "topic";
+    const channel = String((body && body.channel) || "") === "parent" ? "parent" : "student";
+    if (channel === "parent" && isTopic) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    let last = null;
+    if (channel === "parent") {
+      last = await db.prepare(
+        `SELECT * FROM parent_messages WHERE student_id = ? AND sender = 'parent' ORDER BY id DESC LIMIT 1`).bind(stu.id).first();
+    } else if (isTopic) {
+      last = await db.prepare(
+        `SELECT * FROM student_messages WHERE student_id = ? AND mentor_id = ? AND sender = 'student' ORDER BY id DESC LIMIT 1`).bind(stu.id, staff.id).first();
+    } else {
+      last = await db.prepare(
+        `SELECT * FROM student_messages WHERE student_id = ? AND sender = 'student' ORDER BY id DESC LIMIT 1`).bind(stu.id).first();
+    }
+    const stageLabel = DELIVERY_STAGES[stu.stage] || stu.stage || "";
+    const summary = "【转给创始人】" + (stu.name || "学生") + "（" + (channel === "parent" ? "家长留言" : "学生留言")
+      + "，导师：" + (staff.name || "") + (stageLabel ? "，阶段：" + stageLabel : "") + "）："
+      + (last && last.body ? String(last.body).slice(0, 120) : "（暂无对方留言）");
+    const outboxId = await pushOutbox(env, db, founder, stu.id, "mentor_forwarded", summary, "message", last ? last.id : null);
+    return jsonResp(req, { ok: true, outbox_id: outboxId });
   }
 
   const mentorApiMatch = p.match(/^\/api\/mentor\/([A-Za-z0-9][A-Za-z0-9-]*)$/);

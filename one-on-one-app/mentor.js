@@ -23,10 +23,10 @@ const I18N = {
     "gate.errBoth": "请把工号和导师密钥都填好",
     "state.loading": "正在加载…",
     "state.retry": "重试",
-    "state.notfound": "链接不对或已失效，请向管理员索取最新工作台链接。",
+    "state.notfound": "链接已失效，请联系创始人。",
     "state.net": "网络不太顺畅，稍后重试。",
     "hero.exclusive": "导师专属 · 沟通台",
-    "hero.note": "这里是你的沟通台：名下学生的留言与家长对话线都在这里回复；学生的私密空间与「给爸妈的一句话」不在这里。",
+    "hero.note": "这里是你的沟通台：名下学生的留言与家长对话线都在这里回复；学生的私密空间与「给爸妈的一句话」不在这里。你只能看到这里的内容。",
     "foot.forget": "忘记已保存的链接信息",
     "wb.events": "近期动态",
     "wb.eventsEmpty": "暂无动态",
@@ -78,6 +78,10 @@ const I18N = {
     "cm.send": "发送",
     "cm.sent": "已发送",
     "cm.sendFail": "发送失败，稍后再试",
+    "cm.forward": "转给创始人",
+    "cm.forwarded": "已转给创始人",
+    "cm.forwardFail": "转发失败，稍后再试",
+    "cm.notme": "不是我",
     "cm.voice": "🎤 语音",
     "cm.voiceNote": "语音输入使用浏览器自带的识别服务，转写由浏览器厂商的服务处理；转成文字后你可以先修改，再点发送。",
     "cm.voiceUnsupported": "当前浏览器不支持语音识别，请打字输入。",
@@ -97,10 +101,10 @@ const I18N = {
     "gate.errBoth": "Please enter both your ID and mentor key",
     "state.loading": "Loading…",
     "state.retry": "Retry",
-    "state.notfound": "This link doesn't work or has expired — ask the admin for a fresh workspace link.",
+    "state.notfound": "This link has expired — please contact the founder.",
     "state.net": "Connection problem — please retry in a moment.",
     "hero.exclusive": "For mentors · Inbox",
-    "hero.note": "This is your inbox: reply here to your students' messages and to parent conversations. Students' private space and their notes to parents are not shown here.",
+    "hero.note": "This is your inbox: reply here to your students' messages and to parent conversations. Students' private space and their notes to parents are not shown here. You only see what's here.",
     "foot.forget": "Forget saved link details",
     "wb.events": "Recent Activity",
     "wb.eventsEmpty": "No activity yet",
@@ -152,6 +156,10 @@ const I18N = {
     "cm.send": "Send",
     "cm.sent": "Sent",
     "cm.sendFail": "Send failed — try again later",
+    "cm.forward": "Forward to founder",
+    "cm.forwarded": "Forwarded to founder",
+    "cm.forwardFail": "Forward failed — try again later",
+    "cm.notme": "Not me",
     "cm.voice": "🎤 Voice",
     "cm.voiceNote": "Voice input uses your browser's built-in speech recognition, processed by the browser vendor's service. The transcript lands in the box first — edit it, then send.",
     "cm.voiceUnsupported": "This browser doesn't support speech recognition — please type instead.",
@@ -211,6 +219,12 @@ function showGate(errText) {
   if (errText) { e.textContent = errText; e.hidden = false; } else { e.hidden = true; }
 }
 let lastData = null;
+/* 2026-10-24 导师轻量改进：请求超时兜底（挂起不再一直“正在加载…”）。 */
+function fetchTimeout(ms) {
+  try {
+    return (typeof AbortSignal !== "undefined" && AbortSignal.timeout) ? AbortSignal.timeout(ms) : undefined;
+  } catch (e) { return undefined; }
+}
 async function load() {
   const { s, k, api } = creds();
   if (!s || !k) { showGate(); return; }
@@ -218,7 +232,7 @@ async function load() {
   let resp;
   try {
     resp = await fetch(api + "/api/mentor/" + encodeURIComponent(s) + "?key=" + encodeURIComponent(k),
-      { headers: { Accept: "application/json" } });
+      { headers: { Accept: "application/json" }, signal: fetchTimeout(10000) });
   } catch (e) { showState(t("state.net"), true); return; }
   if (resp.status === 404) { showState(t("state.notfound"), false); return; }
   if (!resp.ok) { showState(t("state.net"), true); return; }
@@ -353,7 +367,7 @@ async function loadInbox() {
   let d = null;
   try {
     const resp = await fetch(api + "/api/mentor/inbox/" + encodeURIComponent(s) + "?key=" + encodeURIComponent(k),
-      { headers: { Accept: "application/json" } });
+      { headers: { Accept: "application/json" }, signal: fetchTimeout(10000) });
     if (resp.ok) d = await resp.json();
   } catch (e) { /* 失败走空态文案 */ }
   if (!d || d.ok !== true) {
@@ -397,6 +411,8 @@ async function openThread(studentId, channel, name) {
   const { s, k, api } = creds();
   curThread = { student_id: studentId, channel: channel === "parent" ? "parent" : "student", name: name || "" };
   $("thread-card").hidden = false;
+  /* 2026-10-24 导师轻量改进：创始人本人不显示“转给创始人”。 */
+  $("th-forward").hidden = !!(lastData && lastData.mentor && lastData.mentor.emp_no === "EMP-001");
   $("th-title").textContent = (name || "") + " · " + (curThread.channel === "parent" ? t("cm.chParent") : t("cm.chStudent"));
   $("th-msgs").innerHTML = '<p class="empty">' + esc(t("cm.loading")) + "</p>";
   $("th-status").textContent = "";
@@ -407,7 +423,7 @@ async function openThread(studentId, channel, name) {
     const resp = await fetch(api + "/api/mentor/thread/" + encodeURIComponent(s) +
       "?key=" + encodeURIComponent(k) + "&student_id=" + encodeURIComponent(studentId) +
       "&channel=" + encodeURIComponent(curThread.channel),
-      { headers: { Accept: "application/json" } });
+      { headers: { Accept: "application/json" }, signal: fetchTimeout(10000) });
     if (resp.ok) d = await resp.json();
   } catch (e) { /* 失败提示 */ }
   if (!d || d.ok !== true) {
@@ -479,6 +495,29 @@ async function sendThreadReply() {
   }
   btn.disabled = false;
 }
+/* 2026-10-24 导师轻量改进：转给创始人——一次转发（当前线程最新对方留言 + 学生阶段），
+ * 后端落创始人发件箱并按其邮箱渠道自动发信；不是引擎，无多步流程。 */
+async function forwardToFounder() {
+  if (!curThread) return;
+  const { s, k, api } = creds();
+  const btn = $("th-forward");
+  const status = $("th-status");
+  btn.disabled = true;
+  try {
+    const resp = await fetch(api + "/api/mentor/forward", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ s, key: k, student_id: curThread.student_id, channel: curThread.channel }),
+      signal: fetchTimeout(10000),
+    });
+    const j = await resp.json().catch(() => null);
+    status.textContent = (resp.ok && j && j.ok) ? t("cm.forwarded") : t("cm.forwardFail");
+  } catch (e) {
+    status.textContent = t("cm.forwardFail");
+  }
+  btn.disabled = false;
+}
+$("th-forward").addEventListener("click", forwardToFounder);
 /* 语音转文字：Web Speech API。转写只填输入框，导师改完再发送，绝不自动直发。 */
 let recog = null, voiceOn = false, voiceBase = "", voiceFinal = "";
 function speechCtor() {
@@ -563,11 +602,19 @@ $("gate-form").addEventListener("submit", (ev) => {
   if (!localStorage.getItem(LS_A)) localStorage.setItem(LS_A, DEFAULT_API_BASE);
   load();
 });
-$("forget").addEventListener("click", (ev) => {
-  ev.preventDefault();
+/* 2026-10-24 导师轻量改进：“不是我”与页底忘记入口共用同一逻辑：清本机密钥 + 回输入页。 */
+function forgetCreds() {
   localStorage.removeItem(LS_S); localStorage.removeItem(LS_K);
   history.replaceState(null, "", location.pathname);
   showGate();
+}
+$("forget").addEventListener("click", (ev) => {
+  ev.preventDefault();
+  forgetCreds();
+});
+$("notme").addEventListener("click", (ev) => {
+  ev.preventDefault();
+  forgetCreds();
 });
 $("th-back").addEventListener("click", () => closeThread());
 $("th-form").addEventListener("submit", (ev) => {
