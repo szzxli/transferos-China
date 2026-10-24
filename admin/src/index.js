@@ -683,6 +683,8 @@ async function logEvent(db, studentId, eventType, objectId, summary) {
  * 只记 mail_log 并保持 queued，任何异常都不得影响留言/问题等主流程。 */
 const RESEND_API_URL = "https://api.resend.com/emails";
 const MAIL_FROM = "TransferOS <info@zhuanuc.com>";
+/* v18 线索提醒：新线索入库后发到内部提醒邮箱（公共邮箱 leads@，只内部收信，不对外）。 */
+const LEAD_NOTIFY_TO = "leads@zhuanuc.com";
 const MENTOR_WORKBENCH_URL = "https://zhuanuc.com/one-on-one-app/mentor.html";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /* 自动邮件的收件地址：导师通知偏好明确为 email 且邮箱有效才返回地址，否则 null。 */
@@ -1566,6 +1568,14 @@ async function handleApi(req, env, url, ctx) {
       `INSERT INTO leads(name, wechat, phone, source, ref, eval_summary, status, note, created_at, updated_at)
        VALUES(?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)`
     ).bind(name, wechat, phone, source, ref || null, eval_summary, note, nowIso(), nowIso()).run();
+    /* v18 线索提醒（旁路）：入库成功后给 leads@ 发一封通知；发信成败只记 mail_log，
+     * 绝不影响线索入库与前端返回。 */
+    try {
+      const subj = "新线索：" + name + (source ? "（" + source + "）" : "");
+      const txt = "新线索 #" + r.meta.last_row_id + "\n姓名：" + name + "\n微信：" + (wechat || "—") + "\n电话：" + (phone || "—") + "\n来源：" + source + (ref ? "\n推荐码：" + ref : "") + (eval_summary ? "\n测评摘要：" + eval_summary : "") + (note ? "\n备注：" + note : "") + "\n时间：" + nowIso();
+      const mr = await sendResendMail(env, LEAD_NOTIFY_TO, subj, txt, null);
+      if (!mr.skipped) await logMailRow(db, null, LEAD_NOTIFY_TO, subj, mr.ok ? "sent" : "failed", mr.ok ? null : mr.error);
+    } catch (e) { /* 提醒旁路，忽略 */ }
     return jsonResp(req, { ok: true, id: r.meta.last_row_id });
   }
 
