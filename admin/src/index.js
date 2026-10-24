@@ -191,6 +191,16 @@ const CONTENT_TYPES = { video: "短视频", article: "文章", live: "直播", o
 const CONTENT_STATUSES = { draft: "草稿", pending: "待审", published: "已发布", archived: "归档" };
 // v6：一对一专属客户端（长期一对一辅导学生）——选课类别与状态流转
 const COURSE_KINDS = { prereq: "必修先修", gened: "通识", elective: "选修" };
+// 博士模板开关：默认 transfer（转学本科版，Richa 及存量学生原样）；phd（博士研究生版）
+// 才启用研究生课程分类与博士毕业追踪。模板只决定“显示哪套分类/卡片”，不改共享数据表结构。
+const PROGRAM_TEMPLATES = { transfer: "转学本科版", phd: "博士研究生版" };
+const PHD_COURSE_KINDS = { grad_course: "研究生课程", dissertation: "论文研究 CSCI 999", seminar: "研讨 EECS 500", grad_elective: "选修/研究" };
+// UND CS PhD（approved Master track，UND 官网 2026-10-24 核实）：60 学分总数；
+// GQE 窗口 18–27 学分（18 之后、27 之前），综合考试窗口 36–45 学分；发表 2 篇一作期刊 + 2 篇一作会议投稿。
+const PHD_CREDIT_TARGETS = { grad_course: 15, dissertation: 24, seminar: 3, grad_elective: 18 };
+const PHD_CHECKS = { gqe: "资格考试 GQE", comprehensive: "综合考试", journal: "一作期刊论文 2 篇", conference: "一作会议论文 2 篇", final_defense: "最终答辩" };
+const PHD_CHECK_STATUSES = { todo: "未开始", preparing: "准备中", done: "已通过/已完成" };
+function courseKindsFor(template) { return template === "phd" ? PHD_COURSE_KINDS : COURSE_KINDS; }
 const COURSE_STATUSES = { planned: "计划中", enrolled: "已选", ongoing: "进行中", done: "已完成", dropped: "已退" };
 // v6 通用模板：考试结果枚举（考试名/分数/达标线均为自由文本字段，由各学生数据集决定）
 const EXAM_RESULTS = { pass: "达标", fail: "未达标", pending: "待考/待出分" };
@@ -258,6 +268,23 @@ function courseProgress(courses) {
     prereqTotal: pre.length, prereqDone: pre.filter(isDone).length,
     byKind,
   };
+}
+// phdCourseProgress：博士版专用汇总，与 courseProgress 互不干扰。只统计 status=done 的学分
+// 作为“已修博士学分”；窗口判定用“已修学分”：GQE 在 [18,27)、综合考试在 [36,45)。
+function phdCourseProgress(courses) {
+  const list = courses || [];
+  const isDone = (c) => c.status === "done";
+  const sumCredits = (arr) => arr.reduce((a, c) => a + (Number(c.credits) || 0), 0);
+  const byKind = {};
+  for (const k of Object.keys(PHD_COURSE_KINDS)) {
+    const ks = list.filter((c) => (c.kind || "") === k);
+    const kd = ks.filter(isDone);
+    byKind[k] = { total: ks.length, done: kd.length, credits: sumCredits(ks), creditsDone: sumCredits(kd), target: PHD_CREDIT_TARGETS[k] };
+  }
+  const creditsDone = sumCredits(list.filter(isDone));
+  const creditsTotal = sumCredits(list);
+  const win = (lo, hi) => creditsDone >= lo && creditsDone < hi ? "in_window" : (creditsDone < lo ? "not_yet" : "past_window");
+  return { total: list.length, doneCount: list.filter(isDone).length, creditsDone, creditsTotal, creditsTarget: 60, byKind, gqe_window: win(18, 27), comprehensive_window: win(36, 45) };
 }
 // genClientKey: 学生端 APP 只读访问密钥（ck_ + 24 位十六进制，96 位熵）
 function genClientKey() {
@@ -1213,6 +1240,11 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     meeting_date TEXT, topic TEXT, summary TEXT, action_items TEXT,
     next_date TEXT, created_at TEXT, updated_at TEXT)`,
+  // 博士毕业检查（仅 phd 模板学生使用；check_key 见 PHD_CHECKS，status 见 PHD_CHECK_STATUSES）
+  `CREATE TABLE IF NOT EXISTS student_phd_checks(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    check_key TEXT, status TEXT DEFAULT 'todo', note TEXT,
+    created_at TEXT, updated_at TEXT, UNIQUE(student_id, check_key))`,
   `CREATE TABLE IF NOT EXISTS student_exams(
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     exam_name TEXT, exam_date TEXT, score TEXT, pass_line TEXT,
@@ -1388,6 +1420,8 @@ const STUDENT_MIGRATIONS = [
   "ALTER TABLE students ADD COLUMN parent_key TEXT",
   // v13 迁移：students 补 mentor_id（默认导师 = staff.id；未分配为 NULL），同样幂等
   "ALTER TABLE students ADD COLUMN mentor_id INTEGER",
+  // 博士模板迁移：students 补 program_template（transfer 转学本科版 / phd 博士研究生版；默认 transfer，存量学生原样）
+  "ALTER TABLE students ADD COLUMN program_template TEXT DEFAULT 'transfer'",
 ];
 // v13 迁移：staff 补导师注册字段（专长/三渠道联系方式/通知偏好/导师状态/工作台密钥），幂等
 const STAFF_V13_MIGRATIONS = [
@@ -2382,7 +2416,7 @@ async function handleApi(req, env, url, ctx) {
     const rowsOf = (r) => r.results || [];
     const [goal, goalLines, snaps, exams, courses, meetings, milestones, keyDates,
       actionRows, adviceRows, messageRows, problemRows, parentNoteRows, trailRows,
-      reqSets, reqRowsAll, primaryMentorRow, topicAssignRows] = await Promise.all([
+      reqSets, reqRowsAll, primaryMentorRow, topicAssignRows, phdCheckRows] = await Promise.all([
       db.prepare(`SELECT * FROM student_goals WHERE student_id = ?`).bind(sid).first(),
       db.prepare(
         `SELECT * FROM student_goal_lines WHERE student_id = ? ORDER BY priority ASC, id ASC LIMIT 100`).bind(sid).all().then(rowsOf),
@@ -2430,6 +2464,9 @@ async function handleApi(req, env, url, ctx) {
         `SELECT tm.topic AS topic, s.id AS staff_id, s.name AS staff_name, s.emp_no AS staff_emp_no
          FROM student_topic_mentors tm JOIN staff s ON s.id = tm.staff_id
          WHERE tm.student_id = ? ORDER BY tm.id ASC`).bind(sid).all().then(rowsOf),
+      // —— 博士毕业检查（仅 phd 模板下发；transfer 学生此查询结果不组装进响应）——
+      db.prepare(
+        `SELECT * FROM student_phd_checks WHERE student_id = ? ORDER BY id ASC LIMIT 50`).bind(sid).all().then(rowsOf),
     ]);
     // 未读计数在标记已读之前计算：本次下发的 unread_mentor 反映「打开 APP 时有几条导师留言未读」，
     // 标记后下次 GET 归零；前端据此在「导师」页签亮红点。
@@ -2480,7 +2517,7 @@ async function handleApi(req, env, url, ctx) {
       student: {
         id: student.id, slug: student.slug || "", name: student.name || "", package: student.package || "",
         stage: student.stage || "", stage_label: DELIVERY_STAGES[student.stage] || student.stage || "",
-        note: student.note || "",
+        note: student.note || "", program_template: student.program_template || "transfer",
       },
       signature: student.signature || "",
       signature_set_at: student.signature_set_at || "",
@@ -2504,11 +2541,26 @@ async function handleApi(req, env, url, ctx) {
         list: courses.map((c) => ({
           id: c.id, term: c.term || "", course_code: c.course_code || "",
           course_name: c.course_name || "", credits: c.credits,
-          kind: c.kind || "", kind_label: COURSE_KINDS[c.kind] || c.kind || "",
+          kind: c.kind || "", kind_label: COURSE_KINDS[c.kind] || PHD_COURSE_KINDS[c.kind] || c.kind || "",
           status: c.status || "", status_label: COURSE_STATUSES[c.status] || c.status || "",
           grade: c.grade || "", note: c.note || "",
         })),
       },
+      // —— 博士模板：才下发 phd 字段；transfer 学生响应里 phd 为 null，旧 APP 行为不变 ——
+      phd: (student.program_template === "phd") ? {
+        progress: phdCourseProgress(courses),
+        checks: phdCheckRows.map((r) => ({
+          check_key: r.check_key || "", check_label: PHD_CHECKS[r.check_key] || r.check_key || "",
+          status: r.status || "todo", status_label: PHD_CHECK_STATUSES[r.status] || r.status || "", note: r.note || "",
+        })),
+        requirements: {
+          source_note: "UND 官网 CS PhD Requirements，2026-10-24 核实；以学校官方学位审计为准",
+          credit_targets: PHD_CREDIT_TARGETS, credits_target_total: 60,
+          gqe_window: "18 学分之后、27 学分之前", comprehensive_window: "36 学分之后、45 学分之前",
+          publications: "一作期刊论文 2 篇 + 一作会议论文 2 篇，已投稿即可（须经导师同意）",
+          final_defense: "综合考试通过后至少一个学期",
+        },
+      } : null,
       meetings: meetings.map((m) => ({
         id: m.id, meeting_date: m.meeting_date || "", topic: m.topic || "",
         summary: m.summary || "", action_items: m.action_items || "", next_date: m.next_date || "",
@@ -3217,6 +3269,9 @@ async function handleApi(req, env, url, ctx) {
         result, note: clampStr(e.note, 2000),
       });
     }
+    // 博士模板：导入时模板决定课程类别；未指定模板默认 transfer，博士模板默认类为 grad_course。
+    const importTemplate = PROGRAM_TEMPLATES[stu.program_template] ? String(stu.program_template) : "transfer";
+    const importKinds = courseKindsFor(importTemplate);
     const coursesIn = [];
     const coursesRaw = Array.isArray(body.courses) ? body.courses : [];
     if (coursesRaw.length > 500) return bad("too many courses (max 500)");
@@ -3226,8 +3281,8 @@ async function handleApi(req, env, url, ctx) {
       const code = clampStr(c.course_code, 20);
       const cname = clampStr(c.course_name, 80);
       if (!term || (!code && !cname)) return bad("courses[" + i + "] term + (course_code|course_name) required");
-      const kind = c.kind === undefined || c.kind === null || c.kind === "" ? "prereq" : String(c.kind);
-      if (!COURSE_KINDS[kind]) return bad("courses[" + i + "] bad kind");
+      const kind = c.kind === undefined || c.kind === null || c.kind === "" ? (importTemplate === "phd" ? "grad_course" : "prereq") : String(c.kind);
+      if (!importKinds[kind]) return bad("courses[" + i + "] bad kind");
       const cstatus = c.status === undefined || c.status === null || c.status === "" ? "planned" : String(c.status);
       if (!COURSE_STATUSES[cstatus]) return bad("courses[" + i + "] bad status");
       const credits = intOrNull(c.credits);
@@ -3259,11 +3314,11 @@ async function handleApi(req, env, url, ctx) {
     const slug = await uniqueSlug(db, slugBase || slugify(name), 0);
     const stage = stu.stage && validStage(String(stu.stage)) ? String(stu.stage) : "diag";
     const sr = await db.prepare(
-      `INSERT INTO students(lead_id, order_id, name, package, stage, stage_since, note, created_at, updated_at, client_key, slug, vision_text, parent_key)
-       VALUES(NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO students(lead_id, order_id, name, package, stage, stage_since, note, created_at, updated_at, client_key, slug, vision_text, parent_key, program_template)
+       VALUES(NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(name, clampStr(stu.package, 60) || null, stage, now,
       clampStr(stu.note, 2000), now, now, clientKey, slug,
-      clampStr(stu.vision_text, 2000) || null, parentKey).run();
+      clampStr(stu.vision_text, 2000) || null, parentKey, importTemplate).run();
     const sid = sr.meta.last_row_id;
     if (goalIn) {
       await db.prepare(
@@ -3988,6 +4043,8 @@ async function postDelivery(req, env) {
     await db.prepare("DELETE FROM note_to_parents WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM notifications_outbox WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM student_events WHERE student_id=?").bind(delId).run();
+    // 博士模板：博士毕业检查一并清理
+    await db.prepare("DELETE FROM student_phd_checks WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM students WHERE id=?").bind(delId).run();
     return redirect("/admin/delivery");
   }
@@ -5013,6 +5070,8 @@ async function pageClient(env, url, sid) {
   const latest = snaps[0] || null;
   const courses = (await db.prepare(
     "SELECT * FROM student_courses WHERE student_id=? ORDER BY id ASC LIMIT 500").bind(sid).all()).results || [];
+  const phdChecks = (await db.prepare(
+    "SELECT * FROM student_phd_checks WHERE student_id=? ORDER BY id ASC LIMIT 50").bind(sid).all()).results || [];
   const prog = courseProgress(courses);
   const groups = groupCoursesByTerm(courses);
   const meetings = (await db.prepare(
@@ -5103,6 +5162,14 @@ async function pageClient(env, url, sid) {
       <input type="hidden" name="action" value="key_rotate">
       <button class="small ghost" type="submit">${student.client_key ? "重置密钥" : "生成访问密钥"}</button>
     </form>
+    <div style="border-top:1px dashed #eee;margin-top:10px;padding-top:8px">
+      <p style="margin:4px 0"><strong>客户端模板</strong> <span class="mut">默认转学本科版；切到博士研究生版后，本页选课改用研究生四类并出现博士毕业需求追踪，学生端 APP 同步切换。切回即恢复原版面，已录课程数据不删除（类别标签按模板显示）。</span></p>
+      <form method="post" style="margin:6px 0 0">
+        <input type="hidden" name="action" value="template_set">
+        <label>模板</label><select name="program_template">${opts(PROGRAM_TEMPLATES, student.program_template || "transfer")}</select>
+        <button class="small" type="submit">切换模板</button>
+      </form>
+    </div>
     <div style="border-top:1px dashed #eee;margin-top:10px;padding-top:8px">
       <p style="margin:4px 0"><strong>专属签名</strong> <span class="mut">学生在 APP 的「每日一句」里自选确认一次后固定；导师可在此改或清空（清空后学生可重新选）。</span></p>
       ${student.signature
@@ -5201,17 +5268,30 @@ async function pageClient(env, url, sid) {
   // —— 选课规划 ——
   const editCourseId = toInt(url.searchParams.get("edit_course"), 0);
   const editCourse = editCourseId ? courses.find((c) => c.id === editCourseId) : null;
-  const cf = editCourse || { term: "", course_code: "", course_name: "", credits: "", kind: "prereq", status: "planned", grade: "", note: "" };
-  const kindHtml = Object.entries(COURSE_KINDS).map(([k, label]) => {
-    const p = prog.byKind[k];
-    return `<div><label>${esc(label)}：已完成 ${p.done}/${p.total} 门 · 学分 ${p.creditsDone}/${p.credits}</label>${bar(p.done, p.total)}</div>`;
-  }).join("");
+  // 博士模板：模板决定课程分类。transfer 用原有三类；phd 只用研究生四类，Richa 的汇总与下拉原样不动。
+  const isPhd = student.program_template === "phd";
+  const courseKinds = courseKindsFor(student.program_template);
+  const phdProg = isPhd ? phdCourseProgress(courses) : null;
+  const cf = editCourse || { term: "", course_code: "", course_name: "", credits: "", kind: isPhd ? "grad_course" : "prereq", status: "planned", grade: "", note: "" };
+  const kindHtml = isPhd
+    ? Object.entries(PHD_COURSE_KINDS).map(([k, label]) => {
+      const p = phdProg.byKind[k];
+      return `<div><label>${esc(label)}：已完成学分 ${p.creditsDone} / 目标 ${p.target} · ${p.done}/${p.total} 门</label>${bar(p.creditsDone, p.target)}</div>`;
+    }).join("")
+    : Object.entries(COURSE_KINDS).map(([k, label]) => {
+      const p = prog.byKind[k];
+      return `<div><label>${esc(label)}：已完成 ${p.done}/${p.total} 门 · 学分 ${p.creditsDone}/${p.credits}</label>${bar(p.done, p.total)}</div>`;
+    }).join("");
+  const phdWindowLabel = (w) => w === "in_window" ? "窗口内" : (w === "not_yet" ? "未到窗口" : "已过窗口上限");
+  const courseSummaryHtml = isPhd
+    ? `<p>已修博士学分 <strong>${phdProg.creditsDone}</strong> / 目标 60 · 规划总学分 ${phdProg.creditsTotal} · 课程共 ${phdProg.total} 门（已完成 ${phdProg.doneCount}）</p><p class="mut">资格考试 GQE 窗口（18–27 学分）：${phdWindowLabel(phdProg.gqe_window)}；综合考试窗口（36–45 学分）：${phdWindowLabel(phdProg.comprehensive_window)}。窗口以已修学分计，计划中学分不计入。</p>`
+    : `<p>已完成学分 <strong>${prog.creditsDone}</strong> / 规划总学分 ${prog.creditsTotal} · 已完成先修课 <strong>${prog.prereqDone}/${prog.prereqTotal}</strong> 门 · 课程共 ${prog.total} 门（已完成 ${prog.doneCount}）</p>`;
   const courseGroupsHtml = groups.length ? groups.map((gr) => `
   <h3>${esc(gr.term)}（${gr.courses.length} 门）</h3>
   <div class="wrap"><table><tr><th>课程代码</th><th>课程名</th><th>学分</th><th>类别</th><th>状态</th><th>成绩</th><th>备注</th><th></th><th></th></tr>
   ${gr.courses.map((c) => `<tr>
     <td>${esc(c.course_code || "")}</td><td>${esc(c.course_name || "")}</td><td>${c.credits ?? ""}</td>
-    <td>${esc(COURSE_KINDS[c.kind] || c.kind || "")}</td>
+    <td>${esc(COURSE_KINDS[c.kind] || PHD_COURSE_KINDS[c.kind] || c.kind || "")}</td>
     <td><span class="pill">${esc(COURSE_STATUSES[c.status] || c.status || "")}</span></td>
     <td>${esc(c.grade || "—")}</td><td>${esc((c.note || "").slice(0, 40))}</td>
     <td><a href="/admin/client/${sid}?edit_course=${c.id}">编辑</a></td>
@@ -5220,8 +5300,8 @@ async function pageClient(env, url, sid) {
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("")}
   </table></div>`).join("") : `<p class="mut">暂无选课记录，用下方表单按学期排课。</p>`;
   const courseCard = `
-  <div class="card"><h2>选课规划</h2>
-  <p>已完成学分 <strong>${prog.creditsDone}</strong> / 规划总学分 ${prog.creditsTotal} · 已完成先修课 <strong>${prog.prereqDone}/${prog.prereqTotal}</strong> 门 · 课程共 ${prog.total} 门（已完成 ${prog.doneCount}）</p>
+  <div class="card"><h2>${isPhd ? "研究生选课规划" : "选课规划"}</h2>
+  ${courseSummaryHtml}
   ${kindHtml}
   <h3>${editCourse ? "编辑课程 #" + editCourse.id : "新增课程"}</h3>
   <form method="post">
@@ -5234,7 +5314,7 @@ async function pageClient(env, url, sid) {
       <div><label>学分</label><input name="credits" type="number" min="0" max="30" value="${esc(cf.credits ?? "")}"></div>
     </div>
     <div class="row">
-      <div><label>类别</label><select name="kind">${opts(COURSE_KINDS, cf.kind || "prereq")}</select></div>
+      <div><label>类别</label><select name="kind">${opts(courseKinds, cf.kind || (isPhd ? "grad_course" : "prereq"))}</select></div>
       <div><label>状态</label><select name="status">${opts(COURSE_STATUSES, cf.status || "planned")}</select></div>
       <div><label>成绩（可空）</label><input name="grade" maxlength="10" value="${esc(cf.grade || "")}" placeholder="如 A / B+"></div>
     </div>
@@ -5243,6 +5323,30 @@ async function pageClient(env, url, sid) {
     ${editCourse ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
   </form>
   ${courseGroupsHtml}
+  </div>`;
+  // —— 博士毕业需求追踪（仅 phd 模板渲染；transfer 学生页面完全不出现）——
+  const phdCheckMap = {};
+  for (const r of phdChecks) phdCheckMap[r.check_key] = r;
+  const phdCard = !isPhd ? "" : `
+  <div class="card"><h2>博士毕业需求 · UND CS PhD（硕士 track）</h2>
+  <p class="mut">来源：UND 官网 CS PhD Requirements，2026-10-24 核实；以学校官方学位审计为准。学分进度由上方研究生选课自动算，考试与发表状态由后台手动维护。</p>
+  <div class="wrap"><table><tr><th>项目</th><th>要求</th><th>当前</th><th>状态</th><th>备注</th></tr>
+  <tr><td>学分总数</td><td>60 学分</td><td>${phdProg.creditsDone} / 60</td><td>${phdProg.creditsDone >= 60 ? "已达标" : "进行中"}</td><td>研究生课程 15 + 论文研究 24 + 研讨 3 + 选修/研究 18</td></tr>
+  ${Object.entries(PHD_CHECKS).map(([k, label]) => {
+    const r = phdCheckMap[k];
+    const req = k === "gqe" ? "18 学分之后、27 学分之前" : k === "comprehensive" ? "36 学分之后、45 学分之前" : k === "journal" ? "2 篇一作期刊，已投稿即可" : k === "conference" ? "2 篇一作会议，已投稿即可" : "综合考试通过后至少一个学期";
+    const cur = k === "gqe" ? phdWindowLabel(phdProg.gqe_window) + "（已修 " + phdProg.creditsDone + " 学分）" : k === "comprehensive" ? phdWindowLabel(phdProg.comprehensive_window) + "（已修 " + phdProg.creditsDone + " 学分）" : "—";
+    return `<tr><td>${esc(label)}</td><td>${esc(req)}</td><td>${esc(cur)}</td><td>${esc(PHD_CHECK_STATUSES[(r && r.status)] || "未开始")}</td><td>${esc((r && r.note) || "")}</td></tr>`;
+  }).join("")}
+  </table></div>
+  <form method="post"><input type="hidden" name="action" value="phd_check_set">
+    <div class="row">
+      <div><label>项目</label><select name="check_key">${opts(PHD_CHECKS, "gqe")}</select></div>
+      <div><label>状态</label><select name="status">${opts(PHD_CHECK_STATUSES, "todo")}</select></div>
+      <div><label>备注</label><input name="note" maxlength="2000" placeholder="如 论文清单已指定 / 投稿日期"></div>
+    </div>
+    <button type="submit">保存毕业检查状态</button>
+  </form>
   </div>`;
   // —— 考试记录 ——
   const editExamId = toInt(url.searchParams.get("edit_exam"), 0);
@@ -5656,7 +5760,7 @@ async function pageClient(env, url, sid) {
   </form>
   </div>`;
   return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery",
-    hero + mentorCardHtml + topicMentorCardHtml + goalCard + statusCard + examCard + courseCard + meetingCard + trailCard +
+    hero + mentorCardHtml + topicMentorCardHtml + goalCard + statusCard + examCard + courseCard + phdCard + meetingCard + trailCard +
     milestoneCard + keyDateCard + actionCard + adviceCard + problemCard + reqsetCard + messageCard + parentCard + timelineHtml));
 }
 async function postClient(req, env, sidFromPath) {
@@ -5664,9 +5768,34 @@ async function postClient(req, env, sidFromPath) {
   const fd = await req.formData();
   const action = String(fd.get("action") || "");
   const sid = sidFromPath || toInt(fd.get("student_id"), 0);
-  const student = sid ? await db.prepare("SELECT id FROM students WHERE id=?").bind(sid).first() : null;
+  const student = sid ? await db.prepare("SELECT id, program_template FROM students WHERE id=?").bind(sid).first() : null;
   if (!student) return redirect("/admin/delivery");
   const back = "/admin/client/" + sid;
+  // 博士模板：模板切换（transfer / phd；非法值回落 transfer，保证存量与 Richa 原样）
+  if (action === "template_set") {
+    const tpl = PROGRAM_TEMPLATES[fd.get("program_template")] ? String(fd.get("program_template")) : "transfer";
+    await db.prepare("UPDATE students SET program_template = ?, updated_at = ? WHERE id = ?")
+      .bind(tpl, nowIso(), sid).run();
+    return redirect(back);
+  }
+  // 博士模板：博士毕业检查状态（仅 phd 模板学生写入；transfer 学生提交此 action 直接忽略）
+  if (action === "phd_check_set") {
+    if (student.program_template === "phd") {
+      const checkKey = PHD_CHECKS[fd.get("check_key")] ? String(fd.get("check_key")) : null;
+      const st = PHD_CHECK_STATUSES[fd.get("status")] ? String(fd.get("status")) : "todo";
+      const note = clampStr(fd.get("note"), 2000);
+      if (checkKey) {
+        const existing = await db.prepare("SELECT id FROM student_phd_checks WHERE student_id=? AND check_key=?").bind(sid, checkKey).first();
+        if (existing) {
+          await db.prepare("UPDATE student_phd_checks SET status=?, note=?, updated_at=? WHERE id=?").bind(st, note, nowIso(), existing.id).run();
+        } else {
+          await db.prepare("INSERT INTO student_phd_checks(student_id, check_key, status, note, created_at, updated_at) VALUES(?,?,?,?,?,?)")
+            .bind(sid, checkKey, st, note, nowIso(), nowIso()).run();
+        }
+      }
+    }
+    return redirect(back);
+  }
   // v13：默认导师指派（0 = 取消分配；指向不可通知导师也允许保存，但客户端页会标红提示）
   if (action === "student_mentor_set") {
     const mid = toInt(fd.get("mentor_staff_id"), 0);
@@ -5750,7 +5879,9 @@ async function postClient(req, env, sidFromPath) {
     const name = clampStr(fd.get("course_name"), 80);
     if (!term || (!code && !name)) return redirect(back);
     const credits = toInt(fd.get("credits"), 0);
-    const kind = COURSE_KINDS[fd.get("kind")] ? String(fd.get("kind")) : "prereq";
+    // 博士模板：类别按学生模板校验；非法值回落到该模板的默认类，transfer 与 phd 互不串类。
+    const allowedKinds = courseKindsFor(student.program_template);
+    const kind = allowedKinds[fd.get("kind")] ? String(fd.get("kind")) : (student.program_template === "phd" ? "grad_course" : "prereq");
     const status = COURSE_STATUSES[fd.get("status")] ? String(fd.get("status")) : "planned";
     const grade = clampStr(fd.get("grade"), 10) || null;
     const note = clampStr(fd.get("note"), 2000);
@@ -6340,4 +6471,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, complianceFlag, gradePoints, normCourseCode, parsePrereqCodes, matchRequirements, normProblemInput, normTrailExtras, normRequirementSets, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT, PROBLEM_DOMAINS, PROBLEM_PROGRESS, PROBLEM_RATE_LIMIT, TRAIL_ROLES, TRAIL_SOURCES, REQ_BLOCKS, FEELING_TAGS, KEY_DATE_KINDS, MENTOR_STATUSES, NOTIFY_CHANNELS, OUTBOX_STATUSES, EVENT_TYPES, PARENT_NOTE_MAX_LEN, genMentorKey, mentorNotifiable, mentorContacts, mentorMailTo, buildOutboxMail, mentorWorkbenchUrl, computeUpcomingReminders, buildAchievements, mentorFileTypeOk, fileLimits, sanitizeFilename, FILE_MAX_BYTES, FILE_STUDENT_QUOTA_BYTES, FILE_GLOBAL_QUOTA_BYTES, FILE_TTL_MS };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, phdCourseProgress, courseKindsFor, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, complianceFlag, gradePoints, normCourseCode, parsePrereqCodes, matchRequirements, normProblemInput, normTrailExtras, normRequirementSets, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, PHD_COURSE_KINDS, PHD_CREDIT_TARGETS, PHD_CHECKS, PHD_CHECK_STATUSES, PROGRAM_TEMPLATES, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT, PROBLEM_DOMAINS, PROBLEM_PROGRESS, PROBLEM_RATE_LIMIT, TRAIL_ROLES, TRAIL_SOURCES, REQ_BLOCKS, FEELING_TAGS, KEY_DATE_KINDS, MENTOR_STATUSES, NOTIFY_CHANNELS, OUTBOX_STATUSES, EVENT_TYPES, PARENT_NOTE_MAX_LEN, genMentorKey, mentorNotifiable, mentorContacts, mentorMailTo, buildOutboxMail, mentorWorkbenchUrl, computeUpcomingReminders, buildAchievements, mentorFileTypeOk, fileLimits, sanitizeFilename, FILE_MAX_BYTES, FILE_STUDENT_QUOTA_BYTES, FILE_GLOBAL_QUOTA_BYTES, FILE_TTL_MS };

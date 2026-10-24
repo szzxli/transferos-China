@@ -12,6 +12,9 @@ const DEFAULT_API_BASE = "https://transferos-admin.szzxli711.workers.dev";
 const LS_S = "ooo_student_id", LS_K = "ooo_client_key", LS_A = "ooo_api_base", LS_LANG = "ooo_lang";
 const KIND_LABELS = { prereq: "必修先修", gened: "通识", elective: "选修" };
 const KIND_LABELS_EN = { prereq: "Prerequisites", gened: "General Ed", elective: "Electives" };
+// 博士版专用标签：只在 d.phd 存在时渲染；transfer 学生（d.phd 为 null）永远走不到这段代码。
+const PHD_KIND_LABELS = { grad_course: "研究生课程", dissertation: "论文研究 CSCI 999", seminar: "研讨 EECS 500", grad_elective: "选修/研究" };
+const PHD_KIND_LABELS_EN = { grad_course: "Graduate Courses", dissertation: "Dissertation Research CSCI 999", seminar: "Seminar EECS 500", grad_elective: "Electives / Research" };
 
 /* —— i18n 字典：只收界面文字；数据内容永不进字典 —— */
 const I18N = {
@@ -1536,6 +1539,7 @@ function renderPlan(d) {
     })();
   } else { gdSec.hidden = true; }
   renderCoursesPlan(d);
+  renderPhd(d);
   // 导师建议：无数据不渲染
   const adv = d.advice || [];
   const asec = $("sec-advice");
@@ -1559,11 +1563,56 @@ function renderPlan(d) {
   ep.hidden = !!has;
   if (!has) ep.textContent = t("page.empty");
 }
+function renderPhd(d) {
+  const sec = $("sec-phd");
+  if (!sec) return;
+  if (!d.phd) { sec.hidden = true; return; }
+  sec.hidden = false;
+  const p = d.phd.progress || {};
+  const labels = LANG === "en" ? PHD_KIND_LABELS_EN : PHD_KIND_LABELS;
+  const winLabel = (w) => w === "in_window" ? (LANG === "en" ? "In window" : "窗口内") : (w === "not_yet" ? (LANG === "en" ? "Not yet" : "未到窗口") : (LANG === "en" ? "Past window limit" : "已过窗口上限"));
+  const kindRows = Object.keys(PHD_KIND_LABELS).map((k) => {
+    const kk = (p.byKind || {})[k];
+    if (!kk) return "";
+    return '<div class="row"><div class="l"><span>' + esc(labels[k]) + "</span><span>" +
+      esc(kk.creditsDone + " / " + kk.target + (LANG === "en" ? " cr" : " 学分")) + "</span></div>" +
+      bar(kk.creditsDone, kk.target) + "</div>";
+  }).join("");
+  const checkRows = (d.phd.checks || []).map((x) =>
+    '<div class="course"><span class="name">' + esc(x.check_label || "") +
+    (x.note ? '<span class="mut">（' + esc(x.note) + "）</span>" : "") + "</span>" +
+    '<span class="st">' + esc(x.status_label || "") + "</span></div>").join("");
+  const req = d.phd.requirements || {};
+  $("phd-body").innerHTML =
+    "<p style=\"margin:0\">" + esc((LANG === "en" ? "Doctoral credits completed " : "已修博士学分 ") +
+      (p.creditsDone || 0) + " / " + (p.creditsTarget || 60) + (LANG === "en" ? " cr" : " 学分")) + "</p>" +
+    '<div class="kind-bars">' + kindRows + "</div>" +
+    "<p style=\"margin:8px 0 0\">" + esc((LANG === "en" ? "GQE window (18–27 cr): " : "资格考试 GQE 窗口（18–27 学分）：") + winLabel(p.gqe_window)) + "<br>" +
+    esc((LANG === "en" ? "Comprehensive window (36–45 cr): " : "综合考试窗口（36–45 学分）：") + winLabel(p.comprehensive_window)) + "</p>" +
+    (checkRows ? '<div style="margin-top:10px">' + checkRows + "</div>" : "") +
+    (req.source_note ? '<p class="mut" style="margin:8px 0 0">' + esc(req.source_note) + "</p>" : "");
+}
 function renderCoursesPlan(d) {
   const c = d.courses || { progress: {}, groups: [], list: [] };
   const p = c.progress || {};
   const labels = LANG === "en" ? KIND_LABELS_EN : KIND_LABELS;
   const byId = new Map((c.list || []).map((x) => [x.id, x]));
+  // 博士模板：的选课汇总走 renderPhd（目标学分 + 考试窗口），这里不再用转学版的先修汇总，避免误导。
+  if (d.phd) {
+    const pp = d.phd.progress || {};
+    const plabels = LANG === "en" ? PHD_KIND_LABELS_EN : PHD_KIND_LABELS;
+    const kindRows = Object.keys(PHD_KIND_LABELS).map((k) => {
+      const kk = (pp.byKind || {})[k];
+      if (!kk) return "";
+      return '<div class="row"><div class="l"><span>' + esc(plabels[k]) + "</span><span>" +
+        esc(kk.creditsDone + " / " + kk.target + (LANG === "en" ? " cr" : " 学分")) + "</span></div>" +
+        bar(kk.creditsDone, kk.target) + "</div>";
+    }).join("");
+    $("course-progress").innerHTML =
+      "<p style=\"margin:0\">" + esc((LANG === "en" ? "Doctoral credits completed " : "已修博士学分 ") +
+        (pp.creditsDone || 0) + " / " + (pp.creditsTarget || 60) + (LANG === "en" ? " cr" : " 学分")) + "</p>" +
+      (kindRows ? '<div class="kind-bars">' + kindRows + "</div>" : "");
+  } else {
   const kindRows = Object.keys(KIND_LABELS).map((k) => {
     const kk = (p.byKind || {})[k];
     if (!kk || !kk.total) return "";
@@ -1576,6 +1625,7 @@ function renderCoursesPlan(d) {
       a: p.creditsDone || 0, b: p.creditsTotal || 0, c: p.prereqDone || 0, d: p.prereqTotal || 0,
     })) + "</p>" +
     (kindRows ? '<div class="kind-bars">' + kindRows + "</div>" : "");
+  }
   $("course-groups").innerHTML = (c.groups || []).length ? (c.groups || []).map((gr) => {
     const items = gr.courses.map((raw) => byId.get(raw.id) || raw);
     const sumCr = items.reduce((a, x) => a + (Number(x.credits) || 0), 0);

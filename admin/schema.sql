@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS students(
   stage_since TEXT, note TEXT, created_at TEXT, updated_at TEXT,
   client_key TEXT, slug TEXT, signature TEXT, signature_set_at TEXT,
   vision_text TEXT, mentor_message TEXT, mentor_message_at TEXT,
-  parent_key TEXT);
+  parent_key TEXT, program_template TEXT DEFAULT 'transfer');
 
 CREATE TABLE IF NOT EXISTS content_items(
   id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, platform TEXT,
@@ -88,6 +88,11 @@ CREATE TABLE IF NOT EXISTS student_courses(
   term TEXT, course_code TEXT, course_name TEXT, credits INTEGER,
   kind TEXT DEFAULT 'prereq', status TEXT DEFAULT 'planned', grade TEXT,
   note TEXT, created_at TEXT, updated_at TEXT);
+-- 博士毕业检查（仅 phd 模板学生使用）
+CREATE TABLE IF NOT EXISTS student_phd_checks(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+  check_key TEXT, status TEXT DEFAULT 'todo', note TEXT,
+  created_at TEXT, updated_at TEXT, UNIQUE(student_id, check_key));
 -- 专题辅导会议（纪要 + 待办 + 下次会议日期）
 CREATE TABLE IF NOT EXISTS student_meetings(
   id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,

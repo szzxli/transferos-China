@@ -91,3 +91,9 @@
 2026-10-20：已部署上线（Cloudflare Workers 项目 transferos-admin，D1 已建表，密钥已设置）。
 
 
+
+## 博士模板（本地已实现，未上线）
+
+- `students.program_template`：`transfer`（转学本科版，默认，存量学生原样）/ `phd`（博士研究生版）。后台专属客户端页顶部可切换；导入接口接受 `student.program_template`。
+- phd 模板下：选课类别只用研究生四类（研究生课程 15 / 论文研究 CSCI 999 24 / 研讨 EECS 500 3 / 选修/研究 18），汇总按已修学分算 60 学分目标；另有博士毕业需求追踪卡（GQE 18–27 学分窗口、综合考试 36–45 学分窗口、2 篇一作期刊 + 2 篇一作会议投稿、最终答辩须在综合考试后至少一个学期），来源 UND 官网 CS PhD Requirements（2026-10-24 核实），页面标注以学校官方学位审计为准。
+- 学生端 APP：`phd` 字段仅 phd 模板下发，规划页出现博士毕业需求卡；transfer 学生响应里 `phd` 为 null，页面原样。删除学生时 `student_phd_checks` 一并清理。
