@@ -1512,6 +1512,11 @@ async function isAuthed(req, env) {
 function redirect(to) {
   return new Response(null, { status: 303, headers: { Location: to } });
 }
+/* 2026-10-24 快捷添加：表单可带 back 参数指回快捷添加页；只接受站内 /admin/ 路径，防开放重定向。 */
+function backPath(fd) {
+  const b = String((fd && fd.get("back")) || "");
+  return b.startsWith("/admin/") ? b : null;
+}
 
 // ===== CORS =====
 function corsHeaders(req) {
@@ -3623,7 +3628,7 @@ h2{font-size:17px;margin:4px 0 12px}h3{font-size:15px;margin:14px 0 8px}
 `;
 function layout(title, active, body) {
   const tabs = [
-    ["/admin", "首页"], ["/admin/leads", "线索"], ["/admin/delivery", "交付"],
+    ["/admin", "首页"], ["/admin/quick-add", "快捷添加"], ["/admin/leads", "线索"], ["/admin/delivery", "交付"],
     ["/admin/agents", "代理"], ["/admin/orders", "订单"], ["/admin/content", "内容"],
     ["/admin/tasks", "任务"], ["/admin/staff", "人员"], ["/admin/outbox", "导师通知"], ["/admin/knowledge", "知识库"],
   ];
@@ -4027,7 +4032,7 @@ async function postDelivery(req, env) {
        VALUES(?,?,?,?,?,?,?,?,?)`
     ).bind(lead_id, order_id, name, pkg, stage, nowIso(), note, nowIso(), nowIso()).run();
   }
-  return redirect("/admin/delivery");
+  return redirect(backPath(fd) || "/admin/delivery");
 }
 
 // ===== 用户档案（同一人的线索 + 订单 + 交付汇总）=====
@@ -4803,7 +4808,7 @@ async function postStaff(req, env) {
       .bind(name, kind, empNo, platform, jobFunction, role, contact, startDate, status, note, persona, accountable, nowIso(),
         specialty, contactEmail, contactPhone, contactWechat, notifyChannel, mentorStatus).run();
   }
-  return redirect("/admin/staff");
+  return redirect(backPath(fd) || "/admin/staff");
 }
 
 // ===== 导师通知发件箱（v13）=====
@@ -6161,6 +6166,96 @@ async function postClient(req, env, sidFromPath) {
   return redirect(back);
 }
 
+// ===== 快捷添加（2026-10-24）：导师 / 学生 / 家长开通三表单一页，写入复用后台
+// 现有逻辑（导师走 postStaff、学生走 postDelivery、家长开通走 ensureParentKey），
+// 本页只做入口与结果呈现，不另起写入规则；全程在管理员登录态后可用。
+async function pageQuickAdd(env, url) {
+  const db = env.DB;
+  const ok = url.searchParams.get("ok") || "";
+  const parentId = toInt(url.searchParams.get("parent"), 0);
+  const students = (await db.prepare(
+    `SELECT id, name, slug, stage, parent_key FROM students ORDER BY id DESC LIMIT 100`).all()).results || [];
+  let banner = "";
+  if (ok === "mentor") {
+    const m = await db.prepare(
+      `SELECT * FROM staff WHERE kind = 'mentor' ORDER BY id DESC LIMIT 1`).first();
+    if (m) {
+      await ensureMentorKey(db, m);
+      banner = `<div class="card"><h2>已添加导师</h2><p>${esc(m.name)}（${esc(m.emp_no || "")}）· 工作台链接：<code>https://zhuanuc.com/one-on-one-app/mentor.html?s=${esc(m.emp_no || "")}&amp;k=${esc(m.mentor_key || "")}</code></p><p class="mut">把链接发给导师本人；人员页同样能看到这条链接。</p></div>`;
+    }
+  } else if (ok === "student") {
+    const s = await db.prepare(`SELECT * FROM students ORDER BY id DESC LIMIT 1`).first();
+    if (s) banner = `<div class="card"><h2>已添加学生</h2><p>${esc(s.name)}（阶段：${esc(DELIVERY_STAGES[s.stage] || s.stage || "")}）· <a href="/admin/client/${s.id}">专属客户端</a> · <a href="/admin/delivery">去交付页</a></p></div>`;
+  }
+  let parentCard = "";
+  if (parentId) {
+    const s = await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parentId).first();
+    if (s && s.parent_key) {
+      parentCard = `<div class="card"><h2>家长端已开通：${esc(s.name)}</h2><p class="mut">专属链接（推荐，用专属名）：<code>https://zhuanuc.com/one-on-one-app/parent.html?s=${esc(s.slug || "")}&amp;p=${esc(s.parent_key)}</code><br>备用链接（用编号）：<code>https://zhuanuc.com/one-on-one-app/parent.html?s=${s.id}&amp;p=${esc(s.parent_key)}</code></p><p class="mut">把链接发给家长本人；学生原始记录不会进入家长端。</p></div>`;
+    }
+  }
+  const stuOpts = students.map((s) =>
+    `<option value="${s.id}">${esc(s.name)}（#${s.id}）${s.parent_key ? " · 已开通家长端" : ""}</option>`).join("");
+  const body = `
+  ${banner}${parentCard}
+  <div class="card"><h2>添加导师</h2>
+  <form method="post" action="/admin/staff">
+    <input type="hidden" name="action" value="add">
+    <input type="hidden" name="kind" value="mentor">
+    <input type="hidden" name="mentor_status" value="registered">
+    <input type="hidden" name="back" value="/admin/quick-add?ok=mentor">
+    <div class="row">
+      <div><label>姓名 *</label><input name="name" required maxlength="40"></div>
+      <div><label>专长</label><input name="specialty" maxlength="120" placeholder="如 创业辅导"></div>
+    </div>
+    <div class="row">
+      <div><label>导师邮箱</label><input name="contact_email" maxlength="80"></div>
+      <div><label>通知渠道</label><select name="notify_channel">${opts(NOTIFY_CHANNELS, "email")}</select></div>
+    </div>
+    <div class="row">
+      <div><label>导师电话</label><input name="contact_phone" maxlength="40"></div>
+      <div><label>导师微信</label><input name="contact_wechat" maxlength="60"></div>
+    </div>
+    <button type="submit">添加导师</button>
+    <p class="mut">工号自动生成；导师状态默认“已登记”，邮箱渠道时可直接收到系统通知。</p>
+  </form></div>
+  <div class="card"><h2>添加学生</h2>
+  <form method="post" action="/admin/delivery">
+    <input type="hidden" name="action" value="add">
+    <input type="hidden" name="back" value="/admin/quick-add?ok=student">
+    <div class="row">
+      <div><label>姓名 *</label><input name="name" required maxlength="40"></div>
+      <div><label>所购套餐</label><input name="package" maxlength="60"></div>
+      <div><label>初始阶段</label><select name="stage">${opts(DELIVERY_STAGES, "diag")}</select></div>
+    </div>
+    <div><label>备注</label><textarea name="note" maxlength="2000"></textarea></div>
+    <button type="submit">添加学生</button>
+  </form></div>
+  <div class="card"><h2>开通家长端</h2>
+  <p class="mut">家长没有独立档案：开通 = 给该学生生成家长密钥与专属链接，家长凭链接看进展更新并与导师单独沟通。</p>
+  <form method="post" action="/admin/quick-add">
+    <input type="hidden" name="action" value="parent_enable">
+    <div class="row">
+      <div><label>学生 *</label><select name="student_id" required>${stuOpts || `<option value="">暂无学生，先添加学生</option>`}</select></div>
+    </div>
+    <button type="submit">开通家长端</button>
+  </form></div>`;
+  return htmlResp(layout("快捷添加", "/admin/quick-add", body));
+}
+async function postQuickAdd(req, env) {
+  const db = env.DB;
+  const fd = await req.formData();
+  const action = String(fd.get("action") || "");
+  if (action === "parent_enable") {
+    const sid = toInt(fd.get("student_id"), 0);
+    const stu = sid ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(sid).first() : null;
+    if (!stu) return redirect("/admin/quick-add");
+    await ensureParentKey(db, stu);
+    return redirect("/admin/quick-add?parent=" + stu.id);
+  }
+  return redirect("/admin/quick-add");
+}
+
 // ===== 路由 =====
 async function handleAdmin(req, env, url) {
   const p = url.pathname;
@@ -6177,6 +6272,7 @@ async function handleAdmin(req, env, url) {
     if (p === "/admin/content") return postContent(req, env);
     if (p === "/admin/tasks") return postTasks(req, env);
     if (p === "/admin/staff") return postStaff(req, env);
+    if (p === "/admin/quick-add") return postQuickAdd(req, env);
     if (p === "/admin/outbox") return postOutbox(req, env);
     if (p === "/admin/knowledge") return postKnowledge(req, env);
     return redirect("/admin");
@@ -6191,6 +6287,7 @@ async function handleAdmin(req, env, url) {
   if (p === "/admin/content") return pageContent(env, url);
   if (p === "/admin/tasks") return pageTasks(env, url);
   if (p === "/admin/staff") return pageStaff(env, url);
+  if (p === "/admin/quick-add") return pageQuickAdd(env, url);
   if (p === "/admin/outbox") return pageOutbox(env, url);
   if (p === "/admin/knowledge") return pageKnowledge(env, url);
   return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
