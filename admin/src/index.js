@@ -5424,8 +5424,11 @@ async function pageClient(env, url, sid) {
   </div>
   ${g.goal_note ? `<p style="white-space:pre-wrap">${esc(g.goal_note)}</p>` : ""}
   ${goalLines.length ? `<p>当前主线（优先级 ${goalLines[0].priority}）：<strong>${esc(goalLines[0].name || "")}</strong>（${esc(LINE_TYPES[goalLines[0].line_type] || goalLines[0].line_type || "")} · ${esc(LINE_STATUSES[goalLines[0].status] || goalLines[0].status || "")}）${goalLines[0].next_step ? " · 下一步：" + esc(goalLines[0].next_step) : ""} <span class="mut">共 ${goalLines.length} 条线，详见下方目标区</span></p>` : ""}
-  <p class="mut"><a href="/admin/delivery">← 返回交付页</a>${student.lead_id ? ` · <a href="/admin/user?id=${student.lead_id}">查看用户档案</a>` : ""}${(unreadStudentMsgs + unreadParentMsgs) ? ` · <a href="#sec-messages" style="color:#b00;font-weight:700">● ${unreadStudentMsgs + unreadParentMsgs} 条待回复（点此跳到导师沟通）</a>` : ""}</p>
-  <p class="mut">页内导航：<a href="#sec-goal">目标</a> · <a href="#sec-status">状态快照</a> · <a href="#sec-courses">选课规划</a>${student.program_template === "phd" ? ` · <a href="#sec-phd">博士毕业需求</a>` : ""} · <a href="#sec-messages">导师沟通</a> · <a href="#sec-parent">家长端</a> · <a href="#sec-reqset">课程要求集</a> · 标签说明：<span class="pill">学生可见</span> = 内容会出现在学生端 APP；<span class="pill">家长可见</span> = 内容会出现在家长端；<span class="pill">仅内部</span> = 只在本后台可见。</p>
+  <p class="mut"><a href="/admin/delivery">← 返回交付页</a>${student.lead_id ? ` · <a href="/admin/user?id=${student.lead_id}">查看用户档案</a>` : ""}${(unreadStudentMsgs + unreadParentMsgs) ? ` · <a href="#grp-today" style="color:#b00;font-weight:700">● ${unreadStudentMsgs + unreadParentMsgs} 条待回复（点此跳到导师沟通）</a>` : ""}</p>
+  <p class="mut" style="position:sticky;top:0;background:#fff;z-index:5;padding:8px 0">页内导航：<a href="#grp-today">今天</a> · <a href="#grp-record">记录</a> · <a href="#grp-out">对外</a> · <a href="#grp-settings">设置</a> · 标签说明：<span class="pill">学生可见</span> = 内容会出现在学生端 APP；<span class="pill">家长可见</span> = 内容会出现在家长端；<span class="pill">仅内部</span> = 只在本后台可见。</p>
+  </div>`;
+  const settingsCard = `
+  <div class="card" id="sec-settings"><h2>设置 <span class="pill">仅内部</span></h2>
   <div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px">
     <p style="margin:4px 0"><strong>学生端 APP（只读）</strong> <span class="mut">学生用专属链接打开自己的客户端，只能看不能改；编辑仍在本页。</span></p>
     ${student.client_key
@@ -5454,7 +5457,10 @@ async function pageClient(env, url, sid) {
         <button class="small" type="submit">保存签名</button>
       </form>
     </div>
-    <div style="border-top:1px dashed #eee;margin-top:10px;padding-top:8px">
+    </div>`;
+  const greetingCard = `
+  <div class="card"><h2>导师寄语与愿景 <span class="pill">学生可见</span></h2>
+  <div style="border-top:1px dashed #eee;margin-top:10px;padding-top:8px">
       <p style="margin:4px 0"><strong>导师寄语与愿景</strong> <span class="mut">寄语显示在学生端 APP 首页顶部（带日期），愿景显示在「规划」页愿景板；都为空则不显示。请只写导师本人要说的话，不要代拟。</span></p>
       ${student.mentor_message
         ? `<p class="mut" style="margin:4px 0">当前寄语：<strong>${esc(student.mentor_message)}</strong>${student.mentor_message_at ? `（${esc(String(student.mentor_message_at).slice(0, 10))}）` : ""}</p>`
@@ -5467,8 +5473,8 @@ async function pageClient(env, url, sid) {
         <textarea name="vision_text" maxlength="2000" placeholder="如 BSN + NCLEX-RN → 空军护理军官">${esc(student.vision_text || "")}</textarea>
         <button class="small" type="submit">保存寄语与愿景</button>
       </form>
-    </div>
-  </div></div>`;
+    </div>  </div>`;
+
   // —— 目标 ——
   // —— 目标（多条人生线 + 学业目标详情）——
   const editLineId = toInt(url.searchParams.get("edit_line"), 0);
@@ -5993,7 +5999,7 @@ async function pageClient(env, url, sid) {
       <span class="mut">${m.sender === "mentor" ? "导师" : "家长"} · ${esc(String(m.created_at || "").slice(0, 16).replace("T", " "))}</span>
       <div style="white-space:pre-wrap">${esc(m.body || "")}</div>
     </div>`).join("") : `<p class="mut">暂无留言。</p>`;
-  const parentCard = `
+  const parentOutCard = `
   <div class="card" id="sec-parent"><h2>家长端（家长更新） <span class="pill">家长可见</span></h2>
   <p class="mut">家长是实际买单人，但只能看到导师在这里专门整理、如实且保留学生尊严的更新。<strong>学生原始记录（考试、成绩、课程、状态快照、学生留言、签名）不会进入家长端</strong>，请勿把原始明细粘贴到家长更新里。</p>
   <div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px">
@@ -6054,7 +6060,9 @@ async function pageClient(env, url, sid) {
     ${editPs ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
   </form>
   ${parentSupport.length ? `<div class="wrap"><table><tr><th>排序</th><th>标题</th><th>状态</th><th>分类</th><th>期限</th><th>说明</th><th></th><th></th></tr>${psRows}</table></div>` : `<p class="mut">暂无托举事项。</p>`}
-  <h3>家长沟通 <span class="pill">家长可见</span> ${unreadParentMsgs ? `<span class="pill">${unreadParentMsgs} 条待回复</span>` : ""}</h3>
+    </div>`;
+  const parentMsgCard = `
+  <div class="card" id="sec-parent-msg"><h3>家长沟通 <span class="pill">家长可见</span> ${unreadParentMsgs ? `<span class="pill">${unreadParentMsgs} 条待回复</span>` : ""}</h3>
   <p class="mut">家长与导师的独立线程，学生看不到；打开本页不再标已读，回复后待回复清零。在下方以导师身份回复。</p>
   ${parentThreadHtml}
   <form method="post">
@@ -6063,9 +6071,13 @@ async function pageClient(env, url, sid) {
     <button type="submit">发送回复</button>
   </form>
   </div>`;
+
   return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery",
-    hero + mentorCardHtml + topicMentorCardHtml + goalCard + statusCard + examCard + courseCard + phdCard + phdPaperCard + meetingCard + trailCard +
-    milestoneCard + keyDateCard + actionCard + adviceCard + problemCard + ((isPhd || !reqSets.length) ? `<details class="card"><summary>课程要求集（匹配引擎，v12）· 仅内部 · 点击展开（${isPhd ? "博士模板不适用本科匹配引擎" : "暂无要求集"}）</summary>${reqsetCard}</details>` : reqsetCard) + messageCard + parentCard + timelineHtml));
+    hero +
+    `<details class="card" id="grp-today" open><summary><strong>今天 · 待回复与留言</strong>${(unreadStudentMsgs + unreadParentMsgs) ? ` · <span class="pill">${unreadStudentMsgs + unreadParentMsgs} 条待回复</span>` : ""}</summary>` + messageCard + parentMsgCard + `</details>` +
+    `<details class="card" id="grp-record"><summary><strong>记录 · 目标 / 快照 / 会议 / 考试 / 选课 / 论文</strong></summary>` + goalCard + statusCard + meetingCard + trailCard + examCard + courseCard + phdCard + phdPaperCard + milestoneCard + keyDateCard + actionCard + adviceCard + problemCard + timelineHtml + `</details>` +
+    `<details class="card" id="grp-out"><summary><strong>对外 · 学生可见与家长可见内容</strong></summary>` + greetingCard + parentOutCard + `</details>` +
+    `<details class="card" id="grp-settings"><summary><strong>设置 · 密钥 / 模板 / 导师 / 要求集</strong></summary>` + settingsCard + mentorCardHtml + topicMentorCardHtml + ((isPhd || !reqSets.length) ? `<details class="card"><summary>课程要求集（匹配引擎，v12）· 仅内部 · 点击展开（${isPhd ? "博士模板不适用本科匹配引擎" : "暂无要求集"}）</summary>${reqsetCard}</details>` : reqsetCard) + `</details>`));
 }
 async function postClient(req, env, sidFromPath) {
   const db = env.DB;
