@@ -2586,7 +2586,9 @@ function setupAccordion(sec) {
   btn.textContent = "▾";
   h2.appendChild(btn);
   h2.addEventListener("click", (ev) => {
-    if (ev.target.closest("button, a, input, select, textarea")) return;
+    // 折叠开关按钮本身就是展开/收起的控件：点它也要切换，不能排除在外。
+    // h2 里除开关外没有其他交互控件，所以这里只排除链接与表单控件。
+    if (ev.target.closest("a, input, select, textarea")) return;
     setAcc(sec, sec.classList.contains("acc-closed"));
   });
 }
