@@ -4068,9 +4068,9 @@ async function pageDelivery(env, url) {
       <button class="small" type="submit">推进</button></form></td>
     <td>${esc((s.note || "").slice(0, 40))}</td>
     <td><a href="/admin/delivery?edit=${s.id}">编辑</a> · <a href="/admin/client/${s.id}">专属客户端</a></td>
-    <td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这条学生档案？')">
+    <td><form method="post" style="margin:0">
       <input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="${s.id}">
-      <button class="small danger" type="submit">删除</button></form></td></tr>`;
+      <button class="small danger" type="button" onclick="if(this.dataset.armed){this.form.submit()}else{this.dataset.armed='1';this.textContent='确认删除？';var b=this;setTimeout(function(){b.dataset.armed='';b.textContent='删除';},5000)}">删除</button></form></td></tr>`;
   }).join("");
 
   const body = `
@@ -5253,9 +5253,9 @@ async function pageClient(env, url, sid) {
     ${student.client_key
       ? `<p class="mut" style="margin:4px 0">访问密钥：<code>${esc(student.client_key)}</code><br>专属链接（推荐，用专属名）：<code>https://zhuanuc.com/one-on-one-app/?s=${esc(student.slug || "")}&amp;k=${esc(student.client_key)}</code><br>备用链接（用编号）：<code>https://zhuanuc.com/one-on-one-app/?s=${sid}&amp;k=${esc(student.client_key)}</code></p>`
       : `<p class="mut" style="margin:4px 0">尚未生成访问密钥，生成后把专属链接发给学生即可。专属名：<code>${esc(student.slug || "")}</code></p>`}
-    <form method="post" style="margin:6px 0 0" onsubmit="return confirm('${student.client_key ? "重置后旧链接立即失效，确定重置访问密钥？" : "确定生成访问密钥？"}')">
+    <form method="post" style="margin:6px 0 0">
       <input type="hidden" name="action" value="key_rotate">
-      <button class="small ghost" type="submit">${student.client_key ? "重置密钥" : "生成访问密钥"}</button>
+      <button class="small ghost" type="button" onclick="if(this.dataset.armed){this.form.submit()}else{this.dataset.armed='1';this.textContent='${student.client_key ? "确认重置？" : "确认生成？"}';var b=this;setTimeout(function(){b.dataset.armed='';b.textContent='${student.client_key ? "重置密钥" : "生成访问密钥"}';},5000)}">${student.client_key ? "重置密钥" : "生成访问密钥"}</button>
     </form>
     <div style="border-top:1px dashed #eee;margin-top:10px;padding-top:8px">
       <p style="margin:4px 0"><strong>客户端模板</strong> <span class="mut">默认转学本科版；切到博士研究生版后，本页选课改用研究生四类并出现博士毕业需求追踪，学生端 APP 同步切换。切回即恢复原版面，已录课程数据不删除（类别标签按模板显示）。</span></p>
