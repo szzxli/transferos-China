@@ -5425,7 +5425,7 @@ async function pageClient(env, url, sid) {
   ${g.goal_note ? `<p style="white-space:pre-wrap">${esc(g.goal_note)}</p>` : ""}
   ${goalLines.length ? `<p>当前主线（优先级 ${goalLines[0].priority}）：<strong>${esc(goalLines[0].name || "")}</strong>（${esc(LINE_TYPES[goalLines[0].line_type] || goalLines[0].line_type || "")} · ${esc(LINE_STATUSES[goalLines[0].status] || goalLines[0].status || "")}）${goalLines[0].next_step ? " · 下一步：" + esc(goalLines[0].next_step) : ""} <span class="mut">共 ${goalLines.length} 条线，详见下方目标区</span></p>` : ""}
   <p class="mut"><a href="/admin/delivery">← 返回交付页</a>${student.lead_id ? ` · <a href="/admin/user?id=${student.lead_id}">查看用户档案</a>` : ""}${(unreadStudentMsgs + unreadParentMsgs) ? ` · <a href="#grp-today" style="color:#b00;font-weight:700">● ${unreadStudentMsgs + unreadParentMsgs} 条待回复（点此跳到导师沟通）</a>` : ""}</p>
-  <p class="mut" style="position:sticky;top:0;background:#fff;z-index:5;padding:8px 0">页内导航：<a href="#grp-today">今天</a> · <a href="#grp-record">记录</a> · <a href="#grp-out">对外</a> · <a href="#grp-settings">设置</a> · 标签说明：<span class="pill">学生可见</span> = 内容会出现在学生端 APP；<span class="pill">家长可见</span> = 内容会出现在家长端；<span class="pill">仅内部</span> = 只在本后台可见。</p>
+
   </div>`;
   const settingsCard = `
   <div class="card" id="sec-settings"><h2>设置 <span class="pill">仅内部</span></h2>
@@ -6073,6 +6073,7 @@ async function pageClient(env, url, sid) {
   </div>`;
 
   return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery",
+      `<p class="mut" style="position:sticky;top:46px;z-index:9;background:#fff;padding:8px 0;margin:0 0 12px">页内导航：<a href="#grp-today">今天</a> · <a href="#grp-record">记录</a> · <a href="#grp-out">对外</a> · <a href="#grp-settings">设置</a> · 标签说明：<span class="pill">学生可见</span> = 内容会出现在学生端 APP；<span class="pill">家长可见</span> = 内容会出现在家长端；<span class="pill">仅内部</span> = 只在本后台可见。</p>` +
     hero +
     `<details class="card" id="grp-today" open><summary><strong>今天 · 待回复与留言</strong>${(unreadStudentMsgs + unreadParentMsgs) ? ` · <span class="pill">${unreadStudentMsgs + unreadParentMsgs} 条待回复</span>` : ""}</summary>` + messageCard + parentMsgCard + `</details>` +
     `<details class="card" id="grp-record"><summary><strong>记录 · 目标 / 快照 / 会议 / 考试 / 选课 / 论文</strong></summary>` + goalCard + statusCard + meetingCard + trailCard + examCard + courseCard + phdCard + phdPaperCard + milestoneCard + keyDateCard + actionCard + adviceCard + problemCard + timelineHtml + `</details>` +
