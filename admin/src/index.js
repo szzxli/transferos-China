@@ -5369,12 +5369,10 @@ async function pageClient(env, url, sid) {
     "SELECT * FROM student_advice WHERE student_id=? ORDER BY created_at DESC, id DESC LIMIT 100").bind(sid).all()).results || [];
   const messageRows = (await db.prepare(
     "SELECT * FROM student_messages WHERE student_id=? ORDER BY id ASC LIMIT 500").bind(sid).all()).results || [];
-  const unreadStudentMsgs = messageRows.filter((m) => m.sender === "student" && !m.read_by_mentor).length;
-  if (unreadStudentMsgs) {
-    await db.prepare(
-      "UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0"
-    ).bind(sid).run();
-  }
+  // v19 待回复（轻量断点修复）：打开本页不再把留言标已读。待回复 = 学生在最后一条
+  // 导师回复之后发来的留言；回复接口（message_reply）落库时把该线程标已读，待回复清零。
+  const lastMentorMsgId = messageRows.reduce((mx, m) => (m.sender === "mentor" ? Math.max(mx, m.id) : mx), 0);
+  const unreadStudentMsgs = messageRows.filter((m) => m.sender === "student" && m.id > lastMentorMsgId).length;
   // —— v11 家长端查询 ——
   const parentUpdates = (await db.prepare(
     "SELECT * FROM parent_updates WHERE student_id=? ORDER BY update_date DESC, id DESC LIMIT 200").bind(sid).all()).results || [];
@@ -5384,12 +5382,8 @@ async function pageClient(env, url, sid) {
     "SELECT * FROM parent_support_actions WHERE student_id=? ORDER BY sort ASC, id ASC LIMIT 200").bind(sid).all()).results || [];
   const parentMsgs = (await db.prepare(
     "SELECT * FROM parent_messages WHERE student_id=? ORDER BY id ASC LIMIT 500").bind(sid).all()).results || [];
-  const unreadParentMsgs = parentMsgs.filter((m) => m.sender === "parent" && !m.read_by_mentor).length;
-  if (unreadParentMsgs) {
-    await db.prepare(
-      "UPDATE parent_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0"
-    ).bind(sid).run();
-  }
+  const lastMentorParentMsgId = parentMsgs.reduce((mx, m) => (m.sender === "mentor" ? Math.max(mx, m.id) : mx), 0);
+  const unreadParentMsgs = parentMsgs.filter((m) => m.sender === "parent" && m.id > lastMentorParentMsgId).length;
   // —— v12 查询：问题方案层 / 导师轨迹 / 课程要求集 ——
   const problemShares = (await db.prepare(
     "SELECT * FROM student_problem_shares WHERE student_id=? ORDER BY id DESC LIMIT 100").bind(sid).all()).results || [];
@@ -5425,16 +5419,17 @@ async function pageClient(env, url, sid) {
     <div class="stat"><div class="l">目标入学季</div><div class="n" style="font-size:17px">${esc(g.target_term || "待定")}</div></div>
     <div class="stat"><div class="l">目标 GPA</div><div class="n" style="font-size:17px">${esc(g.gpa_target || "—")}</div></div>
     <div class="stat"><div class="l">最新 GPA（${latest ? esc(latest.snapshot_date || "") : "暂无快照"}）</div><div class="n" style="font-size:17px">${latest && latest.gpa !== null && latest.gpa !== undefined ? latest.gpa : "—"}</div></div>
-    <div class="stat"><div class="l">学分进度（最新快照）</div><div class="n" style="font-size:17px">${latest ? `${latest.credits_done ?? "—"} / ${latest.credits_total ?? "—"}` : "—"}</div></div>
+    <div class="stat"><div class="l">学分进度（最新快照 · 手填${latest ? " · " + esc(latest.snapshot_date || "") : ""}）</div><div class="n" style="font-size:17px">${latest ? `${latest.credits_done ?? "—"} / ${latest.credits_total ?? "—"}` : "—"}</div><div class="l">${latest && latest.credits_done !== null && latest.credits_done !== undefined && Number(latest.credits_done) !== Number(prog.creditsDone) ? `<span class="bad">⚠ 与按课程记录自动算的 ${prog.creditsDone} 学分不一致，请核对（快照手填 vs 课程记录）</span>` : "按课程记录自动算：" + prog.creditsDone + " 学分（见下方选课规划）"}</div></div>
     <div class="stat"><div class="l">交付阶段</div><div class="n" style="font-size:17px">${esc(DELIVERY_STAGES[student.stage] || student.stage || "—")}</div><div class="l">${stageDays === null ? "" : "已停留 " + stageDays + " 天"}${student.package ? " · " + esc(student.package) : ""}</div></div>
   </div>
   ${g.goal_note ? `<p style="white-space:pre-wrap">${esc(g.goal_note)}</p>` : ""}
   ${goalLines.length ? `<p>当前主线（优先级 ${goalLines[0].priority}）：<strong>${esc(goalLines[0].name || "")}</strong>（${esc(LINE_TYPES[goalLines[0].line_type] || goalLines[0].line_type || "")} · ${esc(LINE_STATUSES[goalLines[0].status] || goalLines[0].status || "")}）${goalLines[0].next_step ? " · 下一步：" + esc(goalLines[0].next_step) : ""} <span class="mut">共 ${goalLines.length} 条线，详见下方目标区</span></p>` : ""}
-  <p class="mut"><a href="/admin/delivery">← 返回交付页</a>${student.lead_id ? ` · <a href="/admin/user?id=${student.lead_id}">查看用户档案</a>` : ""}</p>
+  <p class="mut"><a href="/admin/delivery">← 返回交付页</a>${student.lead_id ? ` · <a href="/admin/user?id=${student.lead_id}">查看用户档案</a>` : ""}${(unreadStudentMsgs + unreadParentMsgs) ? ` · <a href="#sec-messages" style="color:#b00;font-weight:700">● ${unreadStudentMsgs + unreadParentMsgs} 条待回复（点此跳到导师沟通）</a>` : ""}</p>
+  <p class="mut">页内导航：<a href="#sec-goal">目标</a> · <a href="#sec-status">状态快照</a> · <a href="#sec-courses">选课规划</a>${student.program_template === "phd" ? ` · <a href="#sec-phd">博士毕业需求</a>` : ""} · <a href="#sec-messages">导师沟通</a> · <a href="#sec-parent">家长端</a> · <a href="#sec-reqset">课程要求集</a> · 标签说明：<span class="pill">学生可见</span> = 内容会出现在学生端 APP；<span class="pill">家长可见</span> = 内容会出现在家长端；<span class="pill">仅内部</span> = 只在本后台可见。</p>
   <div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px">
     <p style="margin:4px 0"><strong>学生端 APP（只读）</strong> <span class="mut">学生用专属链接打开自己的客户端，只能看不能改；编辑仍在本页。</span></p>
     ${student.client_key
-      ? `<p class="mut" style="margin:4px 0">访问密钥：<code>${esc(student.client_key)}</code><br>专属链接（推荐，用专属名）：<code>https://zhuanuc.com/one-on-one-app/?s=${esc(student.slug || "")}&amp;k=${esc(student.client_key)}</code><br>备用链接（用编号）：<code>https://zhuanuc.com/one-on-one-app/?s=${sid}&amp;k=${esc(student.client_key)}</code></p>`
+      ? `<p class="mut" style="margin:4px 0">访问密钥：<span id="ck-masked">••••••••</span><span id="ck-full" hidden><code>${esc(student.client_key)}</code><br>专属链接（推荐，用专属名）：<code>https://zhuanuc.com/one-on-one-app/?s=${esc(student.slug || "")}&amp;k=${esc(student.client_key)}</code><br>备用链接（用编号）：<code>https://zhuanuc.com/one-on-one-app/?s=${sid}&amp;k=${esc(student.client_key)}</code></span> <button type="button" class="small ghost" onclick="document.getElementById('ck-masked').hidden=true;document.getElementById('ck-full').hidden=false;this.textContent='已显示（截图前请先收起）';this.disabled=true">显示密钥 / 链接</button> <span class="mut">（默认遮罩，防截图带走；页面源码中仍可见，属已登录后台可见范围）</span></p>`
       : `<p class="mut" style="margin:4px 0">尚未生成访问密钥，生成后把专属链接发给学生即可。专属名：<code>${esc(student.slug || "")}</code></p>`}
     <form method="post" style="margin:6px 0 0">
       <input type="hidden" name="action" value="key_rotate">
@@ -5445,7 +5440,7 @@ async function pageClient(env, url, sid) {
       <form method="post" style="margin:6px 0 0">
         <input type="hidden" name="action" value="template_set">
         <label>模板</label><select name="program_template">${opts(PROGRAM_TEMPLATES, student.program_template || "transfer")}</select>
-        <button class="small" type="submit">切换模板</button>
+        <button class="small" type="button" onclick="if(this.dataset.armed){this.form.submit()}else{this.dataset.armed='1';this.textContent='确认切换模板？（选课改版、毕业追踪、学生端同步切换）';var b=this;setTimeout(function(){b.dataset.armed='';b.textContent='切换模板';},5000)}">切换模板</button>
       </form>
     </div>
     <div style="border-top:1px dashed #eee;margin-top:10px;padding-top:8px">
@@ -5489,7 +5484,7 @@ async function pageClient(env, url, sid) {
       <input type="hidden" name="action" value="line_delete"><input type="hidden" name="id" value="${l.id}">
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const goalCard = `
-  <div class="card"><h2>目标（人生线）</h2>
+  <div class="card" id="sec-goal"><h2>目标（人生线） <span class="pill">学生可见</span></h2>
   ${goalLines.length ? `<div class="wrap"><table><tr><th>优先级</th><th>名称</th><th>类型</th><th>状态</th><th>下一步</th><th></th><th></th></tr>${lineRows}</table></div>` : `<p class="mut">暂无目标线，用下方表单添加第一条。</p>`}
   <h3>${editLine ? "编辑目标线 #" + editLine.id : "新增目标线"}</h3>
   <form method="post">
@@ -5528,7 +5523,7 @@ async function pageClient(env, url, sid) {
       <input type="hidden" name="action" value="status_delete"><input type="hidden" name="id" value="${s.id}">
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const statusCard = `
-  <div class="card"><h2>状态快照</h2>
+  <div class="card" id="sec-status"><h2>状态快照 <span class="pill">学生可见</span></h2>
   ${latest ? `<p>最新（${esc(latest.snapshot_date || "")}）：GPA <strong>${latest.gpa === null || latest.gpa === undefined ? "—" : latest.gpa}</strong> · 已修学分 <strong>${latest.credits_done ?? "—"} / ${latest.credits_total ?? "—"}</strong>${latest.note ? " · " + esc(latest.note) : ""}</p>` : `<p class="mut">暂无快照，每学期结束记一条。</p>`}
   <form method="post">
     <input type="hidden" name="action" value="status_add">
@@ -5579,7 +5574,7 @@ async function pageClient(env, url, sid) {
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("")}
   </table></div>`).join("") : `<p class="mut">暂无选课记录，用下方表单按学期排课。</p>`;
   const courseCard = `
-  <div class="card"><h2>${isPhd ? "研究生选课规划" : "选课规划"}</h2>
+  <div class="card" id="sec-courses"><h2>${isPhd ? "研究生选课规划" : "选课规划"} <span class="pill">学生可见</span></h2>
   ${courseSummaryHtml}
   ${kindHtml}
   <h3>${editCourse ? "编辑课程 #" + editCourse.id : "新增课程"}</h3>
@@ -5607,7 +5602,7 @@ async function pageClient(env, url, sid) {
   const phdCheckMap = {};
   for (const r of phdChecks) phdCheckMap[r.check_key] = r;
   const phdCard = !isPhd ? "" : `
-  <div class="card"><h2>博士毕业需求 · UND CS PhD（硕士 track）</h2>
+  <div class="card" id="sec-phd"><h2>博士毕业需求 · UND CS PhD（硕士 track） <span class="pill">学生可见</span></h2>
   <p class="mut">来源：UND 官网 CS PhD Requirements，2026-10-24 核实；以学校官方学位审计为准。学分进度由上方研究生选课自动算，考试与发表状态由后台手动维护。</p>
   <div class="wrap"><table><tr><th>项目</th><th>要求</th><th>当前</th><th>状态</th><th>备注</th></tr>
   <tr><td>学分总数</td><td>60 学分</td><td>${phdProg.creditsDone} / 60</td><td>${phdProg.creditsDone >= 60 ? "已达标" : "进行中"}</td><td>研究生课程 15 + 论文研究 24 + 研讨 3 + 选修/研究 18</td></tr>
@@ -5671,7 +5666,7 @@ async function pageClient(env, url, sid) {
       <input type="hidden" name="action" value="exam_delete"><input type="hidden" name="id" value="${e.id}">
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const examCard = `
-  <div class="card"><h2>考试记录</h2>
+  <div class="card"><h2>考试记录 <span class="pill">学生可见</span></h2>
   <h3>${editExam ? "编辑考试 #" + editExam.id : "新增考试记录"}</h3>
   <form method="post">
     <input type="hidden" name="action" value="${editExam ? "exam_update" : "exam_add"}">
@@ -5705,7 +5700,7 @@ async function pageClient(env, url, sid) {
       <input type="hidden" name="action" value="meeting_delete"><input type="hidden" name="id" value="${m.id}">
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const meetingCard = `
-  <div class="card"><h2>专题辅导会议</h2>
+  <div class="card"><h2>专题辅导会议 <span class="pill">仅内部</span></h2>
   <h3>${editMeeting ? "编辑会议 #" + editMeeting.id : "新增会议记录"}</h3>
   <form method="post">
     <input type="hidden" name="action" value="${editMeeting ? "meeting_update" : "meeting_add"}">
@@ -5739,7 +5734,7 @@ async function pageClient(env, url, sid) {
   const meetingOpts = `<option value="">（不关联会议）</option>` + meetings.map((m) =>
     `<option value="${m.id}">${esc(m.meeting_date || "")} · ${esc(m.topic || "")}</option>`).join("");
   const trailCard = `
-  <div class="card"><h2>导师轨迹 · 会议精神（v12）</h2>
+  <div class="card"><h2>导师轨迹 · 会议精神（v12） <span class="pill">仅内部</span></h2>
   <p class="mut">每次会议后在此录入「会议精神」：一句话精神、关键判断、会后行动（每行一条，会自动并入学生行动清单）。学生领受与回看结果由学生在 APP 补录；学生自建的校外导师条目也会出现在这里（来源=学生自建）。家长端永不展示本区原文。</p>
   <form method="post">
     <input type="hidden" name="action" value="trail_add">
@@ -5768,7 +5763,7 @@ async function pageClient(env, url, sid) {
       <input type="hidden" name="action" value="milestone_delete"><input type="hidden" name="id" value="${m.id}">
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const milestoneCard = `
-  <div class="card"><h2>成长时间线</h2>
+  <div class="card"><h2>成长时间线 <span class="pill">学生可见</span></h2>
   <p class="mut">显示在学生端 APP「成长」页顶部。日期文本可写「2025 秋季」式学期文本，未知留空，切勿编造日期。</p>
   <h3>${editMs ? "编辑里程碑 #" + editMs.id : "新增里程碑"}</h3>
   <form method="post">
@@ -5797,7 +5792,7 @@ async function pageClient(env, url, sid) {
       <input type="hidden" name="action" value="keydate_delete"><input type="hidden" name="id" value="${k.id}">
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const keyDateCard = `
-  <div class="card"><h2>关键日期（倒计时）</h2>
+  <div class="card"><h2>关键日期（倒计时） <span class="pill">学生可见</span></h2>
   <p class="mut">显示在学生端 APP 首页倒计时卡；日期必须是真实确定的日子，不确定的不要填。</p>
   <h3>${editKd ? "编辑关键日期 #" + editKd.id : "新增关键日期"}</h3>
   <form method="post">
@@ -5826,7 +5821,7 @@ async function pageClient(env, url, sid) {
       <input type="hidden" name="action" value="action_delete"><input type="hidden" name="id" value="${a.id}">
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const actionCard = `
-  <div class="card"><h2>行动清单（学生端只读）</h2>
+  <div class="card"><h2>行动清单（学生端只读） <span class="pill">学生可见</span></h2>
   <p class="mut">完成状态由导师在此维护；学生端本批只展示，不回写。</p>
   <h3>${editAct ? "编辑行动项 #" + editAct.id : "新增行动项"}</h3>
   <form method="post">
@@ -5856,7 +5851,7 @@ async function pageClient(env, url, sid) {
       <input type="hidden" name="action" value="advice_delete"><input type="hidden" name="id" value="${a.id}">
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const adviceCard = `
-  <div class="card"><h2>导师建议（方案正文）</h2>
+  <div class="card"><h2>导师建议（方案正文） <span class="pill">学生可见</span></h2>
   <p class="mut">诊断结论 / 策略摘要写在这里（学生端「规划」页按时间倒序）；待办事项请写到行动清单，不要混。</p>
   <h3>${editAdv ? "编辑建议 #" + editAdv.id : "新增建议"}</h3>
   <form method="post">
@@ -5886,7 +5881,7 @@ async function pageClient(env, url, sid) {
       <input type="hidden" name="action" value="problem_delete"><input type="hidden" name="id" value="${pr.id}">
       <button class="small danger" type="submit">删除</button></form></td></tr>`).join("");
   const problemCard = `
-  <div class="card"><h2>问题方案（学生确认同步，v12）</h2>
+  <div class="card"><h2>问题方案（学生确认同步，v12） <span class="pill">学生可见</span></h2>
   <p class="mut">学生用问题解决中心在本地拆解问题、逐项确认后，方案摘要才同步到这里。带「待核实」标记的条目涉及合规事项，须转有资质律师 / 会计师 / 主管部门确认，不得按可执行处理。</p>
   ${problemShares.length ? `<div class="wrap"><table><tr><th>日期</th><th>领域</th><th>问题与方案摘要</th><th>进度</th><th>解决小结</th><th></th></tr>${problemRowsHtml}</table></div>` : `<p class="mut">暂无学生同步的问题方案。</p>`}
   </div>`;
@@ -5908,7 +5903,7 @@ async function pageClient(env, url, sid) {
   }).join("");
   const reqSetOpts = reqSets.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
   const reqsetCard = `
-  <div class="card"><h2>课程要求集（匹配引擎，v12）</h2>
+  <div class="card" id="sec-reqset"><h2>课程要求集（匹配引擎，v12） <span class="pill">仅内部</span>${(isPhd || !reqSets.length) ? ` <span class="pill">默认折叠：${isPhd ? "博士模板不适用本科匹配引擎" : "暂无要求集"}</span>` : ""}</h2>
   <p class="mut">要求按块建模（通识 / 专业先修 / 专业核心 / 选修），学生端 APP 用已修课程逐块算匹配度、缺课清单与预警。要求集必须逐份标来源与版本；未按学校官方核实的要求集请勿勾「已核实」。匹配结果只是规划参考，页面会标注「以学校官方学位审计为准」。</p>
   ${reqSetCards || `<p class="mut">暂无要求集。</p>`}
   <h3>新增要求集</h3>
@@ -5948,8 +5943,8 @@ async function pageClient(env, url, sid) {
       <div style="white-space:pre-wrap">${esc(m.body || "")}</div>
     </div>`).join("") : `<p class="mut">暂无留言。</p>`;
   const messageCard = `
-  <div class="card"><h2>导师沟通 ${unreadStudentMsgs ? `<span class="pill">${unreadStudentMsgs} 条未读</span>` : ""}</h2>
-  <p class="mut">学生端 APP「导师」页的留言线程；打开本页即把学生留言标为已读。在下方回复（以导师身份发送）。</p>
+  <div class="card" id="sec-messages"><h2>导师沟通 <span class="pill">学生可见</span> ${unreadStudentMsgs ? `<span class="pill">${unreadStudentMsgs} 条待回复</span>` : ""}</h2>
+  <p class="mut">学生端 APP「导师」页的留言线程；打开本页不再标已读，回复后待回复清零。在下方回复（以导师身份发送）。</p>
   ${threadHtml}
   <form method="post">
     <input type="hidden" name="action" value="message_reply">
@@ -5999,12 +5994,12 @@ async function pageClient(env, url, sid) {
       <div style="white-space:pre-wrap">${esc(m.body || "")}</div>
     </div>`).join("") : `<p class="mut">暂无留言。</p>`;
   const parentCard = `
-  <div class="card"><h2>家长端（家长更新）</h2>
+  <div class="card" id="sec-parent"><h2>家长端（家长更新） <span class="pill">家长可见</span></h2>
   <p class="mut">家长是实际买单人，但只能看到导师在这里专门整理、如实且保留学生尊严的更新。<strong>学生原始记录（考试、成绩、课程、状态快照、学生留言、签名）不会进入家长端</strong>，请勿把原始明细粘贴到家长更新里。</p>
   <div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px">
     <p style="margin:4px 0"><strong>家长专属链接</strong> <span class="mut">家长用这个链接看进展更新、如何托举事项，并与导师单独沟通；与学生端链接完全独立。</span></p>
     ${student.parent_key
-      ? `<p class="mut" style="margin:4px 0">家长密钥：<code>${esc(student.parent_key)}</code><br>专属链接（推荐，用专属名）：<code>https://zhuanuc.com/one-on-one-app/parent.html?s=${esc(student.slug || "")}&amp;p=${esc(student.parent_key)}</code><br>备用链接（用编号）：<code>https://zhuanuc.com/one-on-one-app/parent.html?s=${sid}&amp;p=${esc(student.parent_key)}</code></p>`
+      ? `<p class="mut" style="margin:4px 0">家长密钥：<span id="pk-masked">••••••••</span><span id="pk-full" hidden><code>${esc(student.parent_key)}</code><br>专属链接（推荐，用专属名）：<code>https://zhuanuc.com/one-on-one-app/parent.html?s=${esc(student.slug || "")}&amp;p=${esc(student.parent_key)}</code><br>备用链接（用编号）：<code>https://zhuanuc.com/one-on-one-app/parent.html?s=${sid}&amp;p=${esc(student.parent_key)}</code></span> <button type="button" class="small ghost" onclick="document.getElementById('pk-masked').hidden=true;document.getElementById('pk-full').hidden=false;this.textContent='已显示（截图前请先收起）';this.disabled=true">显示密钥 / 链接</button> <span class="mut">（默认遮罩，防截图带走）</span></p>`
       : `<p class="mut" style="margin:4px 0">尚未生成家长密钥，生成后把专属链接发给家长即可。专属名：<code>${esc(student.slug || "")}</code></p>`}
     <form method="post" style="margin:6px 0 0" onsubmit="return confirm('${student.parent_key ? "重置后旧家长链接立即失效，确定重置家长密钥？" : "确定生成家长密钥？"}')">
       <input type="hidden" name="action" value="parent_key_rotate">
@@ -6059,8 +6054,8 @@ async function pageClient(env, url, sid) {
     ${editPs ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
   </form>
   ${parentSupport.length ? `<div class="wrap"><table><tr><th>排序</th><th>标题</th><th>状态</th><th>分类</th><th>期限</th><th>说明</th><th></th><th></th></tr>${psRows}</table></div>` : `<p class="mut">暂无托举事项。</p>`}
-  <h3>家长沟通 ${unreadParentMsgs ? `<span class="pill">${unreadParentMsgs} 条未读</span>` : ""}</h3>
-  <p class="mut">家长与导师的独立线程，学生看不到；打开本页即把家长留言标为已读。在下方以导师身份回复。</p>
+  <h3>家长沟通 <span class="pill">家长可见</span> ${unreadParentMsgs ? `<span class="pill">${unreadParentMsgs} 条待回复</span>` : ""}</h3>
+  <p class="mut">家长与导师的独立线程，学生看不到；打开本页不再标已读，回复后待回复清零。在下方以导师身份回复。</p>
   ${parentThreadHtml}
   <form method="post">
     <input type="hidden" name="action" value="parent_message_reply">
@@ -6070,7 +6065,7 @@ async function pageClient(env, url, sid) {
   </div>`;
   return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery",
     hero + mentorCardHtml + topicMentorCardHtml + goalCard + statusCard + examCard + courseCard + phdCard + phdPaperCard + meetingCard + trailCard +
-    milestoneCard + keyDateCard + actionCard + adviceCard + problemCard + reqsetCard + messageCard + parentCard + timelineHtml));
+    milestoneCard + keyDateCard + actionCard + adviceCard + problemCard + ((isPhd || !reqSets.length) ? `<details class="card"><summary>课程要求集（匹配引擎，v12）· 仅内部 · 点击展开（${isPhd ? "博士模板不适用本科匹配引擎" : "暂无要求集"}）</summary>${reqsetCard}</details>` : reqsetCard) + messageCard + parentCard + timelineHtml));
 }
 async function postClient(req, env, sidFromPath) {
   const db = env.DB;
@@ -6422,6 +6417,10 @@ async function postClient(req, env, sidFromPath) {
       `INSERT INTO student_messages(student_id, sender, body, created_at, read_by_student, read_by_mentor, mentor_id)
        VALUES(?, 'mentor', ?, ?, 0, 1, ?)`
     ).bind(sid, text, nowIso(), stuRow && stuRow.mentor_id ? stuRow.mentor_id : null).run();
+    // v19：后台回复即标已读（打开页面不再标已读的另一半）
+    await db.prepare(
+      "UPDATE student_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'student' AND read_by_mentor = 0"
+    ).bind(sid).run();
     // v13：导师回复记事件，并把该学生 queued 的留言通知推进到 responded
     await logEvent(db, sid, "message_mentor", ins.meta.last_row_id, "导师回复留言");
     if (stuRow && stuRow.mentor_id) {
@@ -6523,6 +6522,10 @@ async function postClient(req, env, sidFromPath) {
       `INSERT INTO parent_messages(student_id, sender, body, created_at, read_by_parent, read_by_mentor)
        VALUES(?, 'mentor', ?, ?, 0, 1)`
     ).bind(sid, text, nowIso()).run();
+    // v19：后台回复家长即标已读
+    await db.prepare(
+      "UPDATE parent_messages SET read_by_mentor = 1 WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0"
+    ).bind(sid).run();
     return redirect(back);
   }
   // —— v12 导师轨迹 / 问题方案 / 课程要求集 ——

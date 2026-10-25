@@ -270,9 +270,10 @@ section("后台客户端页：家长端区（链接/更新/托举/沟通/重置�
     "录入区旁固定说明在页（不录入学生日记/情绪原文/私密困惑）");
   ok(page.includes("阶段进展（给家长看的整理版正文）") && page.includes("当前解决策略"),
     "录入字段口径：阶段进展 / 当前解决策略 / 下一步");
-  ok(page.includes("1 条未读"), "页面显示家长未读数");
+  // v19：待回复按“最后一条导师回复之后”计——此前长度测试的那条家长留言也未回复，故为 2 条
+  ok(page.includes("2 条待回复"), "页面显示家长待回复数");
   const after = DB.raw.prepare("SELECT read_by_mentor FROM parent_messages WHERE student_id = ? AND sender = 'parent'").all(sid);
-  ok(after.every((m) => m.read_by_mentor === 1), "打开后台页后家长留言已标导师已读");
+  ok(after.every((m) => m.read_by_mentor === 0), "v19：只打开后台页不标已读（回复后才标）");
   // 后台新增/编辑
   await call("/admin/client/" + sid, form({
     action: "parent_update_add", update_date: "2026-07-01", title: "后台新增更新",
