@@ -93,6 +93,12 @@ CREATE TABLE IF NOT EXISTS student_phd_checks(
   id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
   check_key TEXT, status TEXT DEFAULT 'todo', note TEXT,
   created_at TEXT, updated_at TEXT, UNIQUE(student_id, check_key));
+-- 博士论文规划（一作论文投稿管线；仅 phd 模板学生使用；已投稿/返修/已接受才计入毕业）
+CREATE TABLE IF NOT EXISTS student_phd_papers(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+  title TEXT, paper_type TEXT DEFAULT 'journal', target_venue TEXT,
+  status TEXT DEFAULT 'idea', next_step TEXT, due_text TEXT, note TEXT,
+  created_at TEXT, updated_at TEXT);
 -- 专题辅导会议（纪要 + 待办 + 下次会议日期）
 CREATE TABLE IF NOT EXISTS student_meetings(
   id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,

@@ -1,7 +1,8 @@
 "use strict";
 /* 一对一专属客户端（学生端）
  * 数据来自管理后台只读接口 GET /api/client/<学生id 或 slug>?key=<访问密钥>；
- * 写操作只有两个：POST /api/client/signature（签名一次性确认）、POST /api/client/message（导师沟通留言）。
+ * 写操作：POST /api/client/signature（签名一次性确认）、POST /api/client/message（导师沟通留言）、
+ * POST /api/client/self-update（学生自填：课程状态、博士检查、论文增改删；只认白名单字段，学分/类别/模板改不了）。
  * 入口：专属链接 ?s=<学生id 或专属名 slug>&k=<密钥>（可加 &api=<接口域名> 覆盖默认接口）；
  * 无参数时显示门页，输入一次后存 localStorage。
  * 展示结构（v10）：底部四页签——首页 / 成长 / 规划 / 导师，纯前端切换；
@@ -15,6 +16,29 @@ const KIND_LABELS_EN = { prereq: "Prerequisites", gened: "General Ed", elective:
 // 博士版专用标签：只在 d.phd 存在时渲染；transfer 学生（d.phd 为 null）永远走不到这段代码。
 const PHD_KIND_LABELS = { grad_course: "研究生课程", dissertation: "论文研究 CSCI 999", seminar: "研讨 EECS 500", grad_elective: "选修/研究" };
 const PHD_KIND_LABELS_EN = { grad_course: "Graduate Courses", dissertation: "Dissertation Research CSCI 999", seminar: "Seminar EECS 500", grad_elective: "Electives / Research" };
+// 学生自填下拉标签（与后台枚举一一对应；学生只能改状态，改不了学分/类别/模板）
+const COURSE_STATUS_LABELS = { planned: "计划中", enrolled: "已选", ongoing: "进行中", done: "已完成", dropped: "已退" };
+const COURSE_STATUS_LABELS_EN = { planned: "Planned", enrolled: "Enrolled", ongoing: "In progress", done: "Done", dropped: "Dropped" };
+const PHD_CHECK_STATUS_LABELS = { todo: "未开始", preparing: "准备中", done: "已通过/已完成" };
+const PHD_CHECK_STATUS_LABELS_EN = { todo: "Not started", preparing: "Preparing", done: "Done" };
+const PHD_PAPER_TYPE_LABELS = { journal: "一作期刊", conference: "一作会议" };
+const PHD_PAPER_TYPE_LABELS_EN = { journal: "First-author journal", conference: "First-author conference" };
+const PHD_PAPER_STATUS_LABELS = { idea: "选题", lit: "文献调研", method: "方法设计", experiment: "实验进行", draft: "初稿撰写", advisor_review: "导师审阅", submitted: "已投稿", revision: "返修中", accepted: "已接受", dropped: "已放弃" };
+const PHD_PAPER_STATUS_LABELS_EN = { idea: "Idea", lit: "Literature", method: "Methods", experiment: "Experiments", draft: "Draft", advisor_review: "Advisor review", submitted: "Submitted", revision: "Revision", accepted: "Accepted", dropped: "Dropped" };
+// 学生自填通用反馈：成功/失败都提示，失败时 reload 回滚下拉到服务端值
+function showSelfNote(text) {
+  const el = $("self-note");
+  if (!el) return;
+  el.textContent = text; el.hidden = false;
+  setTimeout(() => { el.hidden = true; }, 4000);
+}
+async function selfUpdate(payload) {
+  const r = await apiPost("/api/client/self-update", payload);
+  if (r.ok) { showSelfNote(LANG === "en" ? "Saved." : "已保存。"); }
+  else { showSelfNote(LANG === "en" ? "Save failed, please retry." : "保存失败，请重试。"); }
+  await load();
+  return r;
+}
 
 /* —— i18n 字典：只收界面文字；数据内容永不进字典 —— */
 const I18N = {
@@ -1540,6 +1564,7 @@ function renderPlan(d) {
   } else { gdSec.hidden = true; }
   renderCoursesPlan(d);
   renderPhd(d);
+  renderPapers(d);
   // 导师建议：无数据不渲染
   const adv = d.advice || [];
   const asec = $("sec-advice");
@@ -1578,10 +1603,13 @@ function renderPhd(d) {
       esc(kk.creditsDone + " / " + kk.target + (LANG === "en" ? " cr" : " 学分")) + "</span></div>" +
       bar(kk.creditsDone, kk.target) + "</div>";
   }).join("");
+  const checkLabels = LANG === "en" ? PHD_CHECK_STATUS_LABELS_EN : PHD_CHECK_STATUS_LABELS;
   const checkRows = (d.phd.checks || []).map((x) =>
     '<div class="course"><span class="name">' + esc(x.check_label || "") +
     (x.note ? '<span class="mut">（' + esc(x.note) + "）</span>" : "") + "</span>" +
-    '<span class="st">' + esc(x.status_label || "") + "</span></div>").join("");
+    '<select class="phd-check-sel" data-check-key="' + esc(x.check_key || "") + '" data-note="' + esc(x.note || "") + '">' +
+    Object.keys(checkLabels).map((k) => '<option value="' + k + '"' + (k === x.status ? " selected" : "") + ">" + esc(checkLabels[k]) + "</option>").join("") +
+    "</select></div>").join("");
   const req = d.phd.requirements || {};
   $("phd-body").innerHTML =
     "<p style=\"margin:0\">" + esc((LANG === "en" ? "Doctoral credits completed " : "已修博士学分 ") +
@@ -1590,7 +1618,64 @@ function renderPhd(d) {
     "<p style=\"margin:8px 0 0\">" + esc((LANG === "en" ? "GQE window (18–27 cr): " : "资格考试 GQE 窗口（18–27 学分）：") + winLabel(p.gqe_window)) + "<br>" +
     esc((LANG === "en" ? "Comprehensive window (36–45 cr): " : "综合考试窗口（36–45 学分）：") + winLabel(p.comprehensive_window)) + "</p>" +
     (checkRows ? '<div style="margin-top:10px">' + checkRows + "</div>" : "") +
-    (req.source_note ? '<p class="mut" style="margin:8px 0 0">' + esc(req.source_note) + "</p>" : "");
+    (req.source_note ? '<p class="mut" style="margin:8px 0 0">' + esc(req.source_note) + "</p>" : "") +
+    '<p class="mut" style="margin:8px 0 0">' + esc(LANG === "en" ? "You can update the status above yourself; your mentor sees it too." : "上面每项状态你自己就能改，导师后台同步看到。") + "</p>";
+  document.querySelectorAll(".phd-check-sel").forEach((sel) => {
+    sel.addEventListener("change", () => selfUpdate({ action: "phd_check", check_key: sel.dataset.checkKey, status: sel.value, note: sel.dataset.note || "" }));
+  });
+}
+function renderPapers(d) {
+  const sec = $("sec-papers");
+  if (!sec) return;
+  if (!d.phd || !d.phd.papers) { sec.hidden = true; return; }
+  sec.hidden = false;
+  const s = d.phd.papers.summary || {};
+  const j = s.journal || {}, c = s.conference || {};
+  const list = d.phd.papers.list || [];
+  const en = LANG === "en";
+  const paperStatusLabels = en ? PHD_PAPER_STATUS_LABELS_EN : PHD_PAPER_STATUS_LABELS;
+  const paperTypeLabels = en ? PHD_PAPER_TYPE_LABELS_EN : PHD_PAPER_TYPE_LABELS;
+  const rows = list.map((x) =>
+    '<div class="course"><span class="name">' + esc(x.title || "") +
+    (x.target_venue ? '<span class="mut">（' + esc(x.target_venue) + "）</span>" : "") + "</span>" +
+    '<select class="paper-status-sel" data-paper-id="' + x.id + '" data-title="' + esc(x.title || "") + '" data-type="' + esc(x.paper_type || "") + '" data-venue="' + esc(x.target_venue || "") + '" data-next="' + esc(x.next_step || "") + '" data-due="' + esc(x.due_text || "") + '" data-note="' + esc(x.note || "") + '">' +
+    Object.keys(paperStatusLabels).map((k) => '<option value="' + k + '"' + (k === x.status ? " selected" : "") + ">" + esc(paperStatusLabels[k]) + "</option>").join("") + "</select>" +
+    '<button type="button" class="btn-ghost paper-del-btn" data-paper-id="' + x.id + '">' + esc(en ? "Delete" : "删除") + "</button></div>" +
+    ((x.next_step || x.due_text) ? '<p class="mut" style="margin:2px 0 8px">' +
+      esc((x.next_step ? (en ? "Next: " : "下一步：") + x.next_step : "") +
+      (x.next_step && x.due_text ? " · " : "") +
+      (x.due_text ? (en ? "Due: " : "截止：") + x.due_text : "")) + "</p>" : "")).join("");
+  const addForm = '<div style="margin-top:12px"><p style="margin:0 0 6px">' + esc(en ? "Add a first-author paper plan:" : "新增一篇一作论文规划：") + "</p>" +
+    '<label class="fld"><span>' + esc(en ? "Title / direction" : "题目/方向") + '</span><input id="pp-title" maxlength="200"></label>' +
+    '<label class="fld"><span>' + esc(en ? "Type" : "类型") + '</span><select id="pp-type">' + Object.keys(paperTypeLabels).map((k) => '<option value="' + k + '">' + esc(paperTypeLabels[k]) + "</option>").join("") + "</select></label>" +
+    '<label class="fld"><span>' + esc(en ? "Target venue (optional)" : "目标 venue（可空）") + '</span><input id="pp-venue" maxlength="200"></label>' +
+    '<label class="fld"><span>' + esc(en ? "Status" : "状态") + '</span><select id="pp-status">' + Object.keys(paperStatusLabels).map((k) => '<option value="' + k + '">' + esc(paperStatusLabels[k]) + "</option>").join("") + "</select></label>" +
+    '<label class="fld"><span>' + esc(en ? "Next step" : "下一步") + '</span><input id="pp-next" maxlength="500"></label>' +
+    '<label class="fld"><span>' + esc(en ? "Due (e.g. 2027-05 submit)" : "截止（如 2027-05 投稿）") + '</span><input id="pp-due" maxlength="100"></label>' +
+    '<button type="button" class="btn-primary" id="pp-add">' + esc(en ? "Add paper" : "添加论文") + "</button></div>";
+  $("papers-body").innerHTML =
+    "<p style=\"margin:0\">" + esc((en ? "First-author journal submitted " : "一作期刊已投稿 ") +
+      (j.submitted || 0) + " / 2" + (en ? " (accepted " : "（已接受 ") + (j.accepted || 0) + ")" +
+      (en ? " · conference submitted " : " · 一作会议已投稿 ") +
+      (c.submitted || 0) + " / 2" + (en ? " (accepted " : "（已接受 ") + (c.accepted || 0) + ")") + "</p>" +
+    '<p class="mut" style="margin:6px 0 0">' + esc(en ? "Only submitted (incl. revision / accepted) counts toward the 2+2 graduation requirement; drafts in progress do not." : "毕业口径：已投稿（含返修、已接受）才计入 2+2，在写不计入；只录一作论文。") + "</p>" +
+    (rows || '<p class="mut" style="margin:8px 0 0">' + esc(en ? "No paper plan yet." : "暂无论文规划") + "</p>") + addForm;
+  document.querySelectorAll(".paper-status-sel").forEach((sel) => {
+    sel.addEventListener("change", () => selfUpdate({ action: "phd_paper_update", id: Number(sel.dataset.paperId), title: sel.dataset.title || "", paper_type: sel.dataset.type || "journal", target_venue: sel.dataset.venue || "", status: sel.value, next_step: sel.dataset.next || "", due_text: sel.dataset.due || "", note: sel.dataset.note || "" }));
+  });
+  document.querySelectorAll(".paper-del-btn").forEach((btn) => {
+    let armed = false;
+    btn.addEventListener("click", () => {
+      if (!armed) { armed = true; btn.textContent = LANG === "en" ? "Confirm delete?" : "确认删除？"; setTimeout(() => { armed = false; btn.textContent = LANG === "en" ? "Delete" : "删除"; }, 3000); return; }
+      selfUpdate({ action: "phd_paper_delete", id: Number(btn.dataset.paperId) });
+    });
+  });
+  const addBtn = $("pp-add");
+  if (addBtn) addBtn.addEventListener("click", () => {
+    const title = ($("pp-title").value || "").trim();
+    if (!title) { showSelfNote(LANG === "en" ? "Please fill in the title / direction." : "请先填题目/方向。"); return; }
+    selfUpdate({ action: "phd_paper_add", title, paper_type: $("pp-type").value, target_venue: $("pp-venue").value || "", status: $("pp-status").value, next_step: $("pp-next").value || "", due_text: $("pp-due").value || "", note: "" });
+  });
 }
 function renderCoursesPlan(d) {
   const c = d.courses || { progress: {}, groups: [], list: [] };
@@ -1631,15 +1716,21 @@ function renderCoursesPlan(d) {
     const sumCr = items.reduce((a, x) => a + (Number(x.credits) || 0), 0);
     return '<div class="term-title">' + esc(gr.term) + '<span class="mut">' +
       esc(fmt("courses.termMeta", { a: items.length, b: sumCr })) + "</span></div>" +
-      items.map((x) =>
-        '<div class="course"><span class="code">' + esc(x.course_code || "") + "</span>" +
+      items.map((x) => {
+        const csLabels = LANG === "en" ? COURSE_STATUS_LABELS_EN : COURSE_STATUS_LABELS;
+        const sel = x.id ? '<select class="course-status-sel" data-course-id="' + x.id + '">' +
+          Object.keys(csLabels).map((k) => '<option value="' + k + '"' + (k === x.status ? " selected" : "") + ">" + esc(csLabels[k]) + "</option>").join("") + "</select>"
+          : '<span class="st st-' + esc(x.status || "planned") + '">' + esc(x.status_label || "") + "</span>";
+        return '<div class="course"><span class="code">' + esc(x.course_code || "") + "</span>" +
         '<span class="name">' + esc(x.course_name || "") +
         (x.note ? '<span class="mut">（' + esc(x.note) + "）</span>" : "") + "</span>" +
         '<span class="cr">' + (x.credits === null || x.credits === undefined ? "" : esc(x.credits) + esc(t("courses.unit"))) + "</span>" +
-        (x.grade ? '<span class="grade">' + esc(x.grade) + "</span>" : "") +
-        '<span class="st st-' + esc(x.status || "planned") + '">' + esc(x.status_label || "") + "</span></div>"
-      ).join("");
+        (x.grade ? '<span class="grade">' + esc(x.grade) + "</span>" : "") + sel + "</div>";
+      }).join("");
   }).join("") : '<p class="empty">' + esc(t("courses.empty")) + "</p>";
+  document.querySelectorAll(".course-status-sel").forEach((sel) => {
+    sel.addEventListener("change", () => selfUpdate({ action: "course_status", course_id: Number(sel.dataset.courseId), status: sel.value }));
+  });
 }
 
 /* —— 页4 导师 —— */

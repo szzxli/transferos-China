@@ -200,6 +200,10 @@ const PHD_COURSE_KINDS = { grad_course: "研究生课程", dissertation: "论文
 const PHD_CREDIT_TARGETS = { grad_course: 15, dissertation: 24, seminar: 3, grad_elective: 18 };
 const PHD_CHECKS = { gqe: "资格考试 GQE", comprehensive: "综合考试", journal: "一作期刊论文 2 篇", conference: "一作会议论文 2 篇", final_defense: "最终答辩" };
 const PHD_CHECK_STATUSES = { todo: "未开始", preparing: "准备中", done: "已通过/已完成" };
+// 博士论文规划：一作论文投稿管线。status 顺序即推进顺序；已投稿/返修/已接受才计入毕业，
+// 在写阶段（选题～导师审阅）不计入，已放弃不计入任何数。表里只录一作论文，二作不进此表。
+const PHD_PAPER_TYPES = { journal: "一作期刊", conference: "一作会议" };
+const PHD_PAPER_STATUSES = { idea: "选题", lit: "文献调研", method: "方法设计", experiment: "实验进行", draft: "初稿撰写", advisor_review: "导师审阅", submitted: "已投稿", revision: "返修中", accepted: "已接受", dropped: "已放弃" };
 function courseKindsFor(template) { return template === "phd" ? PHD_COURSE_KINDS : COURSE_KINDS; }
 const COURSE_STATUSES = { planned: "计划中", enrolled: "已选", ongoing: "进行中", done: "已完成", dropped: "已退" };
 // v6 通用模板：考试结果枚举（考试名/分数/达标线均为自由文本字段，由各学生数据集决定）
@@ -285,6 +289,18 @@ function phdCourseProgress(courses) {
   const creditsTotal = sumCredits(list);
   const win = (lo, hi) => creditsDone >= lo && creditsDone < hi ? "in_window" : (creditsDone < lo ? "not_yet" : "past_window");
   return { total: list.length, doneCount: list.filter(isDone).length, creditsDone, creditsTotal, creditsTarget: 60, byKind, gqe_window: win(18, 27), comprehensive_window: win(36, 45) };
+}
+// phdPaperSummary：按类型汇总一作投稿。submitted = 已投稿 + 返修中 + 已接受；
+// accepted 单独计；in_progress = 投稿前阶段；已放弃整行排除。
+function phdPaperSummary(papers) {
+  const list = (papers || []).filter((x) => x && x.status !== "dropped");
+  const isSubmitted = (x) => ["submitted", "revision", "accepted"].includes(x.status);
+  const by = (tp) => {
+    const xs = list.filter((x) => x.paper_type === tp);
+    return { target: 2, total: xs.length, in_progress: xs.filter((x) => !isSubmitted(x)).length, submitted: xs.filter(isSubmitted).length, accepted: xs.filter((x) => x.status === "accepted").length };
+  };
+  const journal = by("journal"), conference = by("conference");
+  return { journal, conference, totalSubmitted: journal.submitted + conference.submitted, totalAccepted: journal.accepted + conference.accepted, firstSubmitted: (journal.submitted + conference.submitted) >= 1 };
 }
 // genClientKey: 学生端 APP 只读访问密钥（ck_ + 24 位十六进制，96 位熵）
 function genClientKey() {
@@ -1245,6 +1261,12 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     check_key TEXT, status TEXT DEFAULT 'todo', note TEXT,
     created_at TEXT, updated_at TEXT, UNIQUE(student_id, check_key))`,
+  // 博士论文规划（一作论文投稿管线；仅 phd 模板学生使用）
+  `CREATE TABLE IF NOT EXISTS student_phd_papers(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    title TEXT, paper_type TEXT DEFAULT 'journal', target_venue TEXT,
+    status TEXT DEFAULT 'idea', next_step TEXT, due_text TEXT, note TEXT,
+    created_at TEXT, updated_at TEXT)`,
   `CREATE TABLE IF NOT EXISTS student_exams(
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     exam_name TEXT, exam_date TEXT, score TEXT, pass_line TEXT,
@@ -2193,6 +2215,64 @@ async function handleApi(req, env, url, ctx) {
     return jsonResp(req, { ok: false, error: "bad action" }, 400);
   }
 
+  // 学生自填：POST /api/client/self-update { s, key, action, ... }
+  // 鉴权与留言接口一致（定位符 + client_key 常量时间比对，失败一律 404）。
+  // 白名单字段——课程只认 course_id/status；博士检查只认 check_key/status/note；
+  // 论文只认 id/title/paper_type/target_venue/status/next_step/due_text/note。
+  // 学分、类别、学期、课程名、成绩、模板等一律不读：学生改不了这些，只能后台改。
+  // 博士动作仅当学生模板为 phd 时生效；transfer 学生提交博士动作返回 400（phd_only）。
+  if (p === "/api/client/self-update") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const student = await findClientStudent(body);
+    if (!student) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const action = String((body && body.action) || "");
+    const ts = nowIso();
+    if (action === "course_status") {
+      const cid = toInt(body && body.course_id, 0);
+      const st = String((body && body.status) || "");
+      if (!cid || !COURSE_STATUSES[st]) return jsonResp(req, { ok: false, error: "bad course status" }, 400);
+      const course = await db.prepare("SELECT id FROM student_courses WHERE id = ? AND student_id = ?").bind(cid, student.id).first();
+      if (!course) return jsonResp(req, { ok: false, error: "not found" }, 404);
+      await db.prepare("UPDATE student_courses SET status = ?, updated_at = ? WHERE id = ?").bind(st, ts, cid).run();
+      return jsonResp(req, { ok: true, action, course: { id: cid, status: st } });
+    }
+    if (action === "phd_check" || action === "phd_paper_add" || action === "phd_paper_update" || action === "phd_paper_delete") {
+      if (student.program_template !== "phd") return jsonResp(req, { ok: false, error: "phd_only" }, 400);
+      if (action === "phd_check") {
+        const checkKey = PHD_CHECKS[body && body.check_key] ? String(body.check_key) : null;
+        const st = PHD_CHECK_STATUSES[body && body.status] ? String(body.status) : null;
+        if (!checkKey || !st) return jsonResp(req, { ok: false, error: "bad phd check" }, 400);
+        const note = clampStr(body && body.note, 2000);
+        const existing = await db.prepare("SELECT id FROM student_phd_checks WHERE student_id=? AND check_key=?").bind(student.id, checkKey).first();
+        if (existing) await db.prepare("UPDATE student_phd_checks SET status=?, note=?, updated_at=? WHERE id=?").bind(st, note, ts, existing.id).run();
+        else await db.prepare("INSERT INTO student_phd_checks(student_id, check_key, status, note, created_at, updated_at) VALUES(?,?,?,?,?,?)").bind(student.id, checkKey, st, note, ts, ts).run();
+        return jsonResp(req, { ok: true, action, check: { check_key: checkKey, status: st } });
+      }
+      if (action === "phd_paper_delete") {
+        const pid = toInt(body && body.id, 0);
+        if (!pid) return jsonResp(req, { ok: false, error: "bad paper id" }, 400);
+        await db.prepare("DELETE FROM student_phd_papers WHERE student_id=? AND id=?").bind(student.id, pid).run();
+        return jsonResp(req, { ok: true, action, id: pid });
+      }
+      const paperType = PHD_PAPER_TYPES[body && body.paper_type] ? String(body.paper_type) : "journal";
+      const paperStatus = PHD_PAPER_STATUSES[body && body.status] ? String(body.status) : "idea";
+      const vals = [clampStr(body && body.title, 200), paperType, clampStr(body && body.target_venue, 200), paperStatus, clampStr(body && body.next_step, 500), clampStr(body && body.due_text, 100), clampStr(body && body.note, 2000)];
+      if (action === "phd_paper_add") {
+        const r = await db.prepare("INSERT INTO student_phd_papers(student_id, title, paper_type, target_venue, status, next_step, due_text, note, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(student.id, ...vals, ts, ts).run();
+        return jsonResp(req, { ok: true, action, id: r.meta.last_row_id });
+      }
+      const pid = toInt(body && body.id, 0);
+      const existing = await db.prepare("SELECT id FROM student_phd_papers WHERE student_id=? AND id=?").bind(student.id, pid).first();
+      if (!existing) return jsonResp(req, { ok: false, error: "not found" }, 404);
+      await db.prepare("UPDATE student_phd_papers SET title=?, paper_type=?, target_venue=?, status=?, next_step=?, due_text=?, note=?, updated_at=? WHERE id=?").bind(...vals, ts, pid).run();
+      return jsonResp(req, { ok: true, action, id: pid });
+    }
+    return jsonResp(req, { ok: false, error: "bad action" }, 400);
+  }
+
   // ===== v13 新增：给爸妈的一句话（学生主动分享通道）=====
   // POST /api/client/parent-note { s, key, body, feeling_tag? }：学生主动写一句话给家长，
   // 可附一个自选心情标签（FEELING_TAGS 枚举）。只存经此通道主动发送的内容；
@@ -2416,7 +2496,7 @@ async function handleApi(req, env, url, ctx) {
     const rowsOf = (r) => r.results || [];
     const [goal, goalLines, snaps, exams, courses, meetings, milestones, keyDates,
       actionRows, adviceRows, messageRows, problemRows, parentNoteRows, trailRows,
-      reqSets, reqRowsAll, primaryMentorRow, topicAssignRows, phdCheckRows] = await Promise.all([
+      reqSets, reqRowsAll, primaryMentorRow, topicAssignRows, phdCheckRows, phdPaperRows] = await Promise.all([
       db.prepare(`SELECT * FROM student_goals WHERE student_id = ?`).bind(sid).first(),
       db.prepare(
         `SELECT * FROM student_goal_lines WHERE student_id = ? ORDER BY priority ASC, id ASC LIMIT 100`).bind(sid).all().then(rowsOf),
@@ -2467,6 +2547,8 @@ async function handleApi(req, env, url, ctx) {
       // —— 博士毕业检查（仅 phd 模板下发；transfer 学生此查询结果不组装进响应）——
       db.prepare(
         `SELECT * FROM student_phd_checks WHERE student_id = ? ORDER BY id ASC LIMIT 50`).bind(sid).all().then(rowsOf),
+      db.prepare(
+        `SELECT * FROM student_phd_papers WHERE student_id = ? ORDER BY id ASC LIMIT 100`).bind(sid).all().then(rowsOf),
     ]);
     // 未读计数在标记已读之前计算：本次下发的 unread_mentor 反映「打开 APP 时有几条导师留言未读」，
     // 标记后下次 GET 归零；前端据此在「导师」页签亮红点。
@@ -2553,6 +2635,16 @@ async function handleApi(req, env, url, ctx) {
           check_key: r.check_key || "", check_label: PHD_CHECKS[r.check_key] || r.check_key || "",
           status: r.status || "todo", status_label: PHD_CHECK_STATUSES[r.status] || r.status || "", note: r.note || "",
         })),
+        papers: {
+          summary: phdPaperSummary(phdPaperRows),
+          list: phdPaperRows.map((r) => ({
+            id: r.id, title: r.title || "", paper_type: r.paper_type || "",
+            paper_type_label: PHD_PAPER_TYPES[r.paper_type] || r.paper_type || "",
+            target_venue: r.target_venue || "", status: r.status || "idea",
+            status_label: PHD_PAPER_STATUSES[r.status] || r.status || "",
+            next_step: r.next_step || "", due_text: r.due_text || "", note: r.note || "",
+          })),
+        },
         requirements: {
           source_note: "UND 官网 CS PhD Requirements，2026-10-24 核实；以学校官方学位审计为准",
           credit_targets: PHD_CREDIT_TARGETS, credits_target_total: 60,
@@ -4045,6 +4137,7 @@ async function postDelivery(req, env) {
     await db.prepare("DELETE FROM student_events WHERE student_id=?").bind(delId).run();
     // 博士模板：博士毕业检查一并清理
     await db.prepare("DELETE FROM student_phd_checks WHERE student_id=?").bind(delId).run();
+    await db.prepare("DELETE FROM student_phd_papers WHERE student_id=?").bind(delId).run();
     await db.prepare("DELETE FROM students WHERE id=?").bind(delId).run();
     return redirect("/admin/delivery");
   }
@@ -5072,6 +5165,8 @@ async function pageClient(env, url, sid) {
     "SELECT * FROM student_courses WHERE student_id=? ORDER BY id ASC LIMIT 500").bind(sid).all()).results || [];
   const phdChecks = (await db.prepare(
     "SELECT * FROM student_phd_checks WHERE student_id=? ORDER BY id ASC LIMIT 50").bind(sid).all()).results || [];
+  const phdPapers = (await db.prepare(
+    "SELECT * FROM student_phd_papers WHERE student_id=? ORDER BY id ASC LIMIT 100").bind(sid).all()).results || [];
   const prog = courseProgress(courses);
   const groups = groupCoursesByTerm(courses);
   const meetings = (await db.prepare(
@@ -5272,6 +5367,7 @@ async function pageClient(env, url, sid) {
   const isPhd = student.program_template === "phd";
   const courseKinds = courseKindsFor(student.program_template);
   const phdProg = isPhd ? phdCourseProgress(courses) : null;
+  const phdPaperSum = isPhd ? phdPaperSummary(phdPapers) : null;
   const cf = editCourse || { term: "", course_code: "", course_name: "", credits: "", kind: isPhd ? "grad_course" : "prereq", status: "planned", grade: "", note: "" };
   const kindHtml = isPhd
     ? Object.entries(PHD_COURSE_KINDS).map(([k, label]) => {
@@ -5335,7 +5431,7 @@ async function pageClient(env, url, sid) {
   ${Object.entries(PHD_CHECKS).map(([k, label]) => {
     const r = phdCheckMap[k];
     const req = k === "gqe" ? "18 学分之后、27 学分之前" : k === "comprehensive" ? "36 学分之后、45 学分之前" : k === "journal" ? "2 篇一作期刊，已投稿即可" : k === "conference" ? "2 篇一作会议，已投稿即可" : "综合考试通过后至少一个学期";
-    const cur = k === "gqe" ? phdWindowLabel(phdProg.gqe_window) + "（已修 " + phdProg.creditsDone + " 学分）" : k === "comprehensive" ? phdWindowLabel(phdProg.comprehensive_window) + "（已修 " + phdProg.creditsDone + " 学分）" : "—";
+    const cur = k === "gqe" ? phdWindowLabel(phdProg.gqe_window) + "（已修 " + phdProg.creditsDone + " 学分）" : k === "comprehensive" ? phdWindowLabel(phdProg.comprehensive_window) + "（已修 " + phdProg.creditsDone + " 学分）" : k === "journal" ? "已投稿 " + phdPaperSum.journal.submitted + " / 2（已接受 " + phdPaperSum.journal.accepted + "）" : k === "conference" ? "已投稿 " + phdPaperSum.conference.submitted + " / 2（已接受 " + phdPaperSum.conference.accepted + "）" : "—";
     return `<tr><td>${esc(label)}</td><td>${esc(req)}</td><td>${esc(cur)}</td><td>${esc(PHD_CHECK_STATUSES[(r && r.status)] || "未开始")}</td><td>${esc((r && r.note) || "")}</td></tr>`;
   }).join("")}
   </table></div>
@@ -5346,6 +5442,36 @@ async function pageClient(env, url, sid) {
       <div><label>备注</label><input name="note" maxlength="2000" placeholder="如 论文清单已指定 / 投稿日期"></div>
     </div>
     <button type="submit">保存毕业检查状态</button>
+  </form>
+  </div>`;
+  // —— 博士论文规划（仅 phd 模板渲染；transfer 学生页面完全不出现）——
+  const editPaperId = toInt(url.searchParams.get("edit_paper"), 0);
+  const editPaper = editPaperId ? phdPapers.find((x) => x.id === editPaperId) : null;
+  const pf = editPaper || { title: "", paper_type: "journal", target_venue: "", status: "idea", next_step: "", due_text: "", note: "" };
+  const phdPaperCard = !isPhd ? "" : `
+  <div class="card"><h2>论文规划 · 一作投稿管线</h2>
+  <p class="mut">只录一作论文，二作不进此表。毕业口径：已投稿（含返修、已接受）才计入 2+2；在写阶段不计入。第一篇一作投稿状态：${phdPaperSum.firstSubmitted ? "已投稿" : "尚未投稿"}。</p>
+  <p>一作期刊：已投稿 <strong>${phdPaperSum.journal.submitted}</strong> / 2（已接受 ${phdPaperSum.journal.accepted}，在写 ${phdPaperSum.journal.in_progress}） · 一作会议：已投稿 <strong>${phdPaperSum.conference.submitted}</strong> / 2（已接受 ${phdPaperSum.conference.accepted}，在写 ${phdPaperSum.conference.in_progress}）</p>
+  <div class="wrap"><table><tr><th>题目/方向</th><th>类型</th><th>目标 venue</th><th>状态</th><th>下一步</th><th>截止</th><th>备注</th><th></th><th></th></tr>
+  ${phdPapers.map((x) => `<tr><td>${esc(x.title || "")}</td><td>${esc(PHD_PAPER_TYPES[x.paper_type] || x.paper_type || "")}</td><td>${esc(x.target_venue || "—")}</td><td>${esc(PHD_PAPER_STATUSES[x.status] || x.status || "")}</td><td>${esc((x.next_step || "").slice(0, 40))}</td><td>${esc(x.due_text || "—")}</td><td>${esc((x.note || "").slice(0, 40))}</td><td><a href="/admin/client/${sid}?edit_paper=${x.id}">编辑</a></td><td><form method="post" style="margin:0" onsubmit="return confirm('确定删除这篇论文规划？')"><input type="hidden" name="action" value="phd_paper_delete"><input type="hidden" name="id" value="${x.id}"><button class="small danger" type="submit">删除</button></form></td></tr>`).join("") || `<tr><td colspan="9" class="mut">暂无论文规划，先加第一篇</td></tr>`}
+  </table></div>
+  <h3>${editPaper ? "编辑论文 #" + editPaper.id : "新增论文规划"}</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="${editPaper ? "phd_paper_update" : "phd_paper_add"}">
+    ${editPaper ? `<input type="hidden" name="id" value="${editPaper.id}">` : ""}
+    <div class="row">
+      <div><label>题目/方向</label><input name="title" maxlength="200" value="${esc(pf.title || "")}" placeholder="如 EPA 项目转化方向，题目未定可写方向"></div>
+      <div><label>类型</label><select name="paper_type">${opts(PHD_PAPER_TYPES, pf.paper_type || "journal")}</select></div>
+      <div><label>目标 venue</label><input name="target_venue" maxlength="200" value="${esc(pf.target_venue || "")}" placeholder="期刊/会议名，未定留空"></div>
+      <div><label>状态</label><select name="status">${opts(PHD_PAPER_STATUSES, pf.status || "idea")}</select></div>
+    </div>
+    <div class="row">
+      <div><label>下一步</label><input name="next_step" maxlength="500" value="${esc(pf.next_step || "")}"></div>
+      <div><label>截止</label><input name="due_text" maxlength="100" value="${esc(pf.due_text || "")}" placeholder="如 2027-05 投稿"></div>
+    </div>
+    <label>备注</label><input name="note" maxlength="2000" value="${esc(pf.note || "")}">
+    <button type="submit">${editPaper ? "保存修改" : "添加论文"}</button>
+    ${editPaper ? `<a class="btn ghost" href="/admin/client/${sid}">取消编辑</a>` : ""}
   </form>
   </div>`;
   // —— 考试记录 ——
@@ -5760,7 +5886,7 @@ async function pageClient(env, url, sid) {
   </form>
   </div>`;
   return htmlResp(layout("专属客户端 · " + student.name, "/admin/delivery",
-    hero + mentorCardHtml + topicMentorCardHtml + goalCard + statusCard + examCard + courseCard + phdCard + meetingCard + trailCard +
+    hero + mentorCardHtml + topicMentorCardHtml + goalCard + statusCard + examCard + courseCard + phdCard + phdPaperCard + meetingCard + trailCard +
     milestoneCard + keyDateCard + actionCard + adviceCard + problemCard + reqsetCard + messageCard + parentCard + timelineHtml));
 }
 async function postClient(req, env, sidFromPath) {
@@ -5791,6 +5917,26 @@ async function postClient(req, env, sidFromPath) {
         } else {
           await db.prepare("INSERT INTO student_phd_checks(student_id, check_key, status, note, created_at, updated_at) VALUES(?,?,?,?,?,?)")
             .bind(sid, checkKey, st, note, nowIso(), nowIso()).run();
+        }
+      }
+    }
+    return redirect(back);
+  }
+  // 博士模板：论文规划增改删（仅 phd 模板学生写入；transfer 学生提交此 action 直接忽略）
+  if (action === "phd_paper_add" || action === "phd_paper_update" || action === "phd_paper_delete") {
+    if (student.program_template === "phd") {
+      if (action === "phd_paper_delete") {
+        await db.prepare("DELETE FROM student_phd_papers WHERE student_id=? AND id=?").bind(sid, toInt(fd.get("id"), 0)).run();
+      } else {
+        const paperType = PHD_PAPER_TYPES[fd.get("paper_type")] ? String(fd.get("paper_type")) : "journal";
+        const paperStatus = PHD_PAPER_STATUSES[fd.get("status")] ? String(fd.get("status")) : "idea";
+        const vals = [clampStr(fd.get("title"), 200), paperType, clampStr(fd.get("target_venue"), 200), paperStatus, clampStr(fd.get("next_step"), 500), clampStr(fd.get("due_text"), 100), clampStr(fd.get("note"), 2000), nowIso()];
+        if (action === "phd_paper_add") {
+          await db.prepare("INSERT INTO student_phd_papers(student_id, title, paper_type, target_venue, status, next_step, due_text, note, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(sid, ...vals, nowIso()).run();
+        } else {
+          const pid = toInt(fd.get("id"), 0);
+          const existing = await db.prepare("SELECT id FROM student_phd_papers WHERE student_id=? AND id=?").bind(sid, pid).first();
+          if (existing) await db.prepare("UPDATE student_phd_papers SET title=?, paper_type=?, target_venue=?, status=?, next_step=?, due_text=?, note=?, updated_at=? WHERE id=?").bind(vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], vals[7], pid).run();
         }
       }
     }
@@ -6471,4 +6617,4 @@ export default {
 };
 
 // Named exports for local unit testing only (Workers runtime ignores them)
-export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, phdCourseProgress, courseKindsFor, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, complianceFlag, gradePoints, normCourseCode, parsePrereqCodes, matchRequirements, normProblemInput, normTrailExtras, normRequirementSets, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, PHD_COURSE_KINDS, PHD_CREDIT_TARGETS, PHD_CHECKS, PHD_CHECK_STATUSES, PROGRAM_TEMPLATES, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT, PROBLEM_DOMAINS, PROBLEM_PROGRESS, PROBLEM_RATE_LIMIT, TRAIL_ROLES, TRAIL_SOURCES, REQ_BLOCKS, FEELING_TAGS, KEY_DATE_KINDS, MENTOR_STATUSES, NOTIFY_CHANNELS, OUTBOX_STATUSES, EVENT_TYPES, PARENT_NOTE_MAX_LEN, genMentorKey, mentorNotifiable, mentorContacts, mentorMailTo, buildOutboxMail, mentorWorkbenchUrl, computeUpcomingReminders, buildAchievements, mentorFileTypeOk, fileLimits, sanitizeFilename, FILE_MAX_BYTES, FILE_STUDENT_QUOTA_BYTES, FILE_GLOBAL_QUOTA_BYTES, FILE_TTL_MS };
+export { esc, validRef, calcCommission, fmtYuan, clampStr, toInt, daysInStage, isOverdueStage, aggregateMetrics, convRate, taskDueState, validStage, functionCodeFor, examConflict, scoreLead, leadTaskMarker, followupDueStr, groupCoursesByTerm, courseProgress, phdCourseProgress, phdPaperSummary, courseKindsFor, genClientKey, genParentKey, slugify, signatureSuggestions, knowledgeTagsFor, normClientExtras, normParentExtras, complianceFlag, gradePoints, normCourseCode, parsePrereqCodes, matchRequirements, normProblemInput, normTrailExtras, normRequirementSets, DELIVERY_STAGES, ACTIVE_STAGES, STAGE_OVERDUE_DAYS, CONTENT_STATUSES, COURSE_KINDS, PHD_COURSE_KINDS, PHD_CREDIT_TARGETS, PHD_CHECKS, PHD_CHECK_STATUSES, PHD_PAPER_TYPES, PHD_PAPER_STATUSES, PROGRAM_TEMPLATES, COURSE_STATUSES, EXAM_RESULTS, LINE_TYPES, LINE_STATUSES, ACTION_STATUSES, MESSAGE_SENDERS, PARENT_MESSAGE_SENDERS, SUPPORT_ACTION_STATUSES, MESSAGE_MAX_LEN, MESSAGE_RATE_LIMIT, KNOWLEDGE_LIMIT, PROBLEM_DOMAINS, PROBLEM_PROGRESS, PROBLEM_RATE_LIMIT, TRAIL_ROLES, TRAIL_SOURCES, REQ_BLOCKS, FEELING_TAGS, KEY_DATE_KINDS, MENTOR_STATUSES, NOTIFY_CHANNELS, OUTBOX_STATUSES, EVENT_TYPES, PARENT_NOTE_MAX_LEN, genMentorKey, mentorNotifiable, mentorContacts, mentorMailTo, buildOutboxMail, mentorWorkbenchUrl, computeUpcomingReminders, buildAchievements, mentorFileTypeOk, fileLimits, sanitizeFilename, FILE_MAX_BYTES, FILE_STUDENT_QUOTA_BYTES, FILE_GLOBAL_QUOTA_BYTES, FILE_TTL_MS };
