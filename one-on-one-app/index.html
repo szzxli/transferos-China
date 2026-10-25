@@ -261,6 +261,17 @@
         <div id="papers-body"></div>
       </section>
 
+      <section class="card" id="sec-phd-options" hidden>
+        <h2>博士课程可选表 · 研究生课程 15 学分范围</h2>
+        <p class="mut" style="margin:0 0 8px">UND CS 博士研究生课程 15 学分的可选范围（EE / CSCI / DATA / EECS 研究生课），只作选课参考，不计入已修学分；最终计入以导师与委员会确认为准。</p>
+        <label class="fld"><span>分类</span>
+          <select id="phd-opt-prefix"><option value="">全部</option><option value="CSCI">CSCI</option><option value="DATA">DATA</option><option value="EE">EE</option><option value="EECS">EECS</option></select></label>
+        <label class="fld"><span>搜索</span>
+          <input id="phd-opt-q" maxlength="60" placeholder="按课程代码或名称搜索"></label>
+        <p class="mut" id="phd-opt-count" style="margin:8px 0 0"></p>
+        <div id="phd-opt-list"></div>
+      </section>
+
       <section class="card" id="sec-advice" hidden>
         <h2 data-i18n="card.advice">导师建议</h2>
         <div id="advice-list"></div>
@@ -336,6 +347,14 @@
         <div id="msg-files" hidden>
           <h3 class="sub-h" data-i18n="file.title">导师发来的文件</h3>
           <div id="file-list"></div>
+        </div>
+        <div id="msg-send-files">
+          <h3 class="sub-h" data-i18n="file.sendTitle">发文件给导师</h3>
+          <div class="wb-file-up"><input type="file" id="file-send-input" />
+            <button type="button" class="btn-send" id="file-send-btn" data-i18n="msg.send">发送</button></div>
+          <p id="file-send-status" class="mut"></p>
+          <p class="mut" data-i18n="file.sendHint">单文件不超过 5MB；导师下载后或 24 小时后自动删除。</p>
+          <div id="file-sent-list"></div>
         </div>
       </section>
 
@@ -465,6 +484,6 @@
 <script src="private.js?v=20261023.2"></script>
 <script src="problems.js?v=20261023.2"></script>
 <script src="majors.js?v=20261023.2"></script>
-<script src="app.js?v=20261024.1"></script>
+<script src="app.js?v=20261024.2"></script>
 </body>
 </html>

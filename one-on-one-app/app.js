@@ -108,6 +108,24 @@ const I18N = {
     "file.left": "剩余 {x}",
     "file.downloaded": "已下载（服务器已删除）",
     "file.expired": "已过期（已删除）",
+    "file.none": "导师还没有发来文件。",
+    "file.loadErr": "文件列表暂时加载失败，稍后再打开导师页试试。",
+    "file.sendTitle": "发文件给导师",
+    "file.sendHint": "单文件不超过 5MB；导师下载后或 24 小时后自动删除。",
+    "file.choose": "请先选择一个文件",
+    "file.sending": "发送中…",
+    "file.sent": "已发送，导师下载前你可以撤回。",
+    "file.sentNone": "你还没有发过文件。",
+    "file.withdraw": "撤回",
+    "file.errType": "文件类型不支持",
+    "file.errLarge": "文件超过 5MB",
+    "file.errStuQuota": "待下载文件总额已超 25MB",
+    "file.errGlobal": "系统文件总额已达上限",
+    "file.err": "发送失败，稍后再试",
+    "file.sentStatus.pending": "待导师下载",
+    "file.sentStatus.downloaded": "导师已下载",
+    "file.sentStatus.expired": "已过期（已删除）",
+    "file.sentStatus.withdrawn": "已撤回",
     "msg.to": "发给", "msg.rolePrimary": "主导师", "msg.roleTopic": "专题导师",
     "msg.sending": "发送中…", "msg.emptyThread": "有问题随时在这里留言，导师会回复",
     "msg.you": "我", "msg.mentor": "导师",
@@ -573,6 +591,24 @@ const I18N = {
     "file.left": "{x} left",
     "file.downloaded": "Downloaded (deleted from server)",
     "file.expired": "Expired (deleted)",
+    "file.none": "No files from your mentor yet.",
+    "file.loadErr": "Could not load the file list. Reopen the mentor page later.",
+    "file.sendTitle": "Send a file to your mentor",
+    "file.sendHint": "One file, max 5MB; deleted after your mentor downloads it or after 24 hours.",
+    "file.choose": "Choose a file first",
+    "file.sending": "Sending…",
+    "file.sent": "Sent. You can withdraw it before your mentor downloads it.",
+    "file.sentNone": "You have not sent any files yet.",
+    "file.withdraw": "Withdraw",
+    "file.errType": "File type not supported",
+    "file.errLarge": "File exceeds 5MB",
+    "file.errStuQuota": "Pending files exceed 25MB",
+    "file.errGlobal": "System file total reached its limit",
+    "file.err": "Send failed, try again later",
+    "file.sentStatus.pending": "Waiting for mentor download",
+    "file.sentStatus.downloaded": "Mentor downloaded",
+    "file.sentStatus.expired": "Expired (deleted)",
+    "file.sentStatus.withdrawn": "Withdrawn",
     "msg.to": "Send to", "msg.rolePrimary": "Lead mentor", "msg.roleTopic": "Topic mentor",
     "msg.sending": "Sending…", "msg.emptyThread": "Questions? Leave a message here anytime — your mentor will reply.",
     "msg.you": "Me", "msg.mentor": "Mentor",
@@ -1261,7 +1297,8 @@ let lastData = null;
 const renderedTabs = {};
 function updateDot() {
   const dot = $("tab-dot");
-  if (dot) dot.hidden = !(lastData && Number(lastData.unread_mentor) > 0);
+  // 导师页签红点：未读导师留言 或 导师待下载文件 任一 > 0 即亮
+  if (dot) dot.hidden = !(lastData && (Number(lastData.unread_mentor) > 0 || Number(lastData.pending_files) > 0));
 }
 function switchTab(name) {
   if (!TABS.includes(name)) name = "home";
@@ -1271,7 +1308,7 @@ function switchTab(name) {
     document.querySelectorAll(".tab-btn").forEach((b) =>
       b.classList.toggle("on", b.getAttribute("data-tab") === tb && tb === name));
   }
-  if (name === "mentor" && lastData) lastData.unread_mentor = 0;
+  if (name === "mentor" && lastData) { lastData.unread_mentor = 0; lastData.pending_files = 0; }
   if (lastData && renderedTabs[name] !== LANG) renderTab(name);
   updateDot();
   window.scrollTo(0, 0);
@@ -1282,7 +1319,7 @@ function renderTab(name) {
   if (name === "home") renderHome(lastData);
   else if (name === "growth") renderGrowth(lastData);
   else if (name === "plan") { renderPlan(lastData); if (!lastData.phd) renderMajor().catch(() => { /* 数据集加载失败已在 renderMajor 内提示 */ }); }
-  else if (name === "mentor") { renderMentor(lastData); renderParentNotes(lastData); loadFiles(); }
+  else if (name === "mentor") { renderMentor(lastData); renderParentNotes(lastData); loadFiles(); initStudentFileSend(); }
   applyAccordions(name); // v13：展示收缩（默认展开规则见 applyAccordions）
 }
 function render(d) {
@@ -1565,6 +1602,7 @@ function renderPlan(d) {
   renderCoursesPlan(d);
   renderPhd(d);
   renderPapers(d);
+  renderPhdOptions(d);
   // 导师建议：无数据不渲染
   const adv = d.advice || [];
   const asec = $("sec-advice");
@@ -1681,6 +1719,59 @@ function renderPapers(d) {
     if (!title) { showSelfNote(LANG === "en" ? "Please fill in the title / direction." : "请先填题目/方向。"); return; }
     selfUpdate({ action: "phd_paper_add", title, paper_type: $("pp-type").value, target_venue: $("pp-venue").value || "", status: $("pp-status").value, next_step: $("pp-next").value || "", due_text: $("pp-due").value || "", note: "" });
   });
+}
+/* 博士课程可选表（系统内）：UND CS 博士研究生课程 15 学分范围（EE/CSCI/DATA/EECS）。
+ * 数据集 data/und-phd-courses.json（现行目录，74 门），只作选课参考：不计入已修学分、
+ * 不进入课程规划汇总；已修标记仅按学生课程台账里的已完成/有成绩课程对照显示。 */
+let phdOptionsCache = null, phdOptionsPromise = null, phdOptWired = false;
+function loadPhdOptions() {
+  if (phdOptionsCache) return Promise.resolve(phdOptionsCache);
+  if (!phdOptionsPromise) {
+    phdOptionsPromise = fetch("data/und-phd-courses.json", { headers: { Accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { phdOptionsCache = j; return j; })
+      .catch(() => null);
+  }
+  return phdOptionsPromise;
+}
+function normOptCode(c) { return String(c || "").toUpperCase().replace(/\s+/g, ""); }
+function renderPhdOptionsList() {
+  const ds = phdOptionsCache;
+  const listEl = $("phd-opt-list"), countEl = $("phd-opt-count");
+  if (!listEl || !countEl) return;
+  if (!ds || !Array.isArray(ds.courses)) { countEl.textContent = "可选表加载失败，稍后再试。"; listEl.innerHTML = ""; return; }
+  const prefix = ($("phd-opt-prefix") && $("phd-opt-prefix").value) || "";
+  const q = (($("phd-opt-q") && $("phd-opt-q").value) || "").trim().toUpperCase();
+  const doneSet = new Set(((lastData && lastData.courses && lastData.courses.list) || [])
+    .filter((c) => c.status === "done" || (c.status !== "dropped" && String(c.grade || "").trim() !== "" && String(c.grade).trim().toUpperCase() !== "F"))
+    .map((c) => normOptCode(c.course_code)));
+  const rows = ds.courses.filter((c) => {
+    if (prefix && String(c.code || "").split(" ")[0] !== prefix) return false;
+    if (q && !(String(c.code || "").toUpperCase().includes(q) || String(c.name || "").toUpperCase().includes(q))) return false;
+    return true;
+  });
+  countEl.textContent = "共 " + rows.length + " 门（全部 " + ds.courses.length + " 门）";
+  listEl.innerHTML = rows.length ? rows.map((c) => {
+    const done = doneSet.has(normOptCode(c.code));
+    return '<div class="course"><span class="code">' + esc(c.code || "") + "</span>" +
+      '<span class="name">' + esc(c.name || "") +
+      (c.prereq ? '<span class="mut">（' + esc(c.prereq) + "）</span>" : "") + "</span>" +
+      '<span class="cr">' + esc(String(c.credits)) + "学分" + (c.term && c.term !== "—" ? " · " + esc(c.term) : "") + "</span>" +
+      (done ? '<span class="pill">已修</span>' : "") + "</div>";
+  }).join("") : '<p class="empty">没有符合的课程</p>';
+}
+function renderPhdOptions(d) {
+  const sec = $("sec-phd-options");
+  if (!sec) return;
+  if (!d || !d.phd) { sec.hidden = true; return; }
+  sec.hidden = false;
+  if (!phdOptWired) {
+    phdOptWired = true;
+    const sel = $("phd-opt-prefix"), inp = $("phd-opt-q");
+    if (sel) sel.addEventListener("change", renderPhdOptionsList);
+    if (inp) inp.addEventListener("input", renderPhdOptionsList);
+  }
+  loadPhdOptions().then(() => renderPhdOptionsList());
 }
 function renderCoursesPlan(d) {
   const c = d.courses || { progress: {}, groups: [], list: [] };
@@ -3065,19 +3156,33 @@ async function loadFiles() {
     const resp = await fetch(api + "/api/client/files?s=" + encodeURIComponent(s) +
       "&key=" + encodeURIComponent(k), { headers: { Accept: "application/json" } });
     const d = await resp.json().catch(() => null);
-    if (!resp.ok || !d || !d.ok || !Array.isArray(d.files)) { wrap.hidden = true; return; }
+    if (!resp.ok || !d || !d.ok || !Array.isArray(d.files)) {
+      // 接收口常驻：列表拉取失败也露出端口（带失败提示），不再整块隐藏
+      wrap.hidden = false;
+      const box2 = $("file-list");
+      if (box2) box2.innerHTML = '<p class="mut">' + esc(t("file.loadErr")) + "</p>";
+      return;
+    }
     lastFiles = d.files;
     renderFiles();
-  } catch (e) { wrap.hidden = true; }
+  } catch (e) {
+    wrap.hidden = false;
+    const box2 = $("file-list");
+    if (box2) box2.innerHTML = '<p class="mut">' + esc(t("file.loadErr")) + "</p>";
+  }
 }
 function renderFiles() {
   const wrap = $("msg-files");
   const box = $("file-list");
   if (!wrap || !box) return;
   const files = Array.isArray(lastFiles) ? lastFiles : [];
-  if (!files.length && !downloadedFileCards.length) { wrap.hidden = true; return; }
   const { s, k, api } = creds();
+  // 接收口常驻：无待下载文件时显示空态，不再整块隐藏
   wrap.hidden = false;
+  if (!files.length && !downloadedFileCards.length) {
+    box.innerHTML = '<p class="mut">' + esc(t("file.none")) + "</p>";
+    return;
+  }
   let html = files.map((f) => {
     if (f.status === "expired") {
       return '<div class="file-card done"><div class="file-name">' + esc(f.filename) + "</div>" +
@@ -3106,6 +3211,87 @@ function renderFiles() {
       loadFiles();
     }, 1200);
   }));
+}
+
+/* ===== v18 学生发文件给导师（学生端发送口）=====
+ * 导师沟通区内：选文件 → POST /api/client/file（multipart，学生密钥鉴权）→
+ * 本人已发文件列表（状态 + 下载前撤回）。规则与导师发文件对称：类型白名单、
+ * 单文件 ≤5MB、每生 pending ≤25MB（两表合计）、全局 ≤2GB、24h 未下载自动删除、
+ * 导师下载后一次性删除。 */
+async function loadSentFiles() {
+  const box = $("file-sent-list");
+  if (!box) return;
+  const { s, k, api } = creds();
+  if (!s || !k) { box.innerHTML = ""; return; }
+  try {
+    const resp = await fetch(api + "/api/client/sent-files?s=" + encodeURIComponent(s) +
+      "&key=" + encodeURIComponent(k), { headers: { Accept: "application/json" } });
+    const d = await resp.json().catch(() => null);
+    if (!resp.ok || !d || !d.ok || !Array.isArray(d.files)) { box.innerHTML = ""; return; }
+    if (!d.files.length) { box.innerHTML = '<p class="mut">' + esc(t("file.sentNone")) + "</p>"; return; }
+    box.innerHTML = d.files.map((f) => {
+      const sk = "file.sentStatus." + f.status;
+      let line = '<div class="file-card"><div class="file-name">' + esc(f.filename) + "</div>" +
+        '<div class="mut">' + esc(fmtBytes(f.size)) + " · " + esc(t(sk)) +
+        (f.status === "pending" ? " · " + esc(fmt("file.left", { x: fmtDur(f.seconds_left) })) : "") + "</div>";
+      if (f.status === "pending") {
+        line += '<button type="button" class="btn-ghost" data-sentwithdraw="' + f.id + '">' +
+          esc(t("file.withdraw")) + "</button>";
+      }
+      return line + "</div>";
+    }).join("");
+    box.querySelectorAll("[data-sentwithdraw]").forEach((btn) => btn.addEventListener("click", () => {
+      withdrawSentFile(Number(btn.getAttribute("data-sentwithdraw")));
+    }));
+  } catch (e) { box.innerHTML = ""; }
+}
+async function withdrawSentFile(id) {
+  const { s, k, api } = creds();
+  const status = $("file-send-status");
+  try {
+    const resp = await fetch(api + "/api/client/file/withdraw", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ s, key: k, id }),
+    });
+    const d = await resp.json().catch(() => null);
+    if (resp.ok && d && d.ok) loadSentFiles();
+    else if (status) status.textContent = t("file.err");
+  } catch (e) { if (status) status.textContent = t("file.err"); }
+}
+async function sendStudentFile() {
+  const input = $("file-send-input");
+  const status = $("file-send-status");
+  const file = input && input.files && input.files[0];
+  if (!file) { if (status) status.textContent = t("file.choose"); return; }
+  const { s, k, api } = creds();
+  const fd = new FormData();
+  fd.append("s", s); fd.append("key", k); fd.append("file", file);
+  if (status) status.textContent = t("file.sending");
+  try {
+    const resp = await fetch(api + "/api/client/file", { method: "POST", body: fd });
+    const d = await resp.json().catch(() => null);
+    if (resp.ok && d && d.ok) {
+      if (status) status.textContent = t("file.sent");
+      if (input) input.value = "";
+      loadSentFiles();
+    } else {
+      const code = d && d.error;
+      const key = code === "bad_type" ? "file.errType"
+        : code === "file_too_large" ? "file.errLarge"
+        : code === "student_quota" ? "file.errStuQuota"
+        : code === "global_quota" ? "file.errGlobal" : "file.err";
+      if (status) status.textContent = t(key);
+    }
+  } catch (e) { if (status) status.textContent = t("file.err"); }
+}
+function initStudentFileSend() {
+  const btn = $("file-send-btn");
+  if (btn && !btn.dataset.wired) {
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", sendStudentFile);
+  }
+  loadSentFiles();
 }
 
 refreshInstallCard();

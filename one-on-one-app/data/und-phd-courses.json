@@ -1,0 +1,534 @@
+{
+ "_meta": {
+  "dataset": "und-phd-courses",
+  "school": "University of North Dakota",
+  "program": "CS PhD, approved Master track",
+  "scope": "15 credits of EE / CSCI / DATA / EECS graduate coursework (graduate course category only; not dissertation, seminar, or elective/research pool)",
+  "retrieved": "2026-10-24",
+  "sources": [
+   "https://und.edu/programs/computer-science-phd/requirements.html",
+   "https://und-public.courseleaf.com/graduateacademicinformation/departmentalcoursesprograms/engineering/electricalengineering/"
+  ],
+  "note": "Catalog only: inclusion here means the course is in the UND graduate catalog under EE/CSCI/DATA/EECS. Whether a specific course counts toward a student's 15 credits is subject to advisor and Faculty Advisory Committee confirmation. Old catalog codes (EE 601/602/611/614/640/740, DATA 511/512/513) are mapped to current codes in the document table and are not duplicated here."
+ },
+ "courses": [
+  {
+   "code": "CSCI 513",
+   "name": "Advanced Database Systems",
+   "credits": "3",
+   "prereq": "先修 CSCI 455",
+   "term": "—"
+  },
+  {
+   "code": "CSCI 515",
+   "name": "Data Engineering and Management",
+   "credits": "3",
+   "prereq": "先修 CSCI 513",
+   "term": "S，双年"
+  },
+  {
+   "code": "CSCI 522",
+   "name": "Theoretical Foundations of Computer Science",
+   "credits": "3",
+   "prereq": "先修 CSCI 492",
+   "term": "—"
+  },
+  {
+   "code": "CSCI 532",
+   "name": "High Performance Computing and Paradigms",
+   "credits": "3",
+   "prereq": "—",
+   "term": "F，单年"
+  },
+  {
+   "code": "CSCI 537",
+   "name": "Graduate Cooperative Education",
+   "credits": "1–2",
+   "prereq": "须导师批准，已修至少 9 研究生学分 + 系里同意，S/U 计分",
+   "term": "按需"
+  },
+  {
+   "code": "CSCI 541",
+   "name": "Applied Deep Learning",
+   "credits": "3",
+   "prereq": "修过 CSCI 441 后不可再修",
+   "term": "F"
+  },
+  {
+   "code": "CSCI 542",
+   "name": "Reinforcement Learning",
+   "credits": "3",
+   "prereq": "先修 CSCI 441 或 CSCI 541",
+   "term": "S"
+  },
+  {
+   "code": "CSCI 543",
+   "name": "Machine Learning",
+   "credits": "3",
+   "prereq": "先修 CSCI 365 或 CSCI 384",
+   "term": "F，单年"
+  },
+  {
+   "code": "CSCI 544",
+   "name": "Soft Computing: Computational Intelligence I",
+   "credits": "3",
+   "prereq": "—",
+   "term": "S，双年"
+  },
+  {
+   "code": "CSCI 545",
+   "name": "Discrete Dynamical Systems Modeling and Simulation",
+   "credits": "3",
+   "prereq": "先修 CSCI 445",
+   "term": "—"
+  },
+  {
+   "code": "CSCI 546",
+   "name": "Advanced Computer Graphics",
+   "credits": "3",
+   "prereq": "—",
+   "term": "S，双年"
+  },
+  {
+   "code": "CSCI 547",
+   "name": "Scientific Visualization",
+   "credits": "3",
+   "prereq": "先修 CSCI 466",
+   "term": "F，双年"
+  },
+  {
+   "code": "CSCI 548",
+   "name": "Prompt Engineering: Design, Integration, Evaluation, and Applications",
+   "credits": "3",
+   "prereq": "—",
+   "term": "F"
+  },
+  {
+   "code": "CSCI 549",
+   "name": "Natural Language Processing",
+   "credits": "3",
+   "prereq": "修过 CSCI 449 后不可再修",
+   "term": "S"
+  },
+  {
+   "code": "CSCI 551",
+   "name": "Security for Cloud Computing",
+   "credits": "3",
+   "prereq": "先修 CSCI 370、451，另加 327 / 427 / 555 之一",
+   "term": "S，单年"
+  },
+  {
+   "code": "CSCI 554",
+   "name": "Applications in AI/Computational Intelligence",
+   "credits": "3",
+   "prereq": "先修 CSCI 544",
+   "term": "F，双年"
+  },
+  {
+   "code": "CSCI 555",
+   "name": "Computer Networks",
+   "credits": "3",
+   "prereq": "先修 CSCI 327",
+   "term": "—"
+  },
+  {
+   "code": "CSCI 557",
+   "name": "Computer Forensics",
+   "credits": "3",
+   "prereq": "先修 EE 602（现 EE 671）或系里许可；目录写明须 MS Cyber Security 在读，博士生选修须系里许可",
+   "term": "S"
+  },
+  {
+   "code": "CSCI 562",
+   "name": "Formal Specification Methods",
+   "credits": "3",
+   "prereq": "先修 CSCI 435 与 463",
+   "term": "—"
+  },
+  {
+   "code": "CSCI 565",
+   "name": "Advanced Software Engineering",
+   "credits": "3",
+   "prereq": "先修 CSCI 463",
+   "term": "—"
+  },
+  {
+   "code": "CSCI 567",
+   "name": "Secure Software Engineering",
+   "credits": "3",
+   "prereq": "先修 EE 601、602（现 EE 670、671）；目录写明须 MS Cyber Security 在读，博士生选修须系里许可",
+   "term": "SS"
+  },
+  {
+   "code": "CSCI 573",
+   "name": "Advanced Penetration Testing",
+   "credits": "3",
+   "prereq": "—",
+   "term": "F"
+  },
+  {
+   "code": "CSCI 575",
+   "name": "Analysis of Algorithms",
+   "credits": "3",
+   "prereq": "先修 CSCI 435",
+   "term": "—"
+  },
+  {
+   "code": "CSCI 582",
+   "name": "Software Architecture",
+   "credits": "3",
+   "prereq": "先修 CSCI 463 与 435",
+   "term": "—"
+  },
+  {
+   "code": "CSCI 585",
+   "name": "Vulnerability Assessment",
+   "credits": "3",
+   "prereq": "先修 EE 602（现 EE 671）或系里许可；目录写明须 MS Cyber Security 在读，博士生选修须系里许可",
+   "term": "S"
+  },
+  {
+   "code": "CSCI 587",
+   "name": "Ethical Hacking",
+   "credits": "3",
+   "prereq": "先修 EE 602（现 EE 671）或系里许可；目录写明须 MS Cyber Security 在读，博士生选修须系里许可",
+   "term": "S"
+  },
+  {
+   "code": "CSCI 588",
+   "name": "Data Structure, Algorithms, and Software Design in C++",
+   "credits": "3",
+   "prereq": "目录写明面向 Scientific Computing 博士生",
+   "term": "—"
+  },
+  {
+   "code": "CSCI 589",
+   "name": "Application Layer Security",
+   "credits": "3",
+   "prereq": "先修 EE 601 与 602（现 EE 670、671）或系里许可；目录写明须 MS Cyber Security 在读，博士生选修须系里许可",
+   "term": "SS"
+  },
+  {
+   "code": "DATA 520",
+   "name": "Databases",
+   "credits": "3",
+   "prereq": "先修 DATA 511、512、513 或 SEECS 许可",
+   "term": "按需"
+  },
+  {
+   "code": "DATA 525",
+   "name": "Data Engineering and Mining",
+   "credits": "3",
+   "prereq": "先修 DATA 511、512、513 或 SEECS 许可",
+   "term": "按需"
+  },
+  {
+   "code": "DATA 527",
+   "name": "Predictive Modeling",
+   "credits": "3",
+   "prereq": "先修 DATA 511、512、513 或 SEECS 许可",
+   "term": "按需"
+  },
+  {
+   "code": "DATA 530",
+   "name": "Applied Artificial Intelligence",
+   "credits": "3",
+   "prereq": "先修 EECS 501、502、503 或 SEECS 许可",
+   "term": "按需"
+  },
+  {
+   "code": "DATA 532",
+   "name": "Applied Machine Learning",
+   "credits": "3",
+   "prereq": "先修 DATA 511、512、513 或 SEECS 许可",
+   "term": "按需"
+  },
+  {
+   "code": "DATA 540",
+   "name": "Data Visualization",
+   "credits": "3",
+   "prereq": "先修 DATA 511、512、513 或 SEECS 许可",
+   "term": "按需"
+  },
+  {
+   "code": "DATA 550",
+   "name": "Data Security",
+   "credits": "3",
+   "prereq": "先修 DATA 511、512、513 或 SEECS 许可",
+   "term": "按需"
+  },
+  {
+   "code": "DATA 589",
+   "name": "Data Science Ethics",
+   "credits": "3",
+   "prereq": "—",
+   "term": "按需"
+  },
+  {
+   "code": "EE 502",
+   "name": "Power Systems I",
+   "credits": "3",
+   "prereq": "—",
+   "term": "按需"
+  },
+  {
+   "code": "EE 503",
+   "name": "Power Systems II",
+   "credits": "3",
+   "prereq": "先修 EE 402",
+   "term": "按需"
+  },
+  {
+   "code": "EE 504",
+   "name": "Power Electronics",
+   "credits": "3",
+   "prereq": "先修 EE 321 或教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EE 506",
+   "name": "Power System Protection",
+   "credits": "3",
+   "prereq": "—",
+   "term": "F，双年"
+  },
+  {
+   "code": "EE 507",
+   "name": "Renewable Energy Systems",
+   "credits": "3",
+   "prereq": "—",
+   "term": "按需"
+  },
+  {
+   "code": "EE 513",
+   "name": "Advanced Embedded Systems Design",
+   "credits": "3",
+   "prereq": "先修 EE 211 或教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EE 514",
+   "name": "CMOS VLSI Design and Testing",
+   "credits": "3",
+   "prereq": "—",
+   "term": "F"
+  },
+  {
+   "code": "EE 524",
+   "name": "Application Specific Integrated Circuit (ASIC) Design",
+   "credits": "3",
+   "prereq": "先修 EE 421 或教师同意",
+   "term": "—"
+  },
+  {
+   "code": "EE 531",
+   "name": "Antennas I",
+   "credits": "3",
+   "prereq": "—",
+   "term": "按需"
+  },
+  {
+   "code": "EE 532",
+   "name": "Antennas II",
+   "credits": "3",
+   "prereq": "先修 EE 331 或教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EE 535",
+   "name": "Microwave Circuit Design I",
+   "credits": "3",
+   "prereq": "—",
+   "term": "按需"
+  },
+  {
+   "code": "EE 536",
+   "name": "Optical Fiber Communications",
+   "credits": "3",
+   "prereq": "先修 EE 434 或教师同意",
+   "term": "—"
+  },
+  {
+   "code": "EE 541",
+   "name": "Communications Engineering",
+   "credits": "3",
+   "prereq": "—",
+   "term": "按需"
+  },
+  {
+   "code": "EE 542",
+   "name": "Communication Protocols",
+   "credits": "3",
+   "prereq": "旧课号 EE 640",
+   "term": "F"
+  },
+  {
+   "code": "EE 543",
+   "name": "Wireless Communications",
+   "credits": "3",
+   "prereq": "先修 EE 540 或教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EE 548",
+   "name": "Advanced Wireless Communications Engineering",
+   "credits": "3",
+   "prereq": "须教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EE 553",
+   "name": "Control Systems I",
+   "credits": "3",
+   "prereq": "先修 EE 350",
+   "term": "按需"
+  },
+  {
+   "code": "EE 554",
+   "name": "Control Systems II",
+   "credits": "3",
+   "prereq": "先修 EE 453",
+   "term": "按需"
+  },
+  {
+   "code": "EE 557",
+   "name": "Robotics Fundamentals",
+   "credits": "3",
+   "prereq": "—",
+   "term": "按需"
+  },
+  {
+   "code": "EE 561",
+   "name": "Digital Signal Processing",
+   "credits": "3",
+   "prereq": "—",
+   "term": "按需"
+  },
+  {
+   "code": "EE 563",
+   "name": "Digital Image Processing",
+   "credits": "3",
+   "prereq": "—",
+   "term": "按需"
+  },
+  {
+   "code": "EE 564",
+   "name": "Computational Imaging",
+   "credits": "3",
+   "prereq": "—",
+   "term": "F"
+  },
+  {
+   "code": "EE 573",
+   "name": "Applied Cryptography",
+   "credits": "3",
+   "prereq": "旧课号 EE 614",
+   "term": "按需"
+  },
+  {
+   "code": "EE 582",
+   "name": "Intelligent Decision Systems",
+   "credits": "3",
+   "prereq": "先修 EE 360 或教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EE 583",
+   "name": "Engineering Systems Reliability",
+   "credits": "3",
+   "prereq": "须教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EE 623",
+   "name": "Introduction to Smart Grid I",
+   "credits": "3",
+   "prereq": "先修 EE 313 或研究生身份",
+   "term": "按需"
+  },
+  {
+   "code": "EE 624",
+   "name": "Introduction to Smart Grid II",
+   "credits": "3",
+   "prereq": "先修 EE 623",
+   "term": "按需"
+  },
+  {
+   "code": "EE 670",
+   "name": "Analytical Foundations of Cyber Security",
+   "credits": "3",
+   "prereq": "旧课号 EE 601；目录写明须 MS Cyber Security 在读，博士生选修须系里许可",
+   "term": "F、S、SS"
+  },
+  {
+   "code": "EE 671",
+   "name": "Computing Foundations of Cyber Security",
+   "credits": "3",
+   "prereq": "旧课号 EE 602；目录写明须 MS Cyber Security 在读，博士生选修须系里许可",
+   "term": "F、S、SS"
+  },
+  {
+   "code": "EE 672",
+   "name": "Emerging Threats and Defenses",
+   "credits": "3",
+   "prereq": "旧课号 EE 611",
+   "term": "F"
+  },
+  {
+   "code": "EE 675",
+   "name": "Intrusion Detection Algorithms",
+   "credits": "3",
+   "prereq": "旧课号 EE 740",
+   "term": "S"
+  },
+  {
+   "code": "EE 750",
+   "name": "Internet of Things and Security",
+   "credits": "3",
+   "prereq": "须教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EE 751",
+   "name": "Wireless Sensor Networks",
+   "credits": "3",
+   "prereq": "须教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EE 752",
+   "name": "Introduction to Autonomous Systems",
+   "credits": "3",
+   "prereq": "须教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EECS 501",
+   "name": "Computing Foundations I",
+   "credits": "3",
+   "prereq": "须 Data Science 研究生在读或教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EECS 502",
+   "name": "Computing Foundations II",
+   "credits": "3",
+   "prereq": "须 Data Science 研究生在读或教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EECS 503",
+   "name": "Mathematics for Computing",
+   "credits": "3",
+   "prereq": "须 Data Science 研究生在读或教师同意",
+   "term": "按需"
+  },
+  {
+   "code": "EECS 590",
+   "name": "Advanced Topics in Electrical Engineering and Computer Science",
+   "credits": "3",
+   "prereq": "可重复修至 6 学分，须研究生身份",
+   "term": "按需"
+  }
+ ]
+}

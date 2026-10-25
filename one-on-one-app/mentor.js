@@ -67,6 +67,10 @@ const I18N = {
     "wb.fileErrStuQuota": "该学生待下载文件已达 25MB 上限",
     "wb.fileErrGlobal": "系统待下载总量已达上限，请稍后再试",
     "wb.fileErr": "发送失败，稍后再试",
+    "wb.studentFiles": "学生发来的文件",
+    "wb.studentFileNone": "学生还没有发来文件",
+    "wb.fileDownload": "下载",
+    "wb.fileDownloadedByMentor": "已下载（已删除）",
     "cm.inbox": "收件箱",
     "cm.loading": "正在加载…",
     "cm.inboxFail": "收件箱加载失败，稍后重进页面试试。",
@@ -145,6 +149,10 @@ const I18N = {
     "wb.fileErrStuQuota": "This student's pending files reached the 25MB limit",
     "wb.fileErrGlobal": "System pending-file limit reached — please retry later",
     "wb.fileErr": "Send failed — try again later",
+    "wb.studentFiles": "Files from the student",
+    "wb.studentFileNone": "No files from the student yet",
+    "wb.fileDownload": "Download",
+    "wb.fileDownloadedByMentor": "Downloaded (deleted)",
     "cm.inbox": "Inbox",
     "cm.loading": "Loading…",
     "cm.inboxFail": "Inbox failed to load — reopen the page in a moment.",
@@ -257,7 +265,7 @@ function render(d) {
   box.innerHTML = d.students.map((blk, i) => studentHtml(blk, i)).join("");
   box.querySelectorAll("[data-reply]").forEach((btn) => btn.addEventListener("click", () => sendReply(btn)));
   box.querySelectorAll("[data-filesend]").forEach((btn) => btn.addEventListener("click", () => sendMentorFile(btn)));
-  d.students.forEach((blk, i) => { if (blk.student && blk.student.id) loadMentorFiles(i, blk.student.id); });
+  d.students.forEach((blk, i) => { if (blk.student && blk.student.id) { loadMentorFiles(i, blk.student.id); loadStudentFiles(i, blk.student.id); } });
 }
 function studentHtml(blk, i) {
   // v15：专题学生走裁剪卡（只有专题、与本人的留言线程、本人轨迹与回复框）
@@ -643,7 +651,9 @@ function fileSectionHtml(stu, i) {
     '<div class="wb-file-up"><input type="file" id="wb-file-input-' + i + '" />' +
     '<button type="button" class="btn-send" data-filesend="' + i + '" data-student="' + stu.id + '">' + esc(t("wb.fileSend")) + "</button></div>" +
     '<p class="mut" id="wb-file-status-' + i + '"></p>' +
-    '<p class="mut">' + esc(t("wb.fileHint")) + "</p>";
+    '<p class="mut">' + esc(t("wb.fileHint")) + "</p>" +
+    '<h3 class="sub-h">' + esc(t("wb.studentFiles")) + "</h3>" +
+    '<div class="wb-files" id="wb-student-files-' + i + '"><p class="mut">' + esc(t("wb.studentFileNone")) + "</p></div>";
 }
 function renderMentorFileList(i, studentId, files) {
   const box = $("wb-files-" + i);
@@ -733,6 +743,50 @@ async function withdrawMentorFile(btn) {
     if (resp.ok && d && d.ok) loadMentorFiles(i, sid);
     else btn.disabled = false;
   } catch (e) { btn.disabled = false; }
+}
+
+/* ===== v18 导师接收学生文件（工作台侧）=====
+ * 每学生卡片第二块：学生发来的文件列表（名/大小/状态/剩余时间 + 待下载时下载按钮）。
+ * 下载走 GET /api/mentor/student-file/download（普通链接导航，浏览器原生下载），
+ * 服务端一次性语义与导师发文件对称。接口异常时只显示空态，绝不影响沟通台主流程。 */
+function renderStudentFileList(i, studentId, files) {
+  const box = $("wb-student-files-" + i);
+  if (!box) return;
+  if (!files.length) { box.innerHTML = '<p class="mut">' + esc(t("wb.studentFileNone")) + "</p>"; return; }
+  const { s, k, api } = creds();
+  box.innerHTML = files.map((f) => {
+    const sk = f.status === "pending" ? "wb.filePending"
+      : f.status === "downloaded" ? "wb.fileDownloadedByMentor"
+      : f.status === "expired" ? "wb.fileExpired" : "wb.fileWithdrawn";
+    let line = '<div class="wb-file-row"><span class="wb-file-name">' + esc(f.filename) + "</span> " +
+      '<span class="mut">' + esc(fmtBytes(f.size)) + "</span> " +
+      '<span class="pill">' + esc(t(sk)) + "</span>";
+    if (f.status === "pending") {
+      line += ' <span class="mut">' + esc(fmt("wb.fileLeft", { x: fmtDur(f.seconds_left) })) + "</span> " +
+        '<a class="btn-primary" href="' + esc(api + "/api/mentor/student-file/download?s=" + encodeURIComponent(s) +
+          "&key=" + encodeURIComponent(k) + "&id=" + encodeURIComponent(f.id)) + '">' +
+        esc(t("wb.fileDownload")) + "</a>";
+    }
+    return line + "</div>";
+  }).join("");
+}
+async function loadStudentFiles(i, studentId) {
+  const box = $("wb-student-files-" + i);
+  if (!box) return;
+  const { s, k, api } = creds();
+  try {
+    const resp = await fetch(api + "/api/mentor/student-files?s=" + encodeURIComponent(s) +
+      "&key=" + encodeURIComponent(k) + "&student_id=" + encodeURIComponent(studentId),
+      { headers: { Accept: "application/json" } });
+    const d = await resp.json().catch(() => null);
+    if (!resp.ok || !d || !d.ok || !Array.isArray(d.files)) {
+      box.innerHTML = '<p class="mut">' + esc(t("wb.studentFileNone")) + "</p>";
+      return;
+    }
+    renderStudentFileList(i, studentId, d.files);
+  } catch (e) {
+    box.innerHTML = '<p class="mut">' + esc(t("wb.studentFileNone")) + "</p>";
+  }
 }
 
 applyI18n();
