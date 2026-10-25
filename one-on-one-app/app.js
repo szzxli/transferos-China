@@ -1281,7 +1281,7 @@ function renderTab(name) {
   renderedTabs[name] = LANG; // 记录渲染时语言：切换语言后再次进入该页会自动按新语言重渲染
   if (name === "home") renderHome(lastData);
   else if (name === "growth") renderGrowth(lastData);
-  else if (name === "plan") { renderPlan(lastData); renderMajor().catch(() => { /* 数据集加载失败已在 renderMajor 内提示 */ }); }
+  else if (name === "plan") { renderPlan(lastData); if (!lastData.phd) renderMajor().catch(() => { /* 数据集加载失败已在 renderMajor 内提示 */ }); }
   else if (name === "mentor") { renderMentor(lastData); renderParentNotes(lastData); loadFiles(); }
   applyAccordions(name); // v13：展示收缩（默认展开规则见 applyAccordions）
 }
@@ -1578,8 +1578,13 @@ function renderPlan(d) {
       (a.body ? '<div class="advice-body">' + esc(a.body) + "</div>" : "") +
       "</div>").join("");
   } else { asec.hidden = true; }
+  // 博士模板：专业选择 / 课程匹配是本科转学区块，博士生专业已定（如 CS），不显示；
+  // 只留博士选课（sec-courses 走博士分支）、博士毕业需求、论文规划。转学生原样。
+  const majorSec = $("sec-major"), matchSec = $("sec-match");
+  if (majorSec) majorSec.hidden = !!d.phd;
+  if (matchSec) matchSec.hidden = !!d.phd;
   renderProblemsEntry(d);
-  renderMatchEntry(d);
+  if (!d.phd) renderMatchEntry(d);
   // 整页空 → 占位
   const has = lines.length || hasVision || hasGoal || adv.length ||
     (d.problems || []).length || (d.course_match || []).length ||
@@ -2400,6 +2405,8 @@ function renderProblemsEntry(d) {
 }
 let matchIdx = 0;
 function renderMatchEntry(d) {
+  const matchSec = $("sec-match");
+  if (d.phd) { if (matchSec) matchSec.hidden = true; return; }
   const box = $("match-entry-body");
   if (!box) return;
   const sets = d.course_match || [];
@@ -2597,6 +2604,9 @@ function applyAccordions(page) {
 /* ================= v13：专业选择 + 课程库 + 一键导出 ================= */
 let majorDataset = null, majorSel = "";
 async function renderMajor() {
+  const majorSec = $("sec-major");
+  if (lastData && lastData.phd) { if (majorSec) majorSec.hidden = true; return; }
+  if (majorSec) majorSec.hidden = false;
   const sel = $("major-select");
   if (!sel) return;
   if (!majorDataset) {
