@@ -5198,6 +5198,19 @@ async function pageOutbox(env, url) {
       <td>${stuRows.map((s) => esc(s.name || ("#" + s.id))).join("、") || "—"}</td>
       <td>${unread}</td><td>${revisit}</td><td>${queued}</td></tr>`);
   }
+  // —— 发信记录（mail_log）：与事件发件箱分开的两张表 ——
+  // 发件箱管「待转达」的事件通知任务；本表只管经 Resend 发出的邮件结果
+  // （手动发信标「手动/旁路」，事件通知的系统邮件标「事件通知」）。
+  const mailRows = (await db.prepare(
+    `SELECT m.*, s.name AS mentor_name, s.emp_no AS mentor_emp_no
+     FROM mail_log m LEFT JOIN staff s ON s.contact_email = m.to_addr
+     ORDER BY m.id DESC LIMIT 100`).all()).results || [];
+  const mailHtml = mailRows.map((r) => `<tr>
+    <td>${esc(r.created_at || "")}</td>
+    <td>${r.mentor_name ? esc(r.mentor_name) + "（" + esc(r.mentor_emp_no || "") + "）" : esc(r.to_addr || "")}</td>
+    <td>${esc(r.subject || "")}</td>
+    <td>${r.status === "sent" ? '<span class="ok">已发出</span>' : '<span class="bad">失败</span>' + (r.error ? " " + esc(r.error) : "")}</td>
+    <td>${r.outbox_id ? "事件通知" : "手动/旁路"}</td></tr>`).join("");
   const body = `
   <div class="card"><h2>导师通知发件箱（v13）</h2>
   <p class="mut">现状触达：通知偏好为邮箱且留有邮箱的导师，在系统配好发信密钥后由系统自动发邮件（状态「已转达（系统邮件）」）；其余渠道仍为发件箱队列 + 本页呈现 + 创始人每日简报计数，创始人按登记联系方式转达后手动标记「已转达」。
@@ -5207,7 +5220,11 @@ async function pageOutbox(env, url) {
   ${rowHtml || `<tr><td colspan="9" class="mut">暂无通知记录</td></tr>`}</table></div></div>
   <div class="card"><h2>导师汇总</h2>
   <div class="wrap"><table><tr><th>导师</th><th>通知状态</th><th>名下学生</th><th>未回复留言</th><th>待回看轨迹</th><th>待转达通知</th></tr>
-  ${mentorRows.join("") || `<tr><td colspan="6" class="mut">暂无已登记导师</td></tr>`}</table></div></div>`;
+  ${mentorRows.join("") || `<tr><td colspan="6" class="mut">暂无已登记导师</td></tr>`}</table></div></div>
+  <div class="card"><h2>发信记录</h2>
+  <p class="mut">经 Resend 发出的邮件结果，与上方事件发件箱分开记：发件箱是「待转达」的通知任务，本表是「已发出/失败」的发信结果。手动发的工作台链接、线索提醒等旁路邮件标「手动/旁路」；事件通知的系统邮件同时进发件箱与本表，标「事件通知」。收件人能匹配导师档案时显示姓名，否则显示邮箱原文。</p>
+  <div class="wrap"><table><tr><th>时间</th><th>收件人</th><th>标题</th><th>状态</th><th>来源</th></tr>
+  ${mailHtml || `<tr><td colspan="5" class="mut">暂无发信记录</td></tr>`}</table></div></div>`;
   return htmlResp(layout("导师通知", "/admin/outbox", body));
 }
 async function postOutbox(req, env) {
