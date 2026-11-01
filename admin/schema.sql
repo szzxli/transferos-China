@@ -196,6 +196,13 @@ CREATE TABLE IF NOT EXISTS parent_messages(
   read_by_parent INTEGER DEFAULT 0, read_by_mentor INTEGER DEFAULT 0,
   created_at TEXT);
 
+-- 家长↔学生留言（v19 新增；与 parent_messages、student_messages 三线独立，互不可见；sender: parent / student）
+CREATE TABLE IF NOT EXISTS parent_student_messages(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+  sender TEXT NOT NULL, body TEXT NOT NULL,
+  read_by_parent INTEGER DEFAULT 0, read_by_student INTEGER DEFAULT 0,
+  created_at TEXT);
+
 -- ===== v12 新增：一对一问题方案层 / 导师轨迹 / 课程要求集 =====
 -- 问题方案层（学生逐项确认后同步的结构化字段；只存方案摘要，永不存日记/情绪原文）
 CREATE TABLE IF NOT EXISTS student_problem_shares(

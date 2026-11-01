@@ -1341,6 +1341,12 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     sender TEXT DEFAULT 'parent', body TEXT, created_at TEXT,
     read_by_parent INTEGER DEFAULT 0, read_by_mentor INTEGER DEFAULT 0)`,
+  // 家长↔学生留言（v19 新增；与 parent_messages、student_messages 三线独立，互不可见；
+  // sender: parent / student；导师不读此线，家长↔导师线学生不读）
+  `CREATE TABLE IF NOT EXISTS parent_student_messages(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    sender TEXT DEFAULT 'parent', body TEXT, created_at TEXT,
+    read_by_parent INTEGER DEFAULT 0, read_by_student INTEGER DEFAULT 0)`,
   // ===== v12 新增表 =====
   // 问题方案层（学生逐项确认后同步的结构化字段；只存方案摘要，永不存日记/情绪原文）
   `CREATE TABLE IF NOT EXISTS student_problem_shares(
@@ -2059,6 +2065,47 @@ async function handleApi(req, env, url, ctx) {
     });
   }
 
+  // 学生端家长留言回复（v19，家长↔学生线学生侧写接口）：POST /api/client/parent-message
+  // 请求体 { s: <学生id 或 slug>, key: <访问密钥>, body: <留言正文> }。鉴权与 /api/client/message 一致
+  // （client_key 常量时间比对，失败一律 404）；正文 trim 后须非空且 ≤500 字，非法 400；
+  // 防刷：同一学生 60 秒内学生侧最多 3 条，超限 429。落库 sender='student'，家长侧未读。
+  // 与 student_messages（学生↔导师）、parent_messages（家长↔导师）三线独立，互不可见。
+  if (p === "/api/client/parent-message") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const locator = String((body && body.s) || "").trim();
+    const student = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : (locator ? await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(locator).first() : null);
+    const key = String((body && body.key) || "");
+    if (!student || !student.client_key || !timingSafeEq(key, String(student.client_key))) {
+      return jsonResp(req, { ok: false, error: "not found" }, 404);
+    }
+    const text = String((body && body.body) || "").trim();
+    if (!text) return jsonResp(req, { ok: false, error: "message required" }, 400);
+    if ([...text].length > MESSAGE_MAX_LEN) {
+      return jsonResp(req, { ok: false, error: "message too long (max " + MESSAGE_MAX_LEN + ")" }, 400);
+    }
+    const since = new Date(Date.now() - MESSAGE_RATE_WINDOW_MS).toISOString();
+    const recent = await db.prepare(
+      `SELECT COUNT(*) AS n FROM parent_student_messages WHERE student_id = ? AND sender = 'student' AND created_at >= ?`
+    ).bind(student.id, since).first();
+    if (recent && recent.n >= MESSAGE_RATE_LIMIT) {
+      return jsonResp(req, { ok: false, error: "too frequent, retry in a minute" }, 429);
+    }
+    const ts = nowIso();
+    const r = await db.prepare(
+      `INSERT INTO parent_student_messages(student_id, sender, body, created_at, read_by_parent, read_by_student)
+       VALUES(?, 'student', ?, ?, 0, 1)`
+    ).bind(student.id, text, ts).run();
+    return jsonResp(req, {
+      ok: true,
+      message: { id: r.meta.last_row_id, sender: "student", body: text, created_at: ts },
+    });
+  }
+
   // ===== v12 新增写接口（方案层同步 / 导师轨迹学生侧）=====
   // 共同口径：与留言接口同一鉴权（定位符 + client_key 常量时间比对，失败一律 404）；
   // 字段全部走白名单归一——请求体里夹带的 diary / journal / mood / emotion 等私密字段不读、不存、不回传。
@@ -2612,7 +2659,7 @@ async function handleApi(req, env, url, ctx) {
     const rowsOf = (r) => r.results || [];
     const [goal, goalLines, snaps, exams, courses, meetings, milestones, keyDates,
       actionRows, adviceRows, messageRows, problemRows, parentNoteRows, trailRows,
-      reqSets, reqRowsAll, primaryMentorRow, topicAssignRows, phdCheckRows, phdPaperRows] = await Promise.all([
+      reqSets, reqRowsAll, primaryMentorRow, topicAssignRows, phdCheckRows, phdPaperRows, psmRows] = await Promise.all([
       db.prepare(`SELECT * FROM student_goals WHERE student_id = ?`).bind(sid).first(),
       db.prepare(
         `SELECT * FROM student_goal_lines WHERE student_id = ? ORDER BY priority ASC, id ASC LIMIT 100`).bind(sid).all().then(rowsOf),
@@ -2665,6 +2712,9 @@ async function handleApi(req, env, url, ctx) {
         `SELECT * FROM student_phd_checks WHERE student_id = ? ORDER BY id ASC LIMIT 50`).bind(sid).all().then(rowsOf),
       db.prepare(
         `SELECT * FROM student_phd_papers WHERE student_id = ? ORDER BY id ASC LIMIT 100`).bind(sid).all().then(rowsOf),
+      // —— v19：家长↔学生线（只取本线，不过问家长↔导师线与学生↔导师线）——
+      db.prepare(
+        `SELECT * FROM parent_student_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(sid).all().then(rowsOf),
     ]);
     // 未读计数在标记已读之前计算：本次下发的 unread_mentor 反映「打开 APP 时有几条导师留言未读」，
     // 标记后下次 GET 归零；前端据此在「导师」页签亮红点。
@@ -2679,6 +2729,13 @@ async function handleApi(req, env, url, ctx) {
     if (unreadMentor) {
       await db.prepare(
         `UPDATE student_messages SET read_by_student = 1 WHERE student_id = ? AND sender = 'mentor' AND read_by_student = 0`
+      ).bind(sid).run();
+    }
+    // —— v19：家长↔学生线未读（家长发来的未读数；先计数、再标已读，与导师留言一致）——
+    const unreadParent = psmRows.filter((m) => m.sender === "parent" && !m.read_by_student).length;
+    if (unreadParent) {
+      await db.prepare(
+        `UPDATE parent_student_messages SET read_by_student = 1 WHERE student_id = ? AND sender = 'parent' AND read_by_student = 0`
       ).bind(sid).run();
     }
     const kTags = knowledgeTagsFor(goalLines, exams, goal);
@@ -2808,6 +2865,11 @@ async function handleApi(req, env, url, ctx) {
         mentor_name: m.mentor_id ? (msgMentorNames[m.mentor_id] || "") : "",
       })),
       unread_mentor: unreadMentor,
+      // —— v19：家长↔学生线（只下发本线；家长↔导师线、学生↔导师线互不可见）——
+      parent_thread: psmRows.map((m) => ({
+        id: m.id, sender: m.sender || "", body: m.body || "", created_at: m.created_at || "",
+      })),
+      unread_parent: unreadParent,
       pending_files: pendingFiles,
       // —— v15 多导师：可选收件导师（主导师在前、专题导师随后；只有定位符/姓名/专题，无密钥）——
       mentors: [
@@ -2887,6 +2949,46 @@ async function handleApi(req, env, url, ctx) {
     });
   }
 
+  // 家长端给孩子留言（v19，家长↔学生线家长侧写接口）：POST /api/parent/student-message
+  // 请求体 { s: <学生id 或 slug>, key: <家长密钥>, body: <留言正文> }。鉴权口径与 /api/parent/message 一致
+  // （校验 students.parent_key，交叉使用一律 404）；正文 trim 后须非空且 ≤500 字，非法 400；
+  // 防刷：同一学生 60 秒内家长侧最多 3 条，超限 429。落库 sender='parent'，学生侧未读。
+  if (p === "/api/parent/student-message") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const locator = String((body && body.s) || "").trim();
+    const student = /^\d+$/.test(locator)
+      ? await db.prepare(`SELECT * FROM students WHERE id = ?`).bind(parseInt(locator, 10)).first()
+      : (locator ? await db.prepare(`SELECT * FROM students WHERE slug = ?`).bind(locator).first() : null);
+    const key = String((body && body.key) || "");
+    if (!student || !student.parent_key || !timingSafeEq(key, String(student.parent_key))) {
+      return jsonResp(req, { ok: false, error: "not found" }, 404);
+    }
+    const text = String((body && body.body) || "").trim();
+    if (!text) return jsonResp(req, { ok: false, error: "message required" }, 400);
+    if ([...text].length > MESSAGE_MAX_LEN) {
+      return jsonResp(req, { ok: false, error: "message too long (max " + MESSAGE_MAX_LEN + ")" }, 400);
+    }
+    const since = new Date(Date.now() - MESSAGE_RATE_WINDOW_MS).toISOString();
+    const recent = await db.prepare(
+      `SELECT COUNT(*) AS n FROM parent_student_messages WHERE student_id = ? AND sender = 'parent' AND created_at >= ?`
+    ).bind(student.id, since).first();
+    if (recent && recent.n >= MESSAGE_RATE_LIMIT) {
+      return jsonResp(req, { ok: false, error: "too frequent, retry in a minute" }, 429);
+    }
+    const ts = nowIso();
+    const r = await db.prepare(
+      `INSERT INTO parent_student_messages(student_id, sender, body, created_at, read_by_parent, read_by_student)
+       VALUES(?, 'parent', ?, ?, 1, 0)`
+    ).bind(student.id, text, ts).run();
+    return jsonResp(req, {
+      ok: true,
+      message: { id: r.meta.last_row_id, sender: "parent", body: text, created_at: ts },
+    });
+  }
+
   // 家长端只读接口（v11）：GET /api/parent/<学生id 或 slug>?key=<家长密钥>。
   // 密钥为 students.parent_key（每名学生一个随机家长密钥），与学生端 client_key 独立：
   // 无 key / key 不对 / 学生不存在 / 拿学生密钥来查——一律 404，不暴露学生存在性。
@@ -2912,9 +3014,13 @@ async function handleApi(req, env, url, ctx) {
     const psid = student.id;
     // 性能优化（2026-10-22）：家长留言查询与展示区块构建彼此独立，并行执行；
     // 展示区块不读 parent_messages，未读计数与标记 UPDATE 仍在留言取回后按原顺序执行，响应不变。
-    const [pMsgRows, view] = await Promise.all([
+    const [pMsgRows, view, psmRows] = await Promise.all([
       db.prepare(
         `SELECT * FROM parent_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(psid).all()
+        .then((r) => r.results || []),
+      // —— v19：家长↔学生线（只取本线）——
+      db.prepare(
+        `SELECT * FROM parent_student_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(psid).all()
         .then((r) => r.results || []),
       // 展示区块（进展/托举/成就/一句话/日期提醒/需要关注）与学生端预览共用 parentViewSections，
       // 保证学生预览所见与家长实际所见逐键一致（v13.4）。
@@ -2927,6 +3033,13 @@ async function handleApi(req, env, url, ctx) {
         `UPDATE parent_messages SET read_by_parent = 1 WHERE student_id = ? AND sender = 'mentor' AND read_by_parent = 0`
       ).bind(psid).run();
     }
+    // —— v19：家长↔学生线未读（学生回给家长的未读数；先计数、再标已读，与导师留言一致）——
+    const unreadStudent = psmRows.filter((m) => m.sender === "student" && !m.read_by_parent).length;
+    if (unreadStudent) {
+      await db.prepare(
+        `UPDATE parent_student_messages SET read_by_parent = 1 WHERE student_id = ? AND sender = 'student' AND read_by_parent = 0`
+      ).bind(psid).run();
+    }
     return jsonResp(req, {
       ok: true,
       student: view.student,
@@ -2937,6 +3050,11 @@ async function handleApi(req, env, url, ctx) {
         body: m.body || "", created_at: m.created_at || "",
       })),
       unread_mentor_parent: unreadMentorParent,
+      // —— v19：家长↔学生线（只下发本线）——
+      student_thread: psmRows.map((m) => ({
+        id: m.id, sender: m.sender || "", body: m.body || "", created_at: m.created_at || "",
+      })),
+      unread_student: unreadStudent,
       // —— v13 ——
       achievements: view.achievements,
       student_notes: view.student_notes,

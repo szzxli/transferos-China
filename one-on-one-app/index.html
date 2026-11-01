@@ -358,6 +358,20 @@
         </div>
       </section>
 
+      <section class="card" id="sec-parent">
+        <h2 data-i18n="card.parent">家长留言</h2>
+        <div id="parent-thread"></div>
+        <form id="parent-form">
+          <label class="msg-label" for="parent-input" data-i18n="parent.label">给家长回一句话</label>
+          <textarea id="parent-input" rows="3" maxlength="500" data-i18n-ph="parent.ph" placeholder="写下想对家长说的话…"></textarea>
+          <div class="msg-bar">
+            <span id="parent-count" class="mut">0 / 500</span>
+            <button type="submit" id="parent-send" class="btn-send" data-i18n="parent.send">发送</button>
+          </div>
+          <p id="parent-err" class="err" hidden></p>
+        </form>
+      </section>
+
       <section class="card" id="sec-parent-note">
         <h2 data-i18n="card.parentNote">给爸妈的一句话</h2>
         <p class="mut" style="margin:0 0 8px" data-i18n="pnote.desc">写一句话主动发给爸妈看（可附一个心情标签）。这一句会以你的名义出现在家长页；家长页还会显示导师整理的进展、成就、需要关注和近期重要日子——点下方按钮可以预览爸妈看到的全部内容。日记和私密空间的内容永远不会发过去。</p>
@@ -484,6 +498,6 @@
 <script src="private.js?v=20261023.2"></script>
 <script src="problems.js?v=20261023.2"></script>
 <script src="majors.js?v=20261023.2"></script>
-<script src="app.js?v=20261024.2"></script>
+<script src="app.js?v=20261101.1"></script>
 </body>
 </html>

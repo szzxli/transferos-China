@@ -77,6 +77,14 @@ const I18N = {
     "msg.ph": "写下您想问导师的问题…",
     "msg.send": "发送",
     "msg.sending": "发送中…",
+    "child.title": "给孩子留言",
+    "child.label": "给孩子写句话",
+    "child.ph": "写下想对孩子说的话…",
+    "child.send": "发送",
+    "child.sending": "发送中…",
+    "child.emptyThread": "还没有和孩子聊过天，在这里写下第一句吧。",
+    "child.you": "我",
+    "child.child": "孩子",
     "msg.errEmpty": "先写点内容再发送",
     "msg.errTooLong": "留言太长了（最多 500 字）",
     "msg.errFreq": "发送太频繁，请过一分钟再试",
@@ -156,6 +164,14 @@ const I18N = {
     "msg.ph": "Write your question for the mentor…",
     "msg.send": "Send",
     "msg.sending": "Sending…",
+    "child.title": "Message your child",
+    "child.label": "Write to your child",
+    "child.ph": "Write something to your child…",
+    "child.send": "Send",
+    "child.sending": "Sending…",
+    "child.emptyThread": "No messages with your child yet — write the first one here.",
+    "child.you": "Me",
+    "child.child": "Child",
     "msg.errEmpty": "Write something first",
     "msg.errTooLong": "Message too long (max 500 characters)",
     "msg.errFreq": "Sending too fast — please wait a minute",
@@ -354,6 +370,62 @@ function renderHome(d) {
     ? '<div class="tl-title">' + esc(latest.title || "") + "</div>" + updateBodyHtml(latest)
     : '<p class="empty">' + esc(t("latest.empty")) + "</p>";
   renderParentExtras(d);
+  renderChildThread(d);
+}
+
+/* —— v19：给孩子留言（家长↔学生线；与家长↔导师线分开，导师不读此线） —— */
+function renderChildThread(d) {
+  const msgs = (d && d.student_thread) || [];
+  const box = $("child-thread");
+  if (!msgs.length) {
+    box.innerHTML = '<p class="empty">' + esc(t("child.emptyThread")) + "</p>";
+    return;
+  }
+  box.innerHTML = msgs.map((m) => {
+    const mine = m.sender === "parent";
+    const who = mine ? t("child.you") : t("child.child");
+    const when = m.created_at ? String(m.created_at).slice(0, 16).replace("T", " ") : "";
+    return '<div class="msg-row ' + (mine ? "mine" : "mentor") + '">' +
+      '<div class="msg-meta">' + esc(who) + (when ? " · " + esc(when) : "") + "</div>" +
+      '<div class="msg-bubble">' + esc(m.body) + "</div></div>";
+  }).join("");
+}
+function showChildErr(text) {
+  const e = $("child-err");
+  if (text) { e.textContent = text; e.hidden = false; } else { e.hidden = true; }
+}
+async function sendChildMessage(ev) {
+  ev.preventDefault();
+  const input = $("child-input");
+  const text = input.value.trim();
+  if (!text) { showChildErr(t("msg.errEmpty")); return; }
+  if ([...text].length > 500) { showChildErr(t("msg.errTooLong")); return; }
+  const btn = $("child-send");
+  btn.disabled = true; btn.textContent = t("child.sending");
+  showChildErr("");
+  const { s, k, api } = creds();
+  try {
+    const resp = await fetch(api + "/api/parent/student-message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ s, key: k, body: text }),
+    });
+    if (resp.status === 404) { showChildErr(t("msg.errGone")); return; }
+    if (resp.status === 429) { showChildErr(t("msg.errFreq")); return; }
+    if (!resp.ok) { showChildErr(t("msg.errNet")); return; }
+    const j = await resp.json();
+    if (!j || j.ok !== true) { showChildErr(t("msg.errNet")); return; }
+    if (lastData) {
+      lastData.student_thread = (lastData.student_thread || []).concat([j.message]);
+      renderChildThread(lastData);
+    }
+    input.value = "";
+    $("child-count").textContent = "0 / 500";
+  } catch (e) {
+    showChildErr(t("msg.errNet"));
+  } finally {
+    btn.disabled = false; btn.textContent = t("child.send");
+  }
 }
 
 /* —— v13：孩子的一句话 / 成就 / 重要日子（数据源均为方案层事实，见后台口径） —— */
@@ -512,6 +584,10 @@ $("lang-toggle").addEventListener("click", () => {
 $("msg-form").addEventListener("submit", sendMessage);
 $("msg-input").addEventListener("input", () => {
   $("msg-count").textContent = [...$("msg-input").value].length + " / 500";
+});
+$("child-form").addEventListener("submit", sendChildMessage);
+$("child-input").addEventListener("input", () => {
+  $("child-count").textContent = [...$("child-input").value].length + " / 500";
 });
 $("gate-form").addEventListener("submit", (ev) => {
   ev.preventDefault();

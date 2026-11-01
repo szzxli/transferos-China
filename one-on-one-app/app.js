@@ -102,6 +102,10 @@ const I18N = {
     "courses.termMeta": "{a} 门 · {b} 学分", "courses.unit": " 学分",
     "courses.empty": "暂无选课记录。",
     "msg.label": "给导师留言", "msg.ph": "写下你想对导师说的话…", "msg.send": "发送",
+    "card.parent": "家长留言",
+    "parent.label": "给家长回一句话", "parent.ph": "写下想对家长说的话…", "parent.send": "发送",
+    "parent.sending": "发送中…", "parent.emptyThread": "家长还没有给你留言",
+    "parent.you": "我", "parent.parent": "家长",
     "file.title": "导师发来的文件",
     "file.download": "下载",
     "file.from": "发送导师：{name}",
@@ -585,6 +589,10 @@ const I18N = {
     "courses.termMeta": "{a} courses · {b} credits", "courses.unit": " cr",
     "courses.empty": "No courses recorded yet.",
     "msg.label": "Message your mentor", "msg.ph": "Write what you'd like to tell your mentor…", "msg.send": "Send",
+    "card.parent": "Messages from parent",
+    "parent.label": "Reply to your parent", "parent.ph": "Write something to your parent…", "parent.send": "Send",
+    "parent.sending": "Sending…", "parent.emptyThread": "No messages from your parent yet.",
+    "parent.you": "Me", "parent.parent": "Parent",
     "file.title": "Files from your mentor",
     "file.download": "Download",
     "file.from": "From: {name}",
@@ -1297,8 +1305,8 @@ let lastData = null;
 const renderedTabs = {};
 function updateDot() {
   const dot = $("tab-dot");
-  // 导师页签红点：未读导师留言 或 导师待下载文件 任一 > 0 即亮
-  if (dot) dot.hidden = !(lastData && (Number(lastData.unread_mentor) > 0 || Number(lastData.pending_files) > 0));
+  // 导师页签红点：未读导师留言 或 未读家长留言 或 导师待下载文件 任一 > 0 即亮
+  if (dot) dot.hidden = !(lastData && (Number(lastData.unread_mentor) > 0 || Number(lastData.unread_parent) > 0 || Number(lastData.pending_files) > 0));
 }
 function switchTab(name) {
   if (!TABS.includes(name)) name = "home";
@@ -1308,7 +1316,7 @@ function switchTab(name) {
     document.querySelectorAll(".tab-btn").forEach((b) =>
       b.classList.toggle("on", b.getAttribute("data-tab") === tb && tb === name));
   }
-  if (name === "mentor" && lastData) { lastData.unread_mentor = 0; lastData.pending_files = 0; }
+  if (name === "mentor" && lastData) { lastData.unread_mentor = 0; lastData.unread_parent = 0; lastData.pending_files = 0; }
   if (lastData && renderedTabs[name] !== LANG) renderTab(name);
   updateDot();
   window.scrollTo(0, 0);
@@ -1845,6 +1853,62 @@ function renderMentor(d) {
   } else { ksec.hidden = true; }
   renderMentorPicker(d);
   renderThread(d);
+  renderParentThread(d);
+}
+/* —— v19：家长留言（家长↔学生线；与导师沟通线分开，导师不读此线） —— */
+function renderParentThread(d) {
+  const msgs = (d && d.parent_thread) || [];
+  const box = $("parent-thread");
+  if (!box) return;
+  if (!msgs.length) {
+    box.innerHTML = '<p class="empty">' + esc(t("parent.emptyThread")) + "</p>";
+    return;
+  }
+  box.innerHTML = msgs.map((m) => {
+    const mine = m.sender === "student";
+    const who = mine ? t("parent.you") : t("parent.parent");
+    const when = m.created_at ? String(m.created_at).slice(0, 16).replace("T", " ") : "";
+    return '<div class="msg-row ' + (mine ? "mine" : "mentor") + '">' +
+      '<div class="msg-meta">' + esc(who) + (when ? " · " + esc(when) : "") + "</div>" +
+      '<div class="msg-bubble">' + esc(m.body) + "</div></div>";
+  }).join("");
+}
+function showParentErr(text) {
+  const e = $("parent-err");
+  if (text) { e.textContent = text; e.hidden = false; } else { e.hidden = true; }
+}
+async function sendParentMessage(ev) {
+  ev.preventDefault();
+  const input = $("parent-input");
+  const text = input.value.trim();
+  if (!text) { showParentErr(t("msg.errEmpty")); return; }
+  if ([...text].length > 500) { showParentErr(t("msg.errTooLong")); return; }
+  const btn = $("parent-send");
+  btn.disabled = true; btn.textContent = t("parent.sending");
+  showParentErr("");
+  const { s, k, api } = creds();
+  try {
+    const resp = await fetch(api + "/api/client/parent-message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ s, key: k, body: text }),
+    });
+    if (resp.status === 404) { showParentErr(t("msg.errGone")); return; }
+    if (resp.status === 429) { showParentErr(t("msg.errFreq")); return; }
+    if (!resp.ok) { showParentErr(t("msg.errNet")); return; }
+    const j = await resp.json();
+    if (!j || j.ok !== true) { showParentErr(t("msg.errNet")); return; }
+    if (lastData) {
+      lastData.parent_thread = (lastData.parent_thread || []).concat([j.message]);
+      renderParentThread(lastData);
+    }
+    input.value = "";
+    $("parent-count").textContent = "0 / 500";
+  } catch (e) {
+    showParentErr(t("msg.errNet"));
+  } finally {
+    btn.disabled = false; btn.textContent = t("parent.send");
+  }
 }
 /* v15 多导师：留言收件人选择——导师多于一人时才出现；默认主导师，
  * 专题导师显示为「姓名（专题导师：专题名）」。单导师/无导师时整行隐藏，发送口径与 v14 一致。 */
@@ -3009,6 +3073,11 @@ document.addEventListener("click", (ev) => {
 $("msg-form").addEventListener("submit", sendMessage);
 $("msg-input").addEventListener("input", () => {
   $("msg-count").textContent = [...$("msg-input").value].length + " / 500";
+});
+/* v19：家长留言——家长↔学生线学生侧 */
+$("parent-form").addEventListener("submit", sendParentMessage);
+$("parent-input").addEventListener("input", () => {
+  $("parent-count").textContent = [...$("parent-input").value].length + " / 500";
 });
 /* v13.3：课程数据纠错——走既有导师留言通道，载荷只有课程代码 + 描述 + 类型标记，
  * 不带成绩、考试、关键日期或任何私密层内容；服务端按 category 白名单落库、导师侧可辨识。 */

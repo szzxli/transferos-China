@@ -113,6 +113,20 @@
         <h2 data-i18n="note.title">孩子想对您说</h2>
         <div id="note-body"></div>
       </section>
+      <!-- v19：给孩子留言（家长↔学生线；与家长↔导师线分开，孩子在学生端导师页下方看到并可回复） -->
+      <section class="card" id="card-child">
+        <h2 data-i18n="child.title">给孩子留言</h2>
+        <div id="child-thread"></div>
+        <form id="child-form">
+          <label class="msg-label" for="child-input" data-i18n="child.label">给孩子写句话</label>
+          <textarea id="child-input" rows="3" maxlength="600" data-i18n-ph="child.ph" placeholder="写下想对孩子说的话…"></textarea>
+          <p id="child-err" class="err" hidden></p>
+          <div class="msg-bar">
+            <span class="mut" id="child-count">0 / 500</span>
+            <button class="btn-send" id="child-send" type="submit" data-i18n="child.send">发送</button>
+          </div>
+        </form>
+      </section>
       <section class="card" id="card-ach">
         <h2 data-i18n="ach.title">最近的成就</h2>
         <div id="ach-body"></div>
@@ -183,6 +197,6 @@
   <button class="tab-btn" type="button" data-tab="mentor"><span class="tab-ic">💬</span><span data-i18n="tab.mentor">导师</span><span class="dot" id="tab-dot" hidden></span></button>
 </nav>
 
-<script src="parent.js?v=20261023.2"></script>
+<script src="parent.js?v=20261101.1"></script>
 </body>
 </html>

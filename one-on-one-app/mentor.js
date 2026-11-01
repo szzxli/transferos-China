@@ -77,6 +77,8 @@ const I18N = {
     "cm.emptyThreads": "暂时没有消息。有新留言时会出现在这里。",
     "cm.chStudent": "学生留言",
     "cm.chParent": "家长留言",
+    "cm.toParent": "给家长留言",
+    "cm.toParentPh": "写给家长的话…",
     "cm.back": "← 返回收件箱",
     "cm.replyPh": "写回复…",
     "cm.send": "发送",
@@ -159,6 +161,8 @@ const I18N = {
     "cm.emptyThreads": "No messages yet. New messages will appear here.",
     "cm.chStudent": "Student",
     "cm.chParent": "Parent",
+    "cm.toParent": "Message parent",
+    "cm.toParentPh": "Write to the parent…",
     "cm.back": "← Back to inbox",
     "cm.replyPh": "Write a reply…",
     "cm.send": "Send",
@@ -264,6 +268,7 @@ function render(d) {
   }
   box.innerHTML = d.students.map((blk, i) => studentHtml(blk, i)).join("");
   box.querySelectorAll("[data-reply]").forEach((btn) => btn.addEventListener("click", () => sendReply(btn)));
+  box.querySelectorAll("[data-parent-reply]").forEach((btn) => btn.addEventListener("click", () => sendParentReply(btn)));
   box.querySelectorAll("[data-filesend]").forEach((btn) => btn.addEventListener("click", () => sendMentorFile(btn)));
   d.students.forEach((blk, i) => { if (blk.student && blk.student.id) { loadMentorFiles(i, blk.student.id); loadStudentFiles(i, blk.student.id); } });
 }
@@ -305,6 +310,14 @@ function studentHtml(blk, i) {
     '<textarea rows="2" maxlength="500" placeholder="' + esc(t("wb.replyPh")) + '" id="wb-reply-' + i + '"></textarea>' +
     '<div class="msg-bar"><span class="mut" id="wb-status-' + i + '"></span>' +
     '<button type="button" class="btn-send" data-reply="' + i + '" data-student="' + stu.id + '">' + esc(t("wb.send")) + "</button></div></form>" +
+    /* v19：主导师给家长留言入口——家长线一直存在（parent_messages），但家长没留过言时收件箱里
+     * 没有家长条目、导师无处发起；这里直接走 /api/mentor/reply channel='parent' 建线，家长端导师
+     * 页即见、首页未读横幅即亮。专题卡不渲染（服务端对专题关系 channel='parent' 一律 404）。 */
+    '<h3 class="sub-h">' + esc(t("cm.toParent")) + "</h3>" +
+    '<form class="wb-reply-form" onsubmit="return false">' +
+    '<textarea rows="2" maxlength="500" placeholder="' + esc(t("cm.toParentPh")) + '" id="wb-parent-reply-' + i + '"></textarea>' +
+    '<div class="msg-bar"><span class="mut" id="wb-parent-status-' + i + '"></span>' +
+    '<button type="button" class="btn-send" data-parent-reply="' + i + '" data-student="' + stu.id + '">' + esc(t("cm.send")) + "</button></div></form>" +
     fileSectionHtml(stu, i) +
     "</section>";
 }
@@ -337,6 +350,36 @@ function topicStudentHtml(blk, i) {
     fileSectionHtml(stu, i) +
     "</section>";
 }
+async function sendParentReply(btn) {
+  const i = btn.getAttribute("data-parent-reply");
+  const sid = Number(btn.getAttribute("data-student"));
+  const inp = $("wb-parent-reply-" + i);
+  const text = (inp.value || "").trim();
+  const status = $("wb-parent-status-" + i);
+  if (!text) return;
+  const { s, k, api } = creds();
+  btn.disabled = true;
+  try {
+    const resp = await fetch(api + "/api/mentor/reply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ s, key: k, student_id: sid, channel: "parent", body: text }),
+    });
+    const j = await resp.json().catch(() => null);
+    if (resp.ok && j && j.ok) {
+      status.textContent = t("cm.sent");
+      inp.value = "";
+      load();
+    } else {
+      status.textContent = t("cm.sendFail");
+      btn.disabled = false;
+    }
+  } catch (e) {
+    status.textContent = t("cm.sendFail");
+    btn.disabled = false;
+  }
+}
+
 async function sendReply(btn) {
   const i = btn.getAttribute("data-reply");
   const sid = Number(btn.getAttribute("data-student"));
