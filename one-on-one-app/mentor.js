@@ -77,6 +77,10 @@ const I18N = {
     "cm.emptyThreads": "暂时没有消息。有新留言时会出现在这里。",
     "cm.chStudent": "学生留言",
     "cm.chParent": "家长留言",
+    "cm.chDm": "导师私信",
+    "dm.to": "发给",
+    "dm.ph": "写给这位导师的话…",
+    "dm.peerEmpty": "这个学生还没有其他导师",
     "cm.toParent": "给家长留言",
     "cm.toParentPh": "写给家长的话…",
     "cm.back": "← 返回收件箱",
@@ -161,6 +165,10 @@ const I18N = {
     "cm.emptyThreads": "No messages yet. New messages will appear here.",
     "cm.chStudent": "Student",
     "cm.chParent": "Parent",
+    "cm.chDm": "Mentor DM",
+    "dm.to": "To",
+    "dm.ph": "Write to this mentor…",
+    "dm.peerEmpty": "No other mentors for this student",
     "cm.toParent": "Message parent",
     "cm.toParentPh": "Write to the parent…",
     "cm.back": "← Back to inbox",
@@ -269,6 +277,7 @@ function render(d) {
   box.innerHTML = d.students.map((blk, i) => studentHtml(blk, i)).join("");
   box.querySelectorAll("[data-reply]").forEach((btn) => btn.addEventListener("click", () => sendReply(btn)));
   box.querySelectorAll("[data-parent-reply]").forEach((btn) => btn.addEventListener("click", () => sendParentReply(btn)));
+  box.querySelectorAll("[data-dm-send]").forEach((btn) => btn.addEventListener("click", () => sendDmFromCard(btn)));
   box.querySelectorAll("[data-filesend]").forEach((btn) => btn.addEventListener("click", () => sendMentorFile(btn)));
   d.students.forEach((blk, i) => { if (blk.student && blk.student.id) { loadMentorFiles(i, blk.student.id); loadStudentFiles(i, blk.student.id); } });
 }
@@ -318,6 +327,7 @@ function studentHtml(blk, i) {
     '<textarea rows="2" maxlength="500" placeholder="' + esc(t("cm.toParentPh")) + '" id="wb-parent-reply-' + i + '"></textarea>' +
     '<div class="msg-bar"><span class="mut" id="wb-parent-status-' + i + '"></span>' +
     '<button type="button" class="btn-send" data-parent-reply="' + i + '" data-student="' + stu.id + '">' + esc(t("cm.send")) + "</button></div></form>" +
+    dmComposerHtml(blk, i) +
     fileSectionHtml(stu, i) +
     "</section>";
 }
@@ -347,6 +357,7 @@ function topicStudentHtml(blk, i) {
     '<textarea rows="2" maxlength="500" placeholder="' + esc(t("wb.replyPh")) + '" id="wb-reply-' + i + '"></textarea>' +
     '<div class="msg-bar"><span class="mut" id="wb-status-' + i + '"></span>' +
     '<button type="button" class="btn-send" data-reply="' + i + '" data-student="' + stu.id + '">' + esc(t("wb.send")) + "</button></div></form>" +
+    dmComposerHtml(blk, i) +
     fileSectionHtml(stu, i) +
     "</section>";
 }
@@ -364,6 +375,53 @@ async function sendParentReply(btn) {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ s, key: k, student_id: sid, channel: "parent", body: text }),
+    });
+    const j = await resp.json().catch(() => null);
+    if (resp.ok && j && j.ok) {
+      status.textContent = t("cm.sent");
+      inp.value = "";
+      load();
+    } else {
+      status.textContent = t("cm.sendFail");
+      btn.disabled = false;
+    }
+  } catch (e) {
+    status.textContent = t("cm.sendFail");
+    btn.disabled = false;
+  }
+}
+
+/* v20：导师私信卡片入口——只列同学生的其他导师（不含本人）；无其他导师时只显示一句话，不渲染表单。
+ * 私聊口径：线程只两人可见，创始人不全局可见；学生、家长均不可见此线。 */
+function dmComposerHtml(blk, i) {
+  const fellows = blk.fellow_mentors || [];
+  if (!fellows.length) return '<p class="mut">' + esc(t("dm.peerEmpty")) + "</p>";
+  const stu = blk.student;
+  return '<h3 class="sub-h">' + esc(t("cm.chDm")) + "</h3>" +
+    '<form class="wb-reply-form" onsubmit="return false">' +
+    '<div style="margin:0 0 8px"><label class="msg-label" for="wb-dm-peer-' + i + '">' + esc(t("dm.to")) + "</label> " +
+    '<select id="wb-dm-peer-' + i + '">' + fellows.map((f) =>
+      '<option value="' + f.id + '">' + esc(f.name || "") +
+      (f.role === "topic" && f.topic ? "（" + esc(f.topic) + "）" : "") + "</option>").join("") + "</select></div>" +
+    '<textarea rows="2" maxlength="500" placeholder="' + esc(t("dm.ph")) + '" id="wb-dm-reply-' + i + '"></textarea>' +
+    '<div class="msg-bar"><span class="mut" id="wb-dm-status-' + i + '"></span>' +
+    '<button type="button" class="btn-send" data-dm-send="' + i + '" data-student="' + stu.id + '">' + esc(t("cm.send")) + "</button></div></form>";
+}
+async function sendDmFromCard(btn) {
+  const i = btn.getAttribute("data-dm-send");
+  const sid = Number(btn.getAttribute("data-student"));
+  const sel = $("wb-dm-peer-" + i);
+  const inp = $("wb-dm-reply-" + i);
+  const text = (inp.value || "").trim();
+  const status = $("wb-dm-status-" + i);
+  if (!text || !sel || !sel.value) return;
+  const { s, k, api } = creds();
+  btn.disabled = true;
+  try {
+    const resp = await fetch(api + "/api/mentor/dm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ s, key: k, student_id: sid, to_staff_id: Number(sel.value), body: text }),
     });
     const j = await resp.json().catch(() => null);
     if (resp.ok && j && j.ok) {
@@ -441,11 +499,13 @@ function renderInbox(d) {
     return;
   }
   box.innerHTML = threads.map((th) => {
-    const chLabel = th.channel === "parent" ? t("cm.chParent") : t("cm.chStudent");
+    const chLabel = th.channel === "parent" ? t("cm.chParent") : th.channel === "dm" ? t("cm.chDm") : t("cm.chStudent");
     const excerpt = (th.last && th.last.sender === "mentor" ? t("cm.youPrefix") : "") + (th.last ? th.last.body || "" : "");
+    const displayName = th.channel === "dm" ? ((th.peer_name || "") + " · " + (th.student_name || "")) : (th.student_name || "");
     return '<button type="button" class="inbox-row" data-th-student="' + th.student_id +
-      '" data-th-channel="' + esc(th.channel || "student") + '" data-th-name="' + esc(th.student_name || "") + '">' +
-      '<span class="inbox-main"><span class="inbox-top"><span class="inbox-name">' + esc(th.student_name || "") + "</span>" +
+      '" data-th-channel="' + esc(th.channel || "student") + '" data-th-name="' + esc(th.student_name || "") + '"' +
+      (th.channel === "dm" ? ' data-th-peer="' + th.peer_id + '" data-th-peer-name="' + esc(th.peer_name || "") + '"' : "") + ">" +
+      '<span class="inbox-main"><span class="inbox-top"><span class="inbox-name">' + esc(displayName) + "</span>" +
       '<span class="pill">' + esc(chLabel) + "</span></span>" +
       '<span class="inbox-excerpt">' + esc(excerpt) + "</span></span>" +
       '<span class="inbox-side"><span class="inbox-time">' +
@@ -455,16 +515,20 @@ function renderInbox(d) {
   }).join("");
   box.querySelectorAll("[data-th-student]").forEach((el) => el.addEventListener("click", () => {
     openThread(Number(el.getAttribute("data-th-student")), el.getAttribute("data-th-channel") || "student",
-      el.getAttribute("data-th-name") || "");
+      el.getAttribute("data-th-name") || "", Number(el.getAttribute("data-th-peer") || 0),
+      el.getAttribute("data-th-peer-name") || "");
   }));
 }
-async function openThread(studentId, channel, name) {
+async function openThread(studentId, channel, name, peerId, peerName) {
   const { s, k, api } = creds();
-  curThread = { student_id: studentId, channel: channel === "parent" ? "parent" : "student", name: name || "" };
+  const ch = channel === "parent" ? "parent" : channel === "dm" ? "dm" : "student";
+  curThread = { student_id: studentId, channel: ch, name: name || "", peer_id: peerId || 0, peer_name: peerName || "" };
   $("thread-card").hidden = false;
-  /* 2026-10-24 导师轻量改进：创始人本人不显示“转给创始人”。 */
-  $("th-forward").hidden = !!(lastData && lastData.mentor && lastData.mentor.emp_no === "EMP-001");
-  $("th-title").textContent = (name || "") + " · " + (curThread.channel === "parent" ? t("cm.chParent") : t("cm.chStudent"));
+  /* 2026-10-24 导师轻量改进：创始人本人不显示“转给创始人”。v20：导师私信永不转发（只两人可见）。 */
+  $("th-forward").hidden = ch === "dm" || !!(lastData && lastData.mentor && lastData.mentor.emp_no === "EMP-001");
+  $("th-title").textContent = ch === "dm"
+    ? (peerName || "") + " · " + t("cm.chDm")
+    : (name || "") + " · " + (ch === "parent" ? t("cm.chParent") : t("cm.chStudent"));
   $("th-msgs").innerHTML = '<p class="empty">' + esc(t("cm.loading")) + "</p>";
   $("th-status").textContent = "";
   $("th-input").value = "";
@@ -473,7 +537,8 @@ async function openThread(studentId, channel, name) {
   try {
     const resp = await fetch(api + "/api/mentor/thread/" + encodeURIComponent(s) +
       "?key=" + encodeURIComponent(k) + "&student_id=" + encodeURIComponent(studentId) +
-      "&channel=" + encodeURIComponent(curThread.channel),
+      "&channel=" + encodeURIComponent(ch) +
+      (ch === "dm" ? "&peer_id=" + encodeURIComponent(curThread.peer_id) : ""),
       { headers: { Accept: "application/json" }, signal: fetchTimeout(10000) });
     if (resp.ok) d = await resp.json();
   } catch (e) { /* 失败提示 */ }
@@ -484,7 +549,10 @@ async function openThread(studentId, channel, name) {
   lastThread = d;
   if (d.student && d.student.name) {
     curThread.name = d.student.name;
-    $("th-title").textContent = d.student.name + " · " + (curThread.channel === "parent" ? t("cm.chParent") : t("cm.chStudent"));
+    if (d.peer) { curThread.peer_id = d.peer.id; curThread.peer_name = d.peer.name; }
+    $("th-title").textContent = curThread.channel === "dm"
+      ? (curThread.peer_name || "") + " · " + t("cm.chDm")
+      : d.student.name + " · " + (curThread.channel === "parent" ? t("cm.chParent") : t("cm.chStudent"));
   }
   renderThreadMsgs();
   loadInbox(); // 打开即已读 → 刷新徽标与列表未读
@@ -499,7 +567,7 @@ function renderThreadMsgs() {
     return;
   }
   box.innerHTML = msgs.map((m) => {
-    const mine = m.sender === "mentor";
+    const mine = m.sender === "mentor" || m.sender === "me";
     const when = String(m.created_at || "").slice(0, 16).replace("T", " ");
     const who = m.sender_label || (mine ? "" : "");
     return '<div class="msg-row ' + (mine ? "mine" : "mentor") + '">' +
@@ -524,10 +592,13 @@ async function sendThreadReply() {
   const btn = $("th-send");
   btn.disabled = true;
   try {
-    const resp = await fetch(api + "/api/mentor/reply", {
+    const isDm = curThread.channel === "dm";
+    const resp = await fetch(api + (isDm ? "/api/mentor/dm" : "/api/mentor/reply"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ s, key: k, student_id: curThread.student_id, channel: curThread.channel, body: text }),
+      body: JSON.stringify(isDm
+        ? { s, key: k, student_id: curThread.student_id, to_staff_id: curThread.peer_id, body: text }
+        : { s, key: k, student_id: curThread.student_id, channel: curThread.channel, body: text }),
     });
     const j = await resp.json().catch(() => null);
     if (resp.ok && j && j.ok) {
@@ -640,7 +711,9 @@ $("lang-toggle").addEventListener("click", () => {
   if (lastData) render(lastData);
   if (lastInbox) renderInbox(lastInbox);
   if (curThread && lastThread) {
-    $("th-title").textContent = (curThread.name || "") + " · " +
+    $("th-title").textContent = curThread.channel === "dm"
+      ? (curThread.peer_name || "") + " · " + t("cm.chDm")
+      : (curThread.name || "") + " · " +
       (curThread.channel === "parent" ? t("cm.chParent") : t("cm.chStudent"));
     renderThreadMsgs();
   }
