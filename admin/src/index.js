@@ -1347,6 +1347,12 @@ const DDL = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
     sender TEXT DEFAULT 'parent', body TEXT, created_at TEXT,
     read_by_parent INTEGER DEFAULT 0, read_by_student INTEGER DEFAULT 0)`,
+  // 导师私信（v20 新增；同学生的导师之间两人私聊；from/to 均为 staff；
+  // 只两人可见，创始人不全局可见；家长、学生均不可见）
+  `CREATE TABLE IF NOT EXISTS mentor_messages(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+    from_staff_id INTEGER, to_staff_id INTEGER, body TEXT, created_at TEXT,
+    read_by_recipient INTEGER DEFAULT 0)`,
   // ===== v12 新增表 =====
   // 问题方案层（学生逐项确认后同步的结构化字段；只存方案摘要，永不存日记/情绪原文）
   `CREATE TABLE IF NOT EXISTS student_problem_shares(
@@ -3014,7 +3020,7 @@ async function handleApi(req, env, url, ctx) {
     const psid = student.id;
     // 性能优化（2026-10-22）：家长留言查询与展示区块构建彼此独立，并行执行；
     // 展示区块不读 parent_messages，未读计数与标记 UPDATE 仍在留言取回后按原顺序执行，响应不变。
-    const [pMsgRows, view, psmRows] = await Promise.all([
+    const [pMsgRows, psmRows, view] = await Promise.all([
       db.prepare(
         `SELECT * FROM parent_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(psid).all()
         .then((r) => r.results || []),
@@ -3263,6 +3269,56 @@ async function handleApi(req, env, url, ctx) {
     return jsonResp(req, { ok: true, outbox_id: outboxId });
   }
 
+  // 导师私信发送（v20）：POST /api/mentor/dm { s: <staff id 或 emp_no>, key, student_id, to_staff_id, body }。
+  // 路由注意：必须排在下方 mentorApiMatch 之前（其单段正则会吞 /api/mentor/dm，POST 会被 405）。
+  // 私聊口径（创始人定版）：只限同学生的导师之间（主导师↔专题导师、专题导师↔专题导师），
+  // 线程只两人可见——创始人不全局可见，只看发给自己的；家长、学生均不可见此线。
+  // 鉴权：发送方 mentor_key；学生须属于发送方（主导师或专题指派）；收件方须同属该学生；
+  // 发送方 ≠ 收件方；正文 trim 后非空且 ≤500 字；防刷：同一发送方 60 秒内最多 3 条。
+  // 收件方可通知时进其发件箱（邮件渠道沿既有 outbox 机制）；不可通知时只留收件箱徽标，不 409。
+  if (p === "/api/mentor/dm") {
+    if (req.method !== "POST") return jsonResp(req, { ok: false, error: "method" }, 405);
+    let body;
+    try { body = await req.json(); } catch { return jsonResp(req, { ok: false, error: "bad json" }, 400); }
+    await ensureSchema(db);
+    const staff = await findMentor(String((body && body.s) || ""), String((body && body.key) || ""));
+    if (!staff) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const sid = toInt(body && body.student_id, 0);
+    const stu = sid ? await db.prepare(
+      `SELECT id, name, slug, mentor_id FROM students WHERE id = ?`).bind(sid).first() : null;
+    const rel = stu ? await mentorStudentRelation(db, staff, stu) : null;
+    if (!stu || !rel) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const peerId = toInt(body && body.to_staff_id, 0);
+    const peer = peerId ? await db.prepare(`SELECT * FROM staff WHERE id = ?`).bind(peerId).first() : null;
+    const peerRel = peer ? await mentorStudentRelation(db, peer, stu) : null;
+    if (!peer || !peerRel || peerId === staff.id) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    const text = String((body && body.body) || "").trim();
+    if (!text) return jsonResp(req, { ok: false, error: "message required" }, 400);
+    if ([...text].length > MESSAGE_MAX_LEN) {
+      return jsonResp(req, { ok: false, error: "message too long (max " + MESSAGE_MAX_LEN + ")" }, 400);
+    }
+    const since = new Date(Date.now() - MESSAGE_RATE_WINDOW_MS).toISOString();
+    const recent = await db.prepare(
+      `SELECT COUNT(*) AS n FROM mentor_messages WHERE from_staff_id = ? AND created_at >= ?`
+    ).bind(staff.id, since).first();
+    if (recent && recent.n >= MESSAGE_RATE_LIMIT) {
+      return jsonResp(req, { ok: false, error: "too frequent, retry in a minute" }, 429);
+    }
+    const ts = nowIso();
+    const r = await db.prepare(
+      `INSERT INTO mentor_messages(student_id, from_staff_id, to_staff_id, body, created_at, read_by_recipient)
+       VALUES(?, ?, ?, ?, ?, 0)`
+    ).bind(stu.id, staff.id, peerId, text, ts).run();
+    if (mentorNotifiable(peer)) {
+      await pushOutbox(env, db, peer, stu.id, "mentor_dm",
+        (staff.name || "导师") + "发来一条导师私信", "message", r.meta.last_row_id);
+    }
+    return jsonResp(req, {
+      ok: true,
+      message: { id: r.meta.last_row_id, sender: "me", sender_label: "我", body: text, created_at: ts },
+    });
+  }
+
   const mentorApiMatch = p.match(/^\/api\/mentor\/([A-Za-z0-9][A-Za-z0-9-]*)$/);
   if (mentorApiMatch && mentorApiMatch[1] !== "reply") {
     if (req.method !== "GET") return jsonResp(req, { ok: false, error: "method" }, 405);
@@ -3351,6 +3407,25 @@ async function handleApi(req, env, url, ctx) {
           created_at: r.created_at || "", updated_at: r.updated_at || "",
         })),
       });
+    }
+    // —— v20：导师私信收件人（同学生的其他导师；不含本人）——
+    for (const blk of studentBlocks) {
+      const sid = blk.student.id;
+      const stuRow = await db.prepare(`SELECT mentor_id FROM students WHERE id = ?`).bind(sid).first();
+      const fellows = [];
+      if (stuRow && stuRow.mentor_id && Number(stuRow.mentor_id) !== staff.id) {
+        const m = await db.prepare(`SELECT id, name, emp_no FROM staff WHERE id = ?`).bind(stuRow.mentor_id).first();
+        if (m) fellows.push({ id: m.id, name: m.name || "", emp_no: m.emp_no || "", role: "primary", topic: "" });
+      }
+      const tRows = (await db.prepare(
+        `SELECT s.id AS id, s.name AS name, s.emp_no AS emp_no, tm.topic AS topic
+         FROM student_topic_mentors tm JOIN staff s ON s.id = tm.staff_id
+         WHERE tm.student_id = ? ORDER BY tm.id ASC`).bind(sid).all()).results || [];
+      for (const t of tRows) {
+        if (Number(t.id) === staff.id) continue;
+        fellows.push({ id: t.id, name: t.name || "", emp_no: t.emp_no || "", role: "topic", topic: t.topic || "" });
+      }
+      blk.fellow_mentors = fellows;
     }
     return jsonResp(req, {
       ok: true,
@@ -3460,7 +3535,7 @@ async function handleApi(req, env, url, ctx) {
     }
     const perStudent = await Promise.all(rels.map(async ({ stu, relation, topic }) => {
       const isTopic = relation === "topic";
-      const [sLast, sUnread, pLast, pUnread] = await Promise.all([
+      const [sLast, sUnread, pLast, pUnread, dmRows] = await Promise.all([
         isTopic
           ? db.prepare(`SELECT id, sender, body, created_at, category FROM student_messages WHERE student_id = ? AND mentor_id = ? ORDER BY id DESC LIMIT 1`).bind(stu.id, staff.id).first()
           : db.prepare(`SELECT id, sender, body, created_at, category FROM student_messages WHERE student_id = ? ORDER BY id DESC LIMIT 1`).bind(stu.id).first(),
@@ -3473,11 +3548,25 @@ async function handleApi(req, env, url, ctx) {
         isTopic
           ? Promise.resolve(null)
           : db.prepare(`SELECT COUNT(*) AS n FROM parent_messages WHERE student_id = ? AND sender = 'parent' AND read_by_mentor = 0`).bind(stu.id).first(),
+        // —— v20：导师私信（本学生下与本人往来的全部私信，id 倒序；分组在下方做）——
+        db.prepare(
+          `SELECT * FROM mentor_messages WHERE student_id = ? AND (from_staff_id = ? OR to_staff_id = ?) ORDER BY id DESC LIMIT 200`
+        ).bind(stu.id, staff.id, staff.id).all().then((r) => r.results || []),
       ]);
-      return { stu, relation, topic, sLast, sUnread: sUnread ? sUnread.n : 0, pLast, pUnread: pUnread ? pUnread.n : 0 };
+      return { stu, relation, topic, sLast, sUnread: sUnread ? sUnread.n : 0, pLast, pUnread: pUnread ? pUnread.n : 0, dmRows };
     }));
+    // —— v20：私信对方姓名（一次 IN 查询）——
+    const dmPeerIds = [...new Set(perStudent.flatMap((x) => (x.dmRows || []).map((m) =>
+      m.from_staff_id === staff.id ? m.to_staff_id : m.from_staff_id)).filter(Boolean))];
+    const dmPeerNames = {};
+    if (dmPeerIds.length) {
+      const nameRows = (await db.prepare(
+        `SELECT id, name FROM staff WHERE id IN (${dmPeerIds.map(() => "?").join(",")})`
+      ).bind(...dmPeerIds).all()).results || [];
+      for (const r of nameRows) dmPeerNames[r.id] = r.name || "";
+    }
     const threads = [];
-    for (const { stu, relation, topic, sLast, sUnread, pLast, pUnread } of perStudent) {
+    for (const { stu, relation, topic, sLast, sUnread, pLast, pUnread, dmRows } of perStudent) {
       if (sLast) threads.push({
         student_id: stu.id, student_name: stu.name || "", slug: stu.slug || "",
         channel: "student", channel_label: "学生留言",
@@ -3492,6 +3581,25 @@ async function handleApi(req, env, url, ctx) {
         last: { id: pLast.id, sender: pLast.sender || "", body: String(pLast.body || "").slice(0, 120), created_at: pLast.created_at || "" },
         unread: pUnread,
       });
+      // —— v20：导师私信条目（按对方导师分组；只两人可见）——
+      const dmByPeer = new Map();
+      for (const m of (dmRows || [])) {
+        const peerId = m.from_staff_id === staff.id ? m.to_staff_id : m.from_staff_id;
+        if (!dmByPeer.has(peerId)) dmByPeer.set(peerId, []);
+        dmByPeer.get(peerId).push(m);
+      }
+      for (const [peerId, rows] of dmByPeer) {
+        const last = rows[0];
+        const unread = rows.filter((m) => m.to_staff_id === staff.id && !m.read_by_recipient).length;
+        threads.push({
+          student_id: stu.id, student_name: stu.name || "", slug: stu.slug || "",
+          channel: "dm", channel_label: "导师私信",
+          relation, topic, peer_id: peerId, peer_name: dmPeerNames[peerId] || "",
+          last: { id: last.id, sender: last.from_staff_id === staff.id ? "mentor" : "peer",
+            body: String(last.body || "").slice(0, 120), created_at: last.created_at || "" },
+          unread,
+        });
+      }
     }
     threads.sort((a, b) => (b.last.created_at || "").localeCompare(a.last.created_at || "") || b.last.id - a.last.id);
     return jsonResp(req, {
@@ -3521,8 +3629,37 @@ async function handleApi(req, env, url, ctx) {
     const rel = stu ? await mentorStudentRelation(db, staff, stu) : null;
     if (!stu || !rel) return jsonResp(req, { ok: false, error: "not found" }, 404);
     const isTopic = rel.relation === "topic";
-    const channel = url.searchParams.get("channel") === "parent" ? "parent" : "student";
+    const channelParam = url.searchParams.get("channel");
+    const channel = channelParam === "parent" ? "parent" : channelParam === "dm" ? "dm" : "student";
     if (channel === "parent" && isTopic) return jsonResp(req, { ok: false, error: "not found" }, 404);
+    if (channel === "dm") {
+      // —— v20：导师私信线程（只两人可见；对方须同属该学生；打开即把对方发来的标已读）——
+      const peerId = toInt(url.searchParams.get("peer_id"), 0);
+      const peer = peerId ? await db.prepare(`SELECT * FROM staff WHERE id = ?`).bind(peerId).first() : null;
+      const peerRel = peer ? await mentorStudentRelation(db, peer, stu) : null;
+      if (!peer || !peerRel || peerId === staff.id) return jsonResp(req, { ok: false, error: "not found" }, 404);
+      const rows = (await db.prepare(
+        `SELECT * FROM mentor_messages WHERE student_id = ? AND ((from_staff_id = ? AND to_staff_id = ?) OR (from_staff_id = ? AND to_staff_id = ?)) ORDER BY id ASC LIMIT 500`
+      ).bind(stu.id, staff.id, peerId, peerId, staff.id).all()).results || [];
+      const unreadBefore = rows.filter((m) => m.to_staff_id === staff.id && !m.read_by_recipient).length;
+      if (unreadBefore) {
+        await db.prepare(
+          `UPDATE mentor_messages SET read_by_recipient = 1 WHERE student_id = ? AND from_staff_id = ? AND to_staff_id = ? AND read_by_recipient = 0`
+        ).bind(stu.id, peerId, staff.id).run();
+      }
+      const peerName = peer.name || "";
+      return jsonResp(req, {
+        ok: true,
+        student: { id: stu.id, name: stu.name || "", slug: stu.slug || "" },
+        channel, unread_before: unreadBefore,
+        peer: { id: peer.id, name: peerName },
+        messages: rows.map((m) => {
+          const mine = m.from_staff_id === staff.id;
+          return { id: m.id, sender: mine ? "me" : "peer", sender_label: mine ? "我" : peerName,
+            body: m.body || "", created_at: m.created_at || "" };
+        }),
+      });
+    }
     if (channel === "parent") {
       const rows = (await db.prepare(
         `SELECT * FROM parent_messages WHERE student_id = ? ORDER BY id ASC LIMIT 500`).bind(stu.id).all()).results || [];
