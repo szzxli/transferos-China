@@ -23,3 +23,9 @@ bucket_name = "transferos-files"
 [triggers]
 crons = ["*/15 * * * *"]
 
+
+
+[previews]
+[[previews.r2_buckets]]
+binding = "FILES"
+bucket_name = "transferos-admin-preview"
