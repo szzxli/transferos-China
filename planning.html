@@ -170,11 +170,11 @@
   <div class="card">
     <div class="section-title">🎓 UC 阶段（2 年，非居民）</div>
     <table class="nums">
-      <tr><td>学费与杂费（非居民）</td><td>$56,000 / 年</td></tr>
-      <tr><td>生活费与保险（住校）</td><td>$28,000 / 年</td></tr>
-      <tr><td>UC 阶段小计（2 年）</td><td id="ucSub">$168,000</td></tr>
+      <tr><td>学费（非居民）</td><td>$57,300 / 年</td></tr>
+      <tr><td>生活费、保险及其他（住校）</td><td>$32,800 / 年</td></tr>
+      <tr><td>UC 阶段小计（2 年）</td><td id="ucSub">$180,200</td></tr>
     </table>
-    <div class="hint">取加州大学官网 2026-27 学年非居民就读成本的平均数取整（洛杉矶分校全年 $84,623、欧文分校住校约 $85,277）；各校略有差异。</div>
+    <div class="hint">取加州大学官网 2027-28 学年非居民就读成本：学费 $57,300／年，住校总成本 $90,100／年（已含校园杂费、住宿伙食、保险及其他间接开销）；各校略有差异。来源：加州大学官网学费与就读成本页。</div>
   </div>
 
   <div class="card">
@@ -182,16 +182,16 @@
     <table class="nums">
       <tr><td>CC 学费小计</td><td id="ccSub">$17,040</td></tr>
       <tr id="livingRow" hidden><td>CC 阶段生活费小计</td><td id="livingRowVal">$33,930</td></tr>
-      <tr><td>UC 阶段小计</td><td>$168,000</td></tr>
-      <tr class="total"><td><b>合计</b></td><td id="total">$185,040</td></tr>
+      <tr><td>UC 阶段小计</td><td>$180,200</td></tr>
+      <tr class="total"><td><b>合计</b></td><td id="total">$197,240</td></tr>
     </table>
     <div class="verdict ok" style="margin-top:12px">
-      🆚 传统四年美国留学约 $336,000<br>
+      🆚 传统四年美国留学约 $360,400<br>
       <span class="big-num" id="savePct">45%</span> 费用节省（诚实测算）
     </div>
     <div class="footnote">
-      学费每年调整，此为 2026-27 口径估算。基线 = 四年直读非居民成本 $84,000／年 × 4 年。线上模式的社区大学阶段按居家线上计（生活费 0）；赴美模式另含 De Anza 官网 F-1 生活费估算（不含往返机票等杂费）；两个模式的加州大学阶段都按住校成本计。<br>
-      所有单价均为官网已核实数字；我们从不编数字。
+      学费每年调整，此为 2027-28 口径估算。基线 = 四年直读非居民成本 $90,100／年 × 4 年。线上模式的社区大学阶段按居家线上计（生活费 0）；赴美模式另含 De Anza 官网 F-1 生活费估算（不含往返机票等杂费）；两个模式的加州大学阶段都按住校成本计。<br>
+      单价来自官网，标注年份，按年更新。
     </div>
     <a class="btn mt" href="transfer.html#sec-guide">下一步：入学指南 →</a>
   </div>
@@ -206,18 +206,18 @@
       <input type="number" id="cuLiving" value="0" min="0" step="100"></div>
     <div class="field"><label for="cuYears">社区大学就读年数</label>
       <input type="number" id="cuYears" value="2" min="0" step="0.5"></div>
-    <div class="field"><label for="cuUcTuition">加州大学每年学费与杂费（美元）</label>
-      <input type="number" id="cuUcTuition" value="56000" min="0" step="500"></div>
-    <div class="field"><label for="cuUcLiving">加州大学每年生活费与保险（美元）</label>
-      <input type="number" id="cuUcLiving" value="28000" min="0" step="500"></div>
+    <div class="field"><label for="cuUcTuition">加州大学每年学费（美元）</label>
+      <input type="number" id="cuUcTuition" value="57300" min="0" step="500"></div>
+    <div class="field"><label for="cuUcLiving">加州大学每年生活费、保险及其他（美元）</label>
+      <input type="number" id="cuUcLiving" value="32800" min="0" step="500"></div>
     <div class="field"><label for="cuBase">对比基线：四年直读每年总预算（美元，口径要一致）</label>
-      <input type="number" id="cuBase" value="84000" placeholder="例如 84000" min="0" step="1000"></div>
+      <input type="number" id="cuBase" value="90100" placeholder="例如 90100" min="0" step="1000"></div>
     <table class="nums">
-      <tr><td>这条通道总计</td><td id="cuTotal">$185,040</td></tr>
-      <tr><td>四年直读总计</td><td id="cuBaseTotal">$336,000</td></tr>
+      <tr><td>这条通道总计</td><td id="cuTotal">$197,240</td></tr>
+      <tr><td>四年直读总计</td><td id="cuBaseTotal">$360,400</td></tr>
     </table>
     <div class="verdict ok" id="cuVerdict">填入对比基线后，这里显示节省比例。</div>
-    <p class="hint">默认值不是猜的：取加州大学官网 2026-27 学年非居民就读成本——洛杉矶分校全年 $84,623（学费与杂费 $55,976 ＋ 生活费与保险 $28,647），欧文分校住校全年约 $85,277。本表取整：学费与杂费 $56,000、生活费与保险 $28,000、直读基线 $84,000／年。确定目标学校后，请按该校官网数字修改。</p>
+    <p class="hint">默认值不是猜的：取加州大学官网 2027-28 学年非居民就读成本：学费 $57,300，住校总成本 $90,100；本表拆分：学费 $57,300、生活费、保险及其他 $32,800。确定目标学校后，请按该校官网数字修改。</p>
   </div>
 <script>
 (function () {
@@ -770,7 +770,7 @@ useSavedPlan();
 togNavActive("planning");
 
 /* ---- 纯逻辑：可在 node 里单元测试 ---- */
-var UC_YEAR = 56000, UC_LIVING_YEAR = 28000, UC_YEARS = 2, TRADITIONAL = 336000;
+var UC_YEAR = 57300, UC_LIVING_YEAR = 32800, UC_YEARS = 2, TRADITIONAL = 360400;
 var LIVING_YEAR = 16965; /* 1665+1500+10300+3500, De Anza F-1 官网估算 */
 function calcCost(perUnit, units, mode) {
   var ccSub = perUnit * units;
