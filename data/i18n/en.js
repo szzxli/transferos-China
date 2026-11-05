@@ -83,7 +83,7 @@ var I18N_EN = {
  "4维评估 · 12所白名单CC · 纯本地判定": "4-dimension assessment · 12 whitelisted CCs · fully local",
  "选课规划 · TransferOS-China": "Course Planning · TransferOS-China",
  "（稳妥）— 7 个学季，每季约 9–10 学分": "(Safe) — 7 quarters, ~9–10 units each",
- "学费每年调整，此为 2026-27 口径估算。": "Tuition adjusts yearly; this uses 2026-27 figures.",
+ "学费每年调整，此为 2027-28 口径估算。": "Tuition adjusts yearly; this uses 2027-28 figures.",
  "转学指南 · TransferOS-China": "Transfer Guide · TransferOS-China",
  "本工具仅提供公开信息整理，不构成留学中介服务。": "This tool only organizes public information — not an agency service.",
  "各校陆续放榜，注意查邮箱和申请 portal。": "Decisions roll out — check your email and application portals.",
@@ -147,7 +147,7 @@ var I18N_EN = {
  "F-1 签证（拿到 UC 录取后）": "F-1 visa (after UC admission)",
  "💻 纯线上：无需资金证明、无需签证": "💻 Fully online: no proof of funds, no visa needed",
  "加微信，老师帮你盯时间线、审文书。": "Add us on WeChat — a teacher will track your timeline and review essays.",
- "数据口径：2026-27 学年；": "Data: 2026-27 academic year;",
+ "数据口径：2027-28 学年；": "Data: 2027-28 academic year;",
  "学费每年调整，请以学校官网为准。": "Tuition adjusts yearly — check school sites.",
  "🎓 UC 阶段（2 年，非居民）": "🎓 UC stage (2 years, nonresident)",
  "两所学校单价均为官网已核实数字；": "Both schools’ per-unit rates are officially verified;",
@@ -640,5 +640,9 @@ var I18N_EN = {
  "⚠️ 逐项核对无误后，再填入各校官网申请系统。本页不是正式申请。": "⚠️ After verifying each item, enter them into each school’s official application system. This page is not a formal application.",
  "· 可能对应": "· possibly maps to",
  "去生成规划": "Generate plan",
- "TransferOS-China · 加州社区大学转 UC 路径规划": "TransferOS-China · California CC → UC Transfer Planner"
+ "TransferOS-China · 加州社区大学转 UC 路径规划": "TransferOS-China · California CC → UC Transfer Planner",
+  "本站数字按 2027-28 学年学费测算，学费每年调整；选好学校和就读方式后，在规划页按实际数字重算。": "Figures use 2027-28 tuition; tuition adjusts yearly. After choosing a school and study mode, recalculate with actual figures on the planning page.",
+  "默认值不是猜的：取加州大学官网 2027-28 学年非居民就读成本：学费 $57,300，住校总成本 $90,100；本表拆分：学费 $57,300、生活费、保险及其他 $32,800。确定目标学校后，请按该校官网数字修改。": "Defaults are not guesses: UC 2027-28 nonresident costs — tuition $57,300, on-campus total $90,100; this table splits it as tuition $57,300, living costs, insurance and other $32,800. After choosing a school, adjust to that school's official figures.",
+  "取加州大学官网 2027-28 学年非居民就读成本：学费 $57,300／年，住校总成本 $90,100／年（已含校园杂费、住宿伙食、保险及其他间接开销）；各校略有差异。来源：加州大学官网学费与就读成本页。": "UC 2027-28 nonresident costs: tuition $57,300/yr, on-campus total $90,100/yr (including campus fees, housing and meals, insurance and other indirect costs); varies by campus. Source: UC tuition and cost of attendance pages.",
+  "学费每年调整，此为 2027-28 口径估算。基线 = 四年直读非居民成本 $90,100／年 × 4 年。线上模式的社区大学阶段按居家线上计（生活费 0）；赴美模式另含 De Anza 官网 F-1 生活费估算（不含往返机票等杂费）；两个模式的加州大学阶段都按住校成本计。": "Tuition adjusts yearly; this uses 2027-28 figures. Baseline = four years of direct nonresident costs at $90,100/yr × 4 years. In the online track, the community-college stage is at-home online (living costs 0); the in-US track also includes De Anza's official F-1 living-cost estimate (excluding airfare and miscellaneous); the UC stage in both tracks uses on-campus costs."
 };
