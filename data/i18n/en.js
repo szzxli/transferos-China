@@ -263,7 +263,7 @@ var I18N_EN = {
  "英文版必须人工核对；": "The English version must be human-verified;",
  "学校签发 I-20。": "School issues the I-20.",
  "凭 I-20 面签。": "Interview with the I-20.",
- "起点，不决定终点。": "A starting point, not the destination.",
+ "起点，不决定终点。": "A starting point, not the destination.", "转UC：起点，": "ZhuanUC: a starting point, ", "不决定终点。": "not the destination.", "约少花 12.6 万美元": "About $126,000 less", "先读社区大学两年再转 UC，比四年直录约少花 12.6 万美元（约 84.5 万元）": "Two years at a community college first, then transfer to UC, for about $126,000 less than four years of direct entry (about ¥845,000).", "数字怎么算的": "How the numbers are calculated",
  "真实存在的转学路径": "A real transfer path",
  "61 分及以上 ✅": "61+ ✅",
  "🔗 官方报名通道：": "🔗 Official registration:",
