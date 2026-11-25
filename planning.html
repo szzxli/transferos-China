@@ -7,6 +7,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>选课规划 · TransferOS-China</title>
 <link rel="stylesheet" href="css/app.css?v=15">
+<style>
+  #sumCard, #tagDist, #tagDetail, #tagFine, #tagFine a { overflow-wrap: anywhere; }
+  #tagDist { white-space: normal; line-height: 1.45; }
+</style>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#132625">
 <!-- GoatCounter page-view counter (cookie-free, no personal data). ?nocount=1 turns counting off in this browser. -->
@@ -314,10 +318,12 @@
       <tr><td>已完成学季</td><td id="doneQ">0 / 0</td></tr>
       <tr><td>已完成学分</td><td id="doneUnits">0 / 0</td></tr>
       <tr><td>平均 GPA（已完成学季）</td><td id="avgGpa">—</td></tr>
-      <tr><td>距保录计划（TAG）成绩线 3.4</td><td id="tagDist">—</td></tr>
+      <tr><td id="tagLabel">TAG（保录计划）</td><td id="tagDist">—</td></tr>
       <tr><td>总体进度</td><td id="allPct">0%</td></tr>
     </table>
-    <div class="hint">GPA 按学季手动填写（0–4.0）；"已完成"的学季才计入平均 GPA。保录线的距离为参考值，正式核算以转学申请时学校计算为准。</div>
+    <div class="hint">GPA 按学季手动填写（0–4.0）；"已完成"的学季才计入平均 GPA。和成绩线的差距只按这些手动记录估算，正式核算以转学申请时学校计算为准。部分专业另有专业课 GPA，这里只提示、不计算。</div>
+    <div class="hint" id="tagDetail"></div>
+    <p class="hint" id="tagFine">各校 TAG（保录计划）的成绩线和排除专业每年会变，以官网为准。矩阵标注 Accurate as of June 9, 2026。<a href="https://admission.universityofcalifornia.edu/admission-requirements/transfer-requirements/uc-transfer-programs/transfer-admission-guarantee-tag.html" target="_blank" rel="noopener">UC 官网 TAG 说明</a> · <a href="https://admission.universityofcalifornia.edu/_assets/files/transfer-requirements/updated_202728-tag-matrix_ada.pdf" target="_blank" rel="noopener">2027-28 TAG 矩阵（PDF）</a> · <a href="https://admissions.uci.edu/apply/transfer-students/guaranteed-admissions.php" target="_blank" rel="noopener">UCI 官网 TAG 页</a></p>
     <div id="missedSlot"></div>
     <div class="btn-row"><button class="btn" id="sumGenBtn" type="button">📋 生成学期小结（可转发给家人）</button></div>
     <div id="sumOutSlot"></div>
@@ -748,18 +754,30 @@ function tkRender(reqs, pace, meta) {
   html += '<div class="card"><div class="btn-row">'
     + '<button class="btn" id="tkSaveTrack">💾 保存规划</button>'
     + '<button class="btn ghost" id="tkRegen">🔄 重新生成</button>'
-    + '<a class="btn ghost" href="planning.html#sec-coach">学期跟踪 →</a>'
+    + '<a class="btn ghost" href="planning.html#sec-coach" id="tkToCoach">学期跟踪 →</a>'
     + '</div><div class="footnote">保存后可在「学期跟踪」里逐季记录 GPA 和进度。</div></div>';
   document.getElementById("tkSchedSlot").innerHTML = html;
   funnelShow("funnelTrack");
   document.getElementById("tkSchedSlot").scrollIntoView({ behavior: "smooth" });
   document.getElementById("tkSaveTrack").addEventListener("click", function () {
-    togSet("track", { meta: meta, pace: pace, plan: s.plan, total: s.total, ts: Date.now() });
+    var saved = { meta: meta, pace: pace, plan: s.plan, total: s.total, ts: Date.now() };
+    togSet("track", saved);
+    if (typeof render === "function") {
+      window.track = saved;
+      render();
+    }
     alert("规划已保存，去「学期跟踪」开始记录吧。");
   });
   document.getElementById("tkRegen").addEventListener("click", function () {
     document.getElementById("tkSchedSlot").innerHTML = "";
     window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  document.getElementById("tkToCoach").addEventListener("click", function (e) {
+    var hash = location.hash || "";
+    if (hash === "#sec-coach" || hash === "#coach") {
+      e.preventDefault();
+      if (typeof openPlanningStep === "function") openPlanningStep("coach");
+    }
   });
 }
 
@@ -965,6 +983,7 @@ document.getElementById("aiBtn").addEventListener("click", function () {
 });
 
 </script>
+<script src="js/tag-line.js?v=1"></script>
 <script>
 
 "use strict";
@@ -997,18 +1016,24 @@ function renderSum() {
   document.getElementById("doneUnits").textContent = doneU + " / " + totU;
   document.getElementById("allPct").textContent = pct + "%";
   document.getElementById("avgGpa").textContent = avg == null ? "—" : avg.toFixed(2);
+  var outSlot = document.getElementById("sumOutSlot");
+  if (outSlot) outSlot.innerHTML = "";
+  var tag = formatTag(track.meta && track.meta.uc, track.meta && track.meta.major, track.pace, avg);
+  document.getElementById("tagLabel").textContent = tag.label;
   var td = document.getElementById("tagDist");
-  if (avg == null) { td.textContent = "—"; td.style.color = ""; }
-  else if (avg >= 3.4) { td.textContent = "高于线 " + (avg - 3.4).toFixed(2) + " ✅"; td.style.color = "#16a34a"; }
-  else { td.textContent = "还差 " + (3.4 - avg).toFixed(2) + " ⚠️"; td.style.color = "#dc2626"; }
+  td.textContent = tag.value;
+  td.style.color = tag.color || "";
+  var detail = document.getElementById("tagDetail");
+  if (detail) detail.textContent = tag.detail;
   document.getElementById("planName").textContent =
     track.meta ? track.meta.major + " · " + (track.pace === "1yr" ? "1 年" : "2 年") : "";
   var warn = "";
   if (missed.length) warn += '<div class="alert" style="margin-top:10px">⚠️ 第 ' + missed.join("、") + " 季还没对账，后面的学季却已完成——可能漏修了课，请逐季确认状态。</div>";
-  if (noGpa) warn += '<div class="alert" style="margin-top:10px">⚠️ 有 ' + noGpa + " 个已完成学季还没填 GPA，平均成绩和保录线距离算不准，请补填。</div>";
+  if (noGpa) warn += '<div class="alert" style="margin-top:10px">⚠️ 有 ' + noGpa + " 个已完成学季还没填 GPA，平均成绩算不准，请补填。</div>";
   document.getElementById("missedSlot").innerHTML = warn;
   window.__coachSum = { done: done, n: n, doneU: doneU, totU: totU, avg: avg, pct: pct, missed: missed,
-    major: track.meta ? track.meta.major : "", uc: track.meta ? track.meta.uc : "" };
+    major: track.meta ? track.meta.major : "", uc: track.meta ? track.meta.uc : "",
+    tagSummary: tag.summary };
 }
 
 function genSummary() {
@@ -1017,16 +1042,15 @@ function genSummary() {
   var lines = [];
   lines.push("【学期小结】" + (c.major ? c.major + " · 目标 " + c.uc : ""));
   lines.push("进度：已完成 " + c.done + "/" + c.n + " 个学季，" + c.doneU + "/" + c.totU + " 学分（" + c.pct + "%）。");
-  if (c.avg == null) lines.push("成绩：已完成学季还没有填 GPA，暂时算不出平均成绩。");
-  else if (c.avg >= 3.4) lines.push("成绩：平均 GPA " + c.avg.toFixed(2) + "，高于保录计划（TAG）3.4 的成绩线 " + (c.avg - 3.4).toFixed(2) + "，保持住。");
-  else lines.push("成绩：平均 GPA " + c.avg.toFixed(2) + "，距保录计划（TAG）3.4 的成绩线还差 " + (3.4 - c.avg).toFixed(2) + "，后续学季要往上拉。");
+  lines.push(c.tagSummary || "成绩：这里还不能对照 TAG（保录计划）成绩线。以官网为准。");
   if (c.missed.length) lines.push("注意：第 " + c.missed.join("、") + " 季还没对账，可能漏修课程，需要确认。");
   lines.push("下一步：按规划修下一学季的课，成绩出来后回来更新这一页。");
   lines.push("（本小结由 TransferOS-China 学期陪伴自助版生成，数据为手动记录，仅供参考。）");
   document.getElementById("sumOutSlot").innerHTML =
     '<div class="field" style="margin-top:10px"><label>小结文本（长按或全选复制，转发给家人）</label>'
-    + '<textarea rows="6" readonly id="sumText">' + lines.join("\n") + "</textarea></div>";
+    + '<textarea rows="8" readonly id="sumText"></textarea></div>';
   var t = document.getElementById("sumText");
+  t.value = lines.join("\n");
   t.focus(); t.select();
 }
 
@@ -1036,6 +1060,7 @@ function render() {
       '<div class="card"><div class="alert">⚠️ 还没有保存的课程规划。<br><br><a class="btn" href="planning.html#sec-track">去生成规划 →</a></div></div>';
     return;
   }
+  document.getElementById("emptySlot").innerHTML = "";
   document.getElementById("sumCard").hidden = false;
   var slot = document.getElementById("qSlot");
   slot.innerHTML = "";
@@ -1084,7 +1109,7 @@ function render() {
   });
   renderSum();
   var gb = document.getElementById("sumGenBtn");
-  if (gb) gb.addEventListener("click", genSummary);
+  if (gb) gb.onclick = genSummary;
 }
 
 render();
@@ -1096,6 +1121,22 @@ render();
     h.addEventListener("click", function(){ stepToggle(h.dataset.page, h.dataset.step); });
   });
   stepInit("planning", ['plan', 'track', 'cost', 'transcript', 'coach']);
+  window.openPlanningStep = function (id) {
+    var order = ['plan', 'track', 'cost', 'transcript', 'coach'];
+    if (order.indexOf(id) < 0) return;
+    order.forEach(function (oid) { setStepOpen(oid, false); });
+    setStepOpen(id, true);
+    if (id === "coach") {
+      window.track = togGet("track", null);
+      if (typeof render === "function") render();
+    }
+    var el = document.getElementById("step-" + id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  window.addEventListener("hashchange", function () {
+    var hash = (location.hash || "").replace("#", "").replace(/^sec-/, "");
+    if (hash) openPlanningStep(hash);
+  });
 })();
 </script>
 
