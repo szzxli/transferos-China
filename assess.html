@@ -29,6 +29,22 @@
     <div class="hint">两种方式费用和签证要求完全不同，先选再评估。</div>
     <label class="radio-card"><input type="radio" name="mode" value="online" checked> 💻 纯线上 — 人在中国，全程网课，无需签证</label>
     <label class="radio-card"><input type="radio" name="mode" value="inperson"> ✈️ 赴美线下 — 持 F-1 签证赴美读</label>
+    <div class="field">
+      <label for="heardFrom">你从哪里知道本站？</label>
+      <div class="hint">选填，不选也能继续。</div>
+      <select id="heardFrom" style="width:100%;max-width:100%">
+        <option value="">请选择（可不填）</option>
+        <option value="xhs">小红书</option>
+        <option value="zhihu">知乎</option>
+        <option value="bilibili">B站</option>
+        <option value="douyin">抖音</option>
+        <option value="wechat">微信</option>
+        <option value="baidu">百度搜索</option>
+        <option value="google">Google 搜索</option>
+        <option value="friend">朋友推荐</option>
+        <option value="other">其他</option>
+      </select>
+    </div>
     <div class="btn-row"><button class="btn ghost" disabled>← 上一步</button><button class="btn" onclick="evNext(1)">下一步 →</button></div>
   </div>
 
@@ -226,6 +242,49 @@ function evFinish() {
   if (s.raw.hasTranscript) document.getElementById("hasTs").checked = true;
   if (s.raw.duo) document.getElementById("duo").value = s.raw.duo;
   if (s.raw.toefl) document.getElementById("toefl").value = s.raw.toefl;
+})();
+/* 选填来源：复用本页 GoatCounter（不新接服务、不收集个人信息）。
+   短码与页面浏览 ?ref= 白名单一致；google / friend / other 只出现在这个自报事件里。
+   事件名不以 / 开头（GoatCounter 事件路径的要求）。不写入 tog_ref，避免盖掉 ?ref= 的首次触达代理码。
+   跳过规则与页头计数脚本相同：非 zhuanuc.com、?nocount=1、skipgc、或带 v / cb / _ / cachebust 的地址都不上报。 */
+var HEARD_FROM = {
+  xhs: "小红书", zhihu: "知乎", bilibili: "B站", douyin: "抖音", wechat: "微信",
+  baidu: "百度搜索", google: "Google 搜索", friend: "朋友推荐", other: "其他"
+};
+function heardCountAllowed() {
+  try {
+    var q = location.search || "";
+    if (location.hostname !== "zhuanuc.com") return false;
+    if (/[?&](v|cb|_|nocount)=|[?&]cachebust/i.test(q)) return false;
+    if (localStorage.getItem("skipgc") === "t") return false;
+  } catch (e) { return false; }
+  return true;
+}
+function reportHeard(slug) {
+  if (!Object.prototype.hasOwnProperty.call(HEARD_FROM, slug)) return;
+  if (!heardCountAllowed()) return;
+  var payload = { path: "assess-source-" + slug, title: "来源 · " + HEARD_FROM[slug], event: true };
+  var tries = 0;
+  (function send() {
+    try {
+      if (window.goatcounter && typeof window.goatcounter.count === "function") {
+        window.goatcounter.count(payload);
+        return;
+      }
+    } catch (e) { return; }
+    if (tries++ < 40) setTimeout(send, 250);
+  })();
+}
+(function () {
+  var sel = document.getElementById("heardFrom");
+  if (!sel) return;
+  var last = "";
+  sel.addEventListener("change", function () {
+    var slug = sel.value;
+    if (!slug || slug === last) return;
+    last = slug;
+    reportHeard(slug);
+  });
 })();
 document.querySelectorAll(".radio-card").forEach(function (c) {
   c.addEventListener("click", function () {
